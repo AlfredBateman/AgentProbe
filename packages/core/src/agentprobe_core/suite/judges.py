@@ -75,6 +75,7 @@ class ToolArgsMatchJudge(_JudgeSpecBase):
 class LlmRubricJudge(_JudgeSpecBase):
     judge: Literal["llm_rubric"]
     rubric: str = Field(min_length=1)
+    samples: int = Field(default=1, ge=1, le=10)  # >1: majority voting across independent calls
 
 
 class ConsistencyJudge(_JudgeSpecBase):
