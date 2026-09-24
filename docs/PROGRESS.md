@@ -144,8 +144,35 @@
     embeddings without going through the mock provider's content heuristics.
   - `pnpm check` and `pnpm verify` are both green (481 unit + 80 integration tests).
 
+- 2026-09-24 **B1.6: statistics** (`packages/core/stats`, [ADR 0014](decisions/0014-statistics-implementation.md), methods from [ADR 0006](decisions/0006-statistics-methodology.md)):
+  - `summary.py`:
+    - `CaseSummary(passes, attempts, errors, mean_score, mean_latency_ms, cost_usd)` validates its counts. It exposes `pass_rate`, `label` (stable-pass / stable-fail / flaky, errors count as non-passes; the rule is documented) and a Wilson interval.
+    - `suite_stats()` returns the mean of case pass rates with a seeded, case-level percentile bootstrap CI. A binomial floor (Wilson at the suite rate, n_eff = C²/Σ1/nᵢ) keeps a one-case or zero-variance suite from getting a zero-width interval.
+  - `significance.py`:
+    - one-sided Fisher exact tests in both directions, as exact `Fraction`s via `math.comb`;
+    - Holm step-down;
+    - a paired sign-flip test. It is computed exactly by dynamic programming over integer-scaled sums: always for 20 or fewer non-zero deltas, and for much larger suites on a 1/n lattice. Otherwise it falls back to seeded Monte Carlo with (1+hits)/(1+draws).
+  - `regression.py`: `compare_runs(baseline, candidate, config)` returns a `RegressionReport`:
+    - the verdict: regression, no_change or improvement. Regression wins; a flag needs Holm/permutation p ≤ `alpha` AND a drop ≥ `min_drop`, both compared exactly;
+    - per-case p-values and flags;
+    - the suite test;
+    - newly failing / passing / flaky and no-longer-flaky lists, plus added and removed cases. Only shared cases are compared;
+    - score, latency and per-attempt cost deltas.
+  - `StatisticsConfig.override(**flags)`: CLI flags over the YAML `statistics:` block, validated.
+  - `scripts/measure_false_alarms.py` and [docs/metrics.md](metrics.md): a seeded simulation of unchanged flaky agents. Reference scenario (30 cases × 5 runs, 20% flaky): false alarms fall from **70.6% (naive single run) to 0.7%, a 99.0% reduction**. It also reports detection power: a single broken case among 30 is caught only 4.1% of the time at 5 runs, and 100% at 10 runs. It includes sensitivity over flaky fraction, suite size and runs per case.
+  - Tests: 90 in `packages/core/tests/stats`, plus 4 for `override`. They cover:
+    - known answers: Newcombe 1998 Wilson values, Fisher's tea tasting, ADR 0006's small-N examples, Holm, sign-flip;
+    - Hypothesis property tests on a derandomized profile, including brute-force enumeration oracles for Fisher and sign-flip;
+    - suite CI coverage (94% at 30 cases);
+    - false-alarm calibration;
+    - the p = `alpha` and drop = `min_drop` boundaries;
+    - the Holm power limit, pinned so the docs stay true.
+
+    Coverage of `agentprobe_core.stats` is 100%. `hypothesis==6.168.1` is now a pinned dev dependency. `pnpm check` and `pnpm verify` are both green (575 unit + 80 integration tests).
+
 ## Next
-- B1.6: statistics (labels, suite CI, regression tests, SPEC.md §2 #9) + ADR.
+- B1.7: `execute_attempt` / `finalize_run` / `run_suite` builds a `CaseSummary` per case and feeds `suite_stats` / `compare_runs`.
+- Decision needed (ADR 0014, docs/metrics.md): at 5 runs per case, a single broken case can't be flagged once 13+ cases are compared. Options: Tarone's discrete-aware correction, or a higher default `runs_per_case`.
 
 ## Decisions
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -165,7 +192,20 @@
 - LLM layer: roles spread across models for per-model free-tier quotas, RPD persisted and fail-fast, one retry policy (LiteLLM retries off), USD estimates from dated paid-tier prices, LiteLLM as a lazy opt-in extra; `LLM_MODEL_DEMO_AGENT`/`LLM_MODEL_MUTATOR` renamed to `LLM_MODEL_AGENT`/`LLM_MODEL_ATTACKER` ([ADR 0011](decisions/0011-llm-layer.md)).
 - Judges: `JudgeContext` wraps `case`/`response` rather than duplicating their fields; `json_schema` validates via the `jsonschema` library (now a direct core dependency) instead of a hand-rolled validator; `regex` is guarded by a length cap, not a timeout; `llm_rubric` neutralizes literal delimiter tags found inside the untrusted output/input before wrapping them, and gained `samples: int` for majority voting; `consistency` reads `ctx.case_outputs`, populated by the executor, rather than having its own interface ([ADR 0013](decisions/0013-judges.md)).
 
+- Statistics implementation ([ADR 0014](decisions/0014-statistics-implementation.md)):
+  - The case is the resampling unit (within-case correlation).
+  - A Wilson floor for degenerate bootstraps.
+  - Separate Holm families for worse and better.
+  - Exact sign-flip by dynamic programming (exact beyond ADR 0006's 20 cases when cheap), with a Monte Carlo fallback.
+  - Exact rational threshold comparisons.
+  - Regression wins the verdict; its worst-case false-alarm rate is 2·`alpha` (measured at 0.7%).
+  - Only shared cases are compared.
+  - Cost deltas are per attempt.
+
 ## Known issues
+- Statistics power limit (ADR 0014): at 5 runs per case, Fisher + Holm can't flag a single case once 13+ cases are compared, and the suite test can't see one changed case. In docs/metrics.md, a single hard-broken case among 30 is detected 4.1% of the time. Awaiting a decision: Tarone's correction, or a higher `runs_per_case`.
+- The suite CI under-covers with few cases: 87% at 10 cases vs 94% at 30 (percentile cluster bootstrap, ADR 0014).
+- The `--alpha` / `--min-drop` / `--permutation-draws` / `--bootstrap-resamples` CLI flags, and the `--help` text that states the small-N limitation (ADR 0006), land with D1.1 (`run`) and D2.1 (`compare`). The core side (`StatisticsConfig.override`) is done.
 - `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 2.5 min against Neon from here: each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
 - On native Windows, psycopg async needs `SelectorEventLoop`. Tests use the root conftest hook; `pnpm dev:api` passes `--loop asyncio:SelectorEventLoop`. Production start commands on Windows would need the same flag (Linux doesn't).
 - Deploy (F4) must set `FORWARDED_ALLOW_IPS` to the proxy and keep the API reachable only through it. Otherwise the per-IP auth limit is either global (every user shares the proxy's IP) or spoofable (ADR 0009 §9).

@@ -25,6 +25,13 @@ class StatisticsConfig(BaseModel):
     permutation_draws: int = Field(default=10_000, ge=100)
     bootstrap_resamples: int = Field(default=10_000, ge=100)
 
+    def override(self, **flags: float | None) -> "StatisticsConfig":
+        """This config with CLI flags applied on top. None means the flag wasn't given; the
+        result is validated like the YAML block (unknown names and out-of-range values raise).
+        """
+        given = {name: value for name, value in flags.items() if value is not None}
+        return StatisticsConfig.model_validate(self.model_dump() | given)
+
 
 class Case(BaseModel):
     model_config = ConfigDict(extra="forbid")

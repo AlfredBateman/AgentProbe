@@ -8,6 +8,7 @@ dependencies = ["agentprobe-core[live]", "agentprobe", "agentprobe-api", "agentp
 dev = [
     "cryptography==50.0.1",  # test-only here: self-signed certs for the adapter's TLS tests
     "httpx==0.28.1",
+    "hypothesis==6.168.1",
     "mypy==2.3.1",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
