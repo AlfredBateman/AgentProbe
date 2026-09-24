@@ -1,0 +1,12 @@
+# Model per role, as LiteLLM model strings. LLM_MODEL_<ROLE> env vars override these.
+# Only read when LLM_PROVIDER=litellm; the mock provider ignores them.
+#
+# Free-tier quotas are per project *and per model*, so roles are spread across models: each
+# gets its own daily allowance. The judge is the high-volume role (cases x runs x rubrics), so
+# it gets a lite model with a larger daily quota; the rare cluster summaries get a bigger one.
+models:
+  agent: gemini/gemini-3.1-flash-lite
+  judge: gemini/gemini-3.5-flash-lite
+  attacker: gemini/gemini-3.1-flash-lite
+  summarizer: gemini/gemini-3.8-flash
+  embedding: gemini/gemini-embedding-2
