@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 import httpx
+from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,7 @@ ALLOWED = ("alice@example.com", "bob@example.com", "carol@example.com")
 def make_settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "jwt_secret": SecretStr("test-secret-" + "x" * 40),
+        "encryption_key": SecretStr(Fernet.generate_key().decode()),
         "signup_allowed_emails": ",".join(ALLOWED),
         "web_origin": WEB_ORIGIN,
         "cookie_secure": True,

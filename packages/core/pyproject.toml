@@ -3,7 +3,10 @@ name = "agentprobe-core"
 version = "0.0.0"
 description = "AgentProbe engine: suite schema, adapters, judges, attacks, statistics, LLM layer."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic==2.13.5",
+    "pyyaml==6.0.2",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13"]

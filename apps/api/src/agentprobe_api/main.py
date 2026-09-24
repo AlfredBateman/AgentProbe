@@ -10,7 +10,8 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from agentprobe_api import auth, projects
+from agentprobe_api import agents, auth, projects, suites
+from agentprobe_api.crypto import SecretBox
 from agentprobe_api.db import make_engine
 from agentprobe_api.errors import error_response, install_error_handlers
 from agentprobe_api.logs import configure_logging, redact_query, request_id_var
@@ -103,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="AgentProbe API", lifespan=lifespan)
     app.state.settings = settings
+    app.state.secret_box = SecretBox(settings.encryption_key) if settings.encryption_key else None
     redis = Redis.from_url(settings.redis_url) if settings.rate_limit_backend == "redis" else None
     app.state.api_key_limiter = _limiter(redis, settings.rate_limit_per_minute, "rl:key:")
     app.state.auth_limiter = _limiter(redis, settings.auth_rate_limit_per_minute, "rl:ip:")
@@ -110,6 +112,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
     app.include_router(auth.router)
     app.include_router(projects.router)
+    app.include_router(agents.router)
+    app.include_router(suites.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

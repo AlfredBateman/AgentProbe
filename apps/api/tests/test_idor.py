@@ -13,13 +13,40 @@ from idor import Probe, assert_no_idor
 
 pytestmark = pytest.mark.integration
 
+HTTP_CONFIG = {"adapter_type": "http", "url": "https://agent.example.com/chat"}
+VALID_YAML = """
+suite: demo-suite
+agent: demo-bot
+cases:
+  - id: c1
+    input: "hi"
+    expect:
+      - judge: contains
+        value: "ok"
+"""
+
 PROBES = [
     Probe("GET", "/projects/{project_id}"),
     Probe("GET", "/projects/{project_id}/api-keys"),
     Probe("POST", "/projects/{project_id}/api-keys", {"label": "stolen"}),
     Probe("DELETE", "/projects/{project_id}/api-keys/{api_key_id}"),
+    Probe("GET", "/projects/{project_id}/agents"),
+    Probe("POST", "/projects/{project_id}/agents", {"name": "stolen", "config": HTTP_CONFIG}),
+    Probe("GET", "/agents/{agent_id}"),
+    Probe("PUT", "/agents/{agent_id}", {"name": "renamed"}),
+    Probe("DELETE", "/agents/{agent_id}"),
+    Probe("GET", "/projects/{project_id}/suites"),
+    Probe("POST", "/projects/{project_id}/suites", {"yaml": VALID_YAML}),
+    Probe("PUT", "/suites/{suite_id}", {"yaml": VALID_YAML}),
 ]
-SNAPSHOT = ["/projects", "/projects/{project_id}", "/projects/{project_id}/api-keys"]
+SNAPSHOT = [
+    "/projects",
+    "/projects/{project_id}",
+    "/projects/{project_id}/api-keys",
+    "/projects/{project_id}/agents",
+    "/agents/{agent_id}",
+    "/projects/{project_id}/suites",
+]
 
 
 async def make_project_with_key(client: httpx.AsyncClient, name: str) -> tuple[str, str, str]:
@@ -39,11 +66,22 @@ class World:
 async def world(sign_up: SignUp, clients: ClientFactory) -> World:
     alice = await sign_up("alice@example.com")
     project_id, api_key_id, _ = await make_project_with_key(alice, "alice-project")
+    agent = (
+        await alice.post(
+            f"/projects/{project_id}/agents", json={"name": "alice-bot", "config": HTTP_CONFIG}
+        )
+    ).json()
+    suite = (await alice.post(f"/projects/{project_id}/suites", json={"yaml": VALID_YAML})).json()
     bob = await sign_up("bob@example.com")
     _, _, bob_key = await make_project_with_key(bob, "bob-project")
     return World(
         alice=alice,
-        ids={"project_id": project_id, "api_key_id": api_key_id},
+        ids={
+            "project_id": project_id,
+            "api_key_id": api_key_id,
+            "agent_id": agent["id"],
+            "suite_id": suite["id"],
+        },
         intruders={
             "bob_session": bob,
             "bob_api_key": clients(headers={"Authorization": f"Bearer {bob_key}"}),
