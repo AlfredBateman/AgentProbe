@@ -10,10 +10,10 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +31,7 @@ from agentprobe_api.auth import (
     stream_principal,
 )
 from agentprobe_api.errors import ApiError
+from agentprobe_api.htmlexport import render_html
 from agentprobe_api.models import Agent, Project, Run, Suite
 from agentprobe_api.progress import Subscription
 from agentprobe_api.runstore import LIVE, TERMINAL
@@ -47,6 +48,9 @@ class RunIn(BaseModel):
     runs_per_case: int | None = Field(default=None, ge=1, le=20)  # default: the suite's
     model: str | None = Field(default=None, max_length=200)  # a label for the agent's model
     mock: bool = True  # mock LLM for judges; false uses the server's LLM_PROVIDER
+    git_sha: str | None = Field(default=None, max_length=64)
+    branch: str | None = Field(default=None, max_length=200)
+    pr_number: int | None = Field(default=None, ge=1)
 
 
 class RunOut(BaseModel):
@@ -57,6 +61,9 @@ class RunOut(BaseModel):
     agent_id: uuid.UUID
     status: str
     model: str | None
+    git_sha: str | None
+    branch: str | None
+    pr_number: int | None
     runs_per_case: int
     mock_mode: bool
     attempts_total: int
@@ -122,6 +129,9 @@ async def start_run(
         agent_id=agent.id,
         status="queued",
         model=body.model,
+        git_sha=body.git_sha,
+        branch=body.branch,
+        pr_number=body.pr_number,
         runs_per_case=runs_per_case,
         mock_mode=body.mock,
         config_snapshot=runstore.make_snapshot(
@@ -228,3 +238,26 @@ async def _events(
                 return
     finally:
         await stack.aclose()
+
+
+@router.get("/runs/{run_id}/export")
+async def export_run(
+    run_id: uuid.UUID,
+    principal: CurrentPrincipal,
+    db: Db,
+    format: Literal["json", "html"] = "json",
+) -> Response:
+    """A portable record of the run, recomputed from the persisted attempts via core's own
+    `finalize_run` (ADR 0018): the strongest guarantee it agrees with core's statistics.
+    `format=html` is one self-contained, fully escaped file (no external assets).
+    """
+    run = await owned_run(db, principal, run_id)
+    summary = await runstore.read_summary(db, run)
+    if format == "html":
+        return HTMLResponse(render_html(run, summary))
+    return JSONResponse(
+        {
+            "run": RunOut.model_validate(run).model_dump(mode="json"),
+            "summary": summary.model_dump(mode="json"),
+        }
+    )

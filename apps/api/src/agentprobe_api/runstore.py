@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from statistics import fmean
 from typing import Any
@@ -37,7 +37,15 @@ from agentprobe_core.adapters import AdapterNotAllowed, TargetPolicy, build_adap
 from agentprobe_core.adapters.types import AgentAdapter
 from agentprobe_core.llm import LLMConfig, LLMConfigError, create_client
 from agentprobe_core.llm.types import LLMClient
-from agentprobe_core.runner import AttemptResult, RunOptions, RunSummary, uses_llm
+from agentprobe_core.runner import (
+    AttemptResult,
+    CaseResult,
+    RunOptions,
+    RunSummary,
+    finalize_run,
+    uses_llm,
+)
+from agentprobe_core.stats.summary import CaseSummary
 from agentprobe_core.suite import Case, SuiteParseError, parse_suite_yaml
 from agentprobe_core.suite import Suite as SuiteSchema
 
@@ -135,6 +143,21 @@ async def close_adapter(adapter: AgentAdapter) -> None:
         await close()
 
 
+async def case_ids_for(
+    session: AsyncSession, suite_id: uuid.UUID, suite_version: int
+) -> dict[str, uuid.UUID]:
+    """One suite version's case ids, keyed by case key (`test_cases.case_key`)."""
+    rows = await session.execute(
+        select(TestCase.case_key, TestCase.id).where(
+            TestCase.suite_id == suite_id, TestCase.suite_version == suite_version
+        )
+    )
+    # dict(rows.tuples()) is broken: SQLAlchemy's Result exposes .keys(), so the dict
+    # constructor treats it as a mapping (column names) instead of iterating (key, value)
+    # pairs. A comprehension avoids that trap.
+    return {key: id_ for key, id_ in rows.tuples()}
+
+
 async def load_plan(
     sessions: Sessions, run_id: uuid.UUID, secret_box: SecretBox | None
 ) -> Plan | None:
@@ -144,12 +167,7 @@ async def load_plan(
         if run is None:
             return None
         status, total, snapshot = run.status, run.attempts_total, run.config_snapshot
-        rows = await session.execute(
-            select(TestCase.case_key, TestCase.id).where(
-                TestCase.suite_id == run.suite_id, TestCase.suite_version == run.suite_version
-            )
-        )
-        case_ids = {key: id_ for key, id_ in rows.tuples()}
+        case_ids = await case_ids_for(session, run.suite_id, run.suite_version)
         secret_ref = snapshot.get("agent", {}).get("secret_ref")
         ciphertext = (
             await session.scalar(
@@ -237,12 +255,49 @@ async def attempt_saved(sessions: Sessions, plan: Plan, case_key: str, attempt: 
     return found is not None
 
 
+def _attempt_values(run_id: uuid.UUID, case_id: uuid.UUID, result: AttemptResult) -> dict[str, Any]:
+    """The `run_results` column values for one attempt. Shared by `save_attempt` (one
+    attempt at a time, idempotent, for a live/queued run) and `insert_results` (every
+    attempt of an ingested run in one transaction), so the two insert paths can't drift.
+    """
+    return {
+        "id": uuid.uuid4(),
+        "run_id": run_id,
+        "case_id": case_id,
+        "attempt": result.attempt,
+        "status": result.status,
+        "output": result.response.output if result.response else None,
+        "latency_ms": None if result.latency_ms is None else round(result.latency_ms),
+        "tokens": result.tokens,
+        "cost": _money(result.cost_usd),
+        "error_kind": result.error.kind if result.error else None,
+        "score": result.score,
+        "judge_cost_usd": _money(result.judge_cost_usd),
+        "retries": result.retries,
+        "detail": result.model_dump(mode="json", exclude={"response": {"steps"}}),
+    }
+
+
+def _judgment_rows(*, run_result_id: uuid.UUID, judgments: list[Any]) -> list[Judgment]:
+    return [
+        Judgment(
+            run_result_id=run_result_id,
+            judge_type=j.judge,
+            status=j.status,
+            passed=j.status == "pass",
+            score=j.score,
+            reason=j.reason,
+            evidence=j.evidence,
+        )
+        for j in judgments
+    ]
+
+
 async def save_attempt(sessions: Sessions, plan: Plan, result: AttemptResult) -> int | None:
     """Saves one attempt with its trace and judgments, but only while the run is running:
     late results of a cancelled or failed run are dropped. Idempotent on (run, case,
     attempt). Returns the run's `attempts_done` after this one, or None if nothing was saved.
     """
-    detail = result.model_dump(mode="json", exclude={"response": {"steps"}})
     async with sessions() as session:
         # The row lock orders this against cancel/fail and the other attempts' counter.
         status = await session.scalar(
@@ -253,22 +308,7 @@ async def save_attempt(sessions: Sessions, plan: Plan, result: AttemptResult) ->
             return None
         result_id = await session.scalar(
             insert(RunResult)
-            .values(
-                id=uuid.uuid4(),
-                run_id=plan.run_id,
-                case_id=plan.case_ids[result.case_id],
-                attempt=result.attempt,
-                status=result.status,
-                output=result.response.output if result.response else None,
-                latency_ms=None if result.latency_ms is None else round(result.latency_ms),
-                tokens=result.tokens,
-                cost=_money(result.cost_usd),
-                error_kind=result.error.kind if result.error else None,
-                score=result.score,
-                judge_cost_usd=_money(result.judge_cost_usd),
-                retries=result.retries,
-                detail=detail,
-            )
+            .values(**_attempt_values(plan.run_id, plan.case_ids[result.case_id], result))
             .on_conflict_do_nothing(index_elements=["run_id", "case_id", "attempt"])
             .returning(RunResult.id)
         )
@@ -282,18 +322,7 @@ async def save_attempt(sessions: Sessions, plan: Plan, result: AttemptResult) ->
                     steps=[step.model_dump(mode="json") for step in result.response.steps],
                 )
             )
-        session.add_all(
-            Judgment(
-                run_result_id=result_id,
-                judge_type=j.judge,
-                status=j.status,
-                passed=j.status == "pass",
-                score=j.score,
-                reason=j.reason,
-                evidence=j.evidence,
-            )
-            for j in result.judgments
-        )
+        session.add_all(_judgment_rows(run_result_id=result_id, judgments=result.judgments))
         await session.flush()
         done = await session.scalar(
             update(Run)
@@ -305,8 +334,47 @@ async def save_attempt(sessions: Sessions, plan: Plan, result: AttemptResult) ->
     return done
 
 
+async def insert_results(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    case_ids: dict[str, uuid.UUID],
+    results: list[AttemptResult],
+) -> None:
+    """Every attempt of an ingested run (`/ci/report`, ADR 0018), in the caller's own
+    transaction: one shot, not idempotent-per-call like `save_attempt` (a live run's
+    concurrent, resumable writes). Field mapping is shared via `_attempt_values` so the two
+    paths can't drift; case ids and (case, attempt) duplicates are the caller's job to
+    validate first, so a mistake here is a clear IntegrityError, not a silent skip.
+    """
+    for result in results:
+        row = RunResult(**_attempt_values(run_id, case_ids[result.case_id], result))
+        db.add(row)
+        await db.flush()  # assigns row.id for the trace/judgments below
+        if result.response is not None:
+            db.add(
+                Trace(
+                    run_result_id=row.id,
+                    steps=[step.model_dump(mode="json") for step in result.response.steps],
+                )
+            )
+        db.add_all(_judgment_rows(run_result_id=row.id, judgments=result.judgments))
+    await db.flush()
+
+
+def _attempt_result(detail: dict[str, Any], steps: list[dict[str, Any]] | None) -> AttemptResult:
+    """Rebuilds one `AttemptResult` from its `run_results.detail` (everything but the trace
+    steps) and its `traces.steps`, exactly as core produced it.
+    """
+    data = dict(detail)
+    if data.get("response") is not None:
+        data["response"] = {**data["response"], "steps": steps or []}
+    return AttemptResult.model_validate(data)
+
+
 async def load_attempts(sessions: Sessions, run_id: uuid.UUID) -> list[AttemptResult]:
-    """Every saved attempt, rebuilt exactly as core produced it."""
+    """Every saved attempt, for background work (the queue/worker), which owns its own
+    session lifecycle. Read endpoints use `read_attempts` on the request's own session.
+    """
     async with sessions() as session:
         rows = await session.execute(
             select(RunResult.detail, Trace.steps)
@@ -314,13 +382,120 @@ async def load_attempts(sessions: Sessions, run_id: uuid.UUID) -> list[AttemptRe
             .where(RunResult.run_id == run_id)
         )
         pairs = list(rows.tuples())
-    results = []
-    for detail, steps in pairs:
-        data = dict(detail)
-        if data.get("response") is not None:
-            data["response"] = {**data["response"], "steps": steps or []}
-        results.append(AttemptResult.model_validate(data))
-    return results
+    return [_attempt_result(detail, steps) for detail, steps in pairs]
+
+
+async def read_attempts(db: AsyncSession, run_id: uuid.UUID) -> list[AttemptResult]:
+    """Every saved attempt of a run, for a request handler's own session (no commit)."""
+    rows = await db.execute(
+        select(RunResult.detail, Trace.steps)
+        .outerjoin(Trace, Trace.run_result_id == RunResult.id)
+        .where(RunResult.run_id == run_id)
+    )
+    return [_attempt_result(detail, steps) for detail, steps in rows.tuples()]
+
+
+async def read_attempt(db: AsyncSession, result_id: uuid.UUID) -> AttemptResult | None:
+    """One saved attempt by its `run_results.id`, or None if it doesn't exist."""
+    row = (
+        await db.execute(
+            select(RunResult.detail, Trace.steps)
+            .outerjoin(Trace, Trace.run_result_id == RunResult.id)
+            .where(RunResult.id == result_id)
+        )
+    ).first()
+    return None if row is None else _attempt_result(row.detail, row.steps)
+
+
+async def read_case_summaries(db: AsyncSession, run_id: uuid.UUID) -> dict[str, CaseSummary]:
+    """A run's persisted per-case summaries, keyed by case id, for `stats.compare_runs`."""
+    rows = await db.execute(
+        select(
+            TestCase.case_key,
+            RunCaseSummary.passes,
+            RunCaseSummary.attempts,
+            RunCaseSummary.errors,
+            RunCaseSummary.mean_score,
+            RunCaseSummary.mean_latency_ms,
+            RunCaseSummary.total_cost,
+        )
+        .join(TestCase, TestCase.id == RunCaseSummary.case_id)
+        .where(RunCaseSummary.run_id == run_id)
+    )
+    return {
+        key: CaseSummary(
+            passes=passes,
+            attempts=attempts,
+            errors=errors,
+            mean_score=mean_score,
+            mean_latency_ms=mean_latency_ms,
+            cost_usd=float(total_cost) if total_cost is not None else None,
+        )
+        for key, passes, attempts, errors, mean_score, mean_latency_ms, total_cost in rows.tuples()
+    }
+
+
+def parsed_suite(run: Run) -> SuiteSchema:
+    """The `Suite` schema a run executed from: parsed from its own config snapshot, so it
+    reflects the suite exactly as it was when the run started, not its current version.
+    """
+    return parse_suite_yaml(run.config_snapshot["suite"]["yaml"])
+
+
+async def read_summary(db: AsyncSession, run: Run) -> RunSummary:
+    """A `RunSummary` rebuilt from the persisted attempts via core's own `finalize_run`,
+    the strongest guarantee that an export agrees with core's statistics. `RunSummary.status`
+    only distinguishes completed/cancelled; callers needing the run's real status (queued,
+    running, failed, ...) read it off the `Run` row itself.
+    """
+    suite = parsed_suite(run)
+    results = await read_attempts(db, run.id)
+    agent_name = run.config_snapshot.get("agent", {}).get("name") or suite.agent
+    return await finalize_run(
+        results,
+        suite=suite,
+        agent=agent_name,
+        runs_per_case=run.runs_per_case,
+        statistics=suite.statistics,
+        status="completed" if run.status == "completed" else "cancelled",
+        started_at=run.started_at,
+        run_id=str(run.id),
+    )
+
+
+def _case_summary_values(run_id: uuid.UUID, case_id: uuid.UUID, c: CaseResult) -> dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "case_id": case_id,
+        "attempts": c.summary.attempts,
+        "passes": c.summary.passes,
+        "errors": c.summary.errors,
+        "pass_rate": c.pass_rate,
+        "label": c.label,
+        "mean_score": c.summary.mean_score,
+        "consistency_score": fmean(j.score for j in c.consistency) if c.consistency else None,
+        "mean_latency_ms": c.summary.mean_latency_ms,
+        "total_cost": _money(c.summary.cost_usd),
+    }
+
+
+def _case_judgment_rows(
+    run_id: uuid.UUID, case_ids: dict[str, uuid.UUID], cases: list[CaseResult]
+) -> list[Judgment]:
+    return [
+        Judgment(
+            run_id=run_id,
+            case_id=case_ids[c.case_id],
+            judge_type=j.judge,
+            status=j.status,
+            passed=j.status == "pass",
+            score=j.score,
+            reason=j.reason,
+            evidence=j.evidence,
+        )
+        for c in cases
+        for j in c.consistency
+    ]
 
 
 async def save_summary(sessions: Sessions, plan: Plan, summary: RunSummary) -> str:
@@ -331,21 +506,7 @@ async def save_summary(sessions: Sessions, plan: Plan, summary: RunSummary) -> s
     async with sessions() as session:
         if summary.cases:
             rows = [
-                {
-                    "run_id": plan.run_id,
-                    "case_id": plan.case_ids[c.case_id],
-                    "attempts": c.summary.attempts,
-                    "passes": c.summary.passes,
-                    "errors": c.summary.errors,
-                    "pass_rate": c.pass_rate,
-                    "label": c.label,
-                    "mean_score": c.summary.mean_score,
-                    "consistency_score": (
-                        fmean(j.score for j in c.consistency) if c.consistency else None
-                    ),
-                    "mean_latency_ms": c.summary.mean_latency_ms,
-                    "total_cost": _money(c.summary.cost_usd),
-                }
+                _case_summary_values(plan.run_id, plan.case_ids[c.case_id], c)
                 for c in summary.cases
             ]
             stmt = insert(RunCaseSummary).values(rows)
@@ -356,20 +517,7 @@ async def save_summary(sessions: Sessions, plan: Plan, summary: RunSummary) -> s
                 )
             )
         await session.execute(delete(Judgment).where(Judgment.run_id == plan.run_id))
-        session.add_all(
-            Judgment(
-                run_id=plan.run_id,
-                case_id=plan.case_ids[c.case_id],
-                judge_type=j.judge,
-                status=j.status,
-                passed=j.status == "pass",
-                score=j.score,
-                reason=j.reason,
-                evidence=j.evidence,
-            )
-            for c in summary.cases
-            for j in c.consistency
-        )
+        session.add_all(_case_judgment_rows(plan.run_id, plan.case_ids, summary.cases))
         await session.flush()
         status = await session.scalar(
             update(Run)
@@ -388,6 +536,29 @@ async def save_summary(sessions: Sessions, plan: Plan, summary: RunSummary) -> s
         )
         await session.commit()
     return str(status)
+
+
+async def insert_summary(
+    db: AsyncSession, run: Run, case_ids: dict[str, uuid.UUID], summary: RunSummary
+) -> None:
+    """The ingest counterpart to `save_summary`: writes case summaries, case-scope
+    judgments and the run's totals in the caller's own transaction (ADR 0018). A fresh
+    ingested run has no pre-existing rows to upsert over or replace.
+    """
+    db.add_all(
+        RunCaseSummary(**_case_summary_values(run.id, case_ids[c.case_id], c))
+        for c in summary.cases
+    )
+    db.add_all(_case_judgment_rows(run.id, case_ids, summary.cases))
+    run.status = "completed"
+    run.finished_at = datetime.now(UTC)
+    run.pass_rate = summary.pass_rate
+    run.ci_lower = summary.ci.lower if summary.ci else None
+    run.ci_upper = summary.ci.upper if summary.ci else None
+    run.total_tokens = summary.tokens
+    run.total_cost = _money(summary.agent_cost_usd)
+    run.judge_cost_usd = _money(summary.judge_cost_usd)
+    await db.flush()
 
 
 async def stale_runs(sessions: Sessions, older_than_s: float | None) -> list[uuid.UUID]:

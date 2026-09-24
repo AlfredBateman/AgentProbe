@@ -253,9 +253,23 @@
   - Measured through the real API (uvicorn, inline, Neon dev branch, demo agents): the smoke suite against `/support/v1` completed, 40/40 attempts, pass rate 97.5% (CI 87.1–100%), order-status flaky 4/5, identical to the CLI. 40 `run_results`, 40 traces, 65 attempt judgments and 8 case summaries were persisted. The SSE stream showed `snapshot` → 40 `attempt` → `completed`.
   - `pnpm check` (723 unit tests) and `pnpm verify` (94 integration tests) are green. Migration 0003 is applied to the Neon dev branch.
 
+- 2026-09-25 **B2.4 (rest) + B2.5 + B2.6: results, compare, baselines, CI report, export, share links** ([ADR 0018](decisions/0018-results-compare-ci-report-export-share.md)), completing SPEC.md §8:
+  - No core changes needed: `agentprobe_core.stats.compare_runs` already existed (built for the CLI's `agentprobe compare`) and is reused as-is by the server, serialized the same way (`pydantic.TypeAdapter(RegressionReport).dump_python(..., mode="json")`).
+  - `runstore.py` gains request-scoped read helpers (`read_case_summaries`, `read_attempts`, `read_attempt`, `read_summary`, `parsed_suite`) that take a plain `AsyncSession`, alongside the existing `Sessions`-based (queue/worker) ones; `_attempt_result` is now shared between both `load_attempts` and `read_attempts`.
+  - `results.py`: `GET /runs/{id}/results` (filters: `status`, `label`, `case`, `attack_category`), `GET /results/{id}/trace` (the full reconstructed attempt, trace steps included), `GET /runs/compare?a=&b=` (422 if the two runs aren't the same suite).
+  - `baselines.py`: `POST /projects/{id}/baseline` (upsert per branch), `GET /projects/{id}/baselines/{branch}`.
+  - `ci.py`: `POST /ci/report` — the CLI/CI uploads a run it already executed (results, git sha, branch, PR number), authenticated by API key (`require_api_key` added to `auth.py`). The suite and agent must already exist in the project (looked up by name); ingest never auto-creates them (security/data-model cost of doing so from an attacker-reachable payload). Compares against a branch's `Baseline` (defaults to the report's own `branch`, overridable via `baseline_branch` for PRs); `verdict="no_baseline"` when none is set. Payload shape is core's own `AttemptResult` (strict, `extra="forbid"`); size is bounded by the suite's own `plan_attempts` count, and duplicate/unknown case ids are rejected before any write.
+  - `share.py`: `POST`/`DELETE /runs/{id}/share` (unguessable token, `runs.share_token_hash`/`share_expires_at`, already in the schema since ADR 0006/0007), public `GET /shared/{token}` — read directly off persisted columns (no recomputation, so an anonymous caller can't trigger the same cost the owner's export can), and deliberately narrower than the authenticated views (no agent config, no raw trace).
+  - `runs.py`: `GET /runs/{id}/export?format=json|html`, recomputing a `RunSummary` from persisted attempts via core's own `finalize_run` — the strongest guarantee an export agrees with core's statistics. `htmlexport.py` is one self-contained, fully escaped HTML file: `html.escape()` on every dynamic value (suite/agent names too, not just case ids), no external assets, and no `<script>` tag anywhere in the page.
+  - **A real deadlock, found by a hanging integration test, not by inspection:** the queue's `save_attempt`/`save_summary` open their own session per call (`Sessions`, for the queue/worker's benefit); calling them synchronously from inside a request handler that also depends on `Db`/`CurrentPrincipal` deadlocks in the test harness, where both share one connection behind one lock (ADR 0017's `SharedSessions`, held for the whole request by `Depends(get_db)`). Fixed by giving ingest its own single-transaction helpers, `runstore.insert_results`/`insert_summary`, sharing per-row field-mapping functions with the live-run path so the two can't drift.
+  - Also fixed along the way: `dict(sqlalchemy_result.tuples())` is broken (`Result` exposes `.keys()`, so `dict()`'s mapping-detection kicks in instead of iterating pairs) — `case_ids_for` used it and silently would have 500'd on every run; caught immediately by the first integration test that exercised it.
+  - `main.py` router order matters: `results.router` (which owns the literal `/runs/compare`) is registered before `runs.router` (`/runs/{run_id}`), since Starlette tries routes in registration order and `{run_id}`'s default converter would otherwise swallow "compare" as a path param.
+  - `apitest.make_settings()` now pins `public_web_url=None` by default, so tests don't depend on whatever a developer's own `.env` happens to set (a real `PUBLIC_WEB_URL` in this repo's `.env` caused the first version of the dashboard-url test to fail).
+  - Tests: `test_results.py` (the done-when scenario: `/support/v1` then re-pointing the same agent at `/support/v2`, `GET /runs/compare` returns `regression` naming `refund-outside-window`, a fresh v1 run against itself returns `no_change`; filters; trace; ownership), `test_baselines.py`, `test_ci_report.py` (ingest, baseline comparison, API-key-only, unknown suite/agent, unknown case id, duplicate result, oversized payload, empty payload, `dashboard_url` construction), `test_share.py` (sanitized view, expiry, revoke, ownership), `test_export.py` (JSON shape, HTML escaping with a `<script>`/`onerror=` XSS payload run through real ingest), IDOR probes extended to all nine new endpoints. `pnpm check` (723 unit tests) is green; the full new integration set (32 tests across five new files) is green against Neon.
+
 ## Next
 - B1.8: golden tests. Fill in `demo-agents/vulnerabilities.json` `suite_case_ids` (the smoke suite covers 5 of the 7 planted flaws; instruction injection and RAG indirect injection need cases with `context`).
-- B2.4 (rest): run results and trace read endpoints, built on `run_results.detail` + `traces.steps`.
+- C4: failure clustering (`GET /runs/{id}/findings`, populating `top_findings` in `/ci/report`'s response — currently always empty).
 - Decision needed (ADR 0014 §Verdict, docs/metrics.md): the whole verdict (per-case family + suite test) is bounded by 2·`alpha`, not `alpha`. It measures up to 6.5% on heavily flaky suites, while the per-case family stays at or below `alpha`. Option: split `alpha` between the two (for example `alpha`/2 each). At 5 runs a single break would still be flagged; at 3 runs it never could be.
 
 ## Decisions
@@ -303,6 +317,13 @@
   - `--fail-under` defaults to 1.0. Exit precedence is 4 > 2 > 1.
   - The CLI grants the policy half of the private-target opt-in itself; the agent must still set `allow_private: true`.
   - Attack-only and `mutations` cases are refused up front until the attack library and the mutator exist.
+- Results, compare, baselines, CI report, export and share links ([ADR 0018](decisions/0018-results-compare-ci-report-export-share.md)):
+  - `/ci/report` requires the suite and agent to already exist in the project, by name; it never auto-creates them from the payload.
+  - `baseline_branch` (default: the report's own `branch`) picks which branch's baseline to diff against; setting a baseline is a separate, deliberate action, never automatic on ingest.
+  - `GET /runs/compare` requires both runs to share a `suite_id`.
+  - JSON/HTML export recomputes a `RunSummary` via core's `finalize_run` rather than trusting the persisted `run_case_summaries` columns.
+  - The public share view is read straight off persisted columns (no recomputation) and is narrower than the authenticated views: no agent config, no raw trace.
+  - Request handlers must never call the queue's `Sessions`-based helpers (`save_attempt`, `save_summary`, `claim`, `load_attempts`, `finish`) synchronously; those are for the queue/worker only. Ingest uses its own single-transaction `runstore.insert_results`/`insert_summary` instead.
 
 ## Known issues
 - Statistics power (ADR 0014 §Power):
@@ -334,3 +355,6 @@
 - taskiq-redis only reclaims a dead worker's unacknowledged jobs after it fetches a new message; an idle queue never reclaims. The worker's startup sweep (`RUN_STALE_AFTER_S`) covers runs left behind.
 - Inline crash recovery treats every queued/running run as orphaned at API startup, which is correct for one API process only. Use `QUEUE_BACKEND=redis` with several.
 - Every attempt save takes a row lock on its run (ordering against cancel/fail and the `attempts_done` counter), which serializes one run's saves: about 6 round trips per attempt, around 25 s for 40 attempts on Neon from here. Batch the saves if it matters.
+- `POST /ci/report` inserts one attempt at a time (`runstore.insert_results`, one flush per attempt for its id), not batched. Fine at the tested scale (tens of attempts); revisit if real CI payloads run to thousands.
+- `GET /runs/{id}/findings` (SPEC.md §8) and `/ci/report`'s `top_findings` are not built yet; the latter always returns `[]` until C4 (failure clustering) exists.
+- The `/shared/{token}` public view omits per-attempt trace steps (tool-call arguments, message-by-message detail) by design (ADR 0018); revisit if a real use case needs the full trace in a public link.
