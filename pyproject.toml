@@ -1,0 +1,62 @@
+[project]
+name = "agentprobe-workspace"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["agentprobe-core", "agentprobe", "agentprobe-api", "agentprobe-demo-agents"]
+
+[dependency-groups]
+dev = [
+    "httpx==0.28.1",
+    "mypy==2.3.1",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/core", "packages/cli", "apps/api", "demo-agents"]
+
+[tool.uv.sources]
+agentprobe-core = { workspace = true }
+agentprobe = { workspace = true }
+agentprobe-api = { workspace = true }
+agentprobe-demo-agents = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["apps/web"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agentprobe", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["packages/core/src", "packages/cli/src", "apps/api/src", "demo-agents/src"]
+check_untyped_defs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["agentprobe_core", "agentprobe_core.*"]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["packages", "apps/api", "demo-agents"]
+addopts = "--import-mode=importlib -m 'not integration and not redis and not live'"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs the Neon test database (TEST_DATABASE_URL, ALLOW_DB_TESTS=1)",
+    "redis: needs Redis; runs only in CI",
+    "live: calls a live LLM provider; needs RUN_LIVE=1",
+]
