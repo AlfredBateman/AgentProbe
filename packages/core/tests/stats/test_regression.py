@@ -43,26 +43,95 @@ def test_single_case_hard_break_is_a_regression() -> None:
 def test_p_value_exactly_at_alpha_is_significant() -> None:
     # 3/3 -> 0/3: p = 1/20 exactly, and 0.05 must mean 1/20, not the float just above it.
     report = compare_runs({"a": CaseSummary(3, 3)}, {"a": CaseSummary(0, 3)})
-    assert report.cases[0].p_worse_adjusted == 0.05
+    assert report.cases[0].p_worse == 0.05
+    assert report.cases[0].p_worse_threshold == 0.05
     assert report.verdict == "regression"
 
 
-@pytest.mark.parametrize(
-    ("cases", "attempts", "flagged"),
-    [
-        (12, 5, True),  # smallest p = 1/252; Holm: 12/252 = 0.048 <= 0.05
-        (13, 5, False),  # 13/252 = 0.052: no single case can be flagged at 5 runs (ADR 0014)
-        (30, 5, False),
-        (30, 10, True),  # 1/comb(20, 10) is tiny: more runs restore per-case power
-    ],
-)
-def test_per_case_power_limit_from_holm(cases: int, attempts: int, flagged: bool) -> None:
+def _demo_suite(flaky: bool) -> tuple[dict[str, CaseSummary], dict[str, CaseSummary]]:
+    """The demo: support-bot v1 vs v2 on a 30-case suite at 5 runs per case, where v2's
+    prompt widens the refund window (demo-agents' planted regression) and the refund case
+    goes from 5/5 to 0/5. Everything else is unchanged; with `flaky`, four order-lookup
+    cases wobble at the demo agents' FLAKY_RATE (0.2) in both runs.
+    """
+    baseline = {f"stable-{i}": CaseSummary(5, 5) for i in range(25)}
+    candidate = dict(baseline)
+    wobble = [((4, 3), (3, 4), (5, 4), (4, 5)), ((5, 4), (4, 4), (4, 5), (3, 4))]
+    for i in range(4):
+        before, after = (wobble[0][i], wobble[1][i]) if flaky else ((5, 5), (5, 5))
+        baseline[f"order-lookup-{i}"] = CaseSummary(before[0], 5)
+        candidate[f"order-lookup-{i}"] = CaseSummary(after[0], 5)
+    baseline["refund-policy-basic"] = CaseSummary(5, 5)
+    candidate["refund-policy-basic"] = CaseSummary(0, 5)
+    return baseline, candidate
+
+
+@pytest.mark.parametrize("flaky", [False, True])
+def test_demo_one_refund_case_breaking_in_30_is_a_regression(flaky: bool) -> None:
+    baseline, candidate = _demo_suite(flaky)
+    assert len(baseline) == len(candidate) == 30
+    report = compare_runs(baseline, candidate)
+    assert report.verdict == "regression"
+    assert report.regressed == ["refund-policy-basic"]
+    refund = next(c for c in report.cases if c.case_id == "refund-policy-basic")
+    assert refund.p_worse == pytest.approx(1 / 252)
+    # Unchanged 5/5 cases (min p = 1) and wobbling ones (min p >= 21/252) can't reach
+    # 0.05, so Tarone's family is just the refund case: its threshold is alpha itself.
+    assert refund.p_worse_threshold == 0.05
+    # The suite's mean drop is below min_drop and the suite test isn't significant:
+    # the per-case flag alone makes this a regression.
+    assert report.suite is not None
+    assert -report.suite.pass_rate_delta < 0.05
+    assert not report.suite.regressed
+
+
+@pytest.mark.parametrize("cases", [5, 13, 30, 100, 500])
+@pytest.mark.parametrize("attempts", [3, 5, 10])
+def test_one_hard_break_is_flagged_at_any_suite_size(cases: int, attempts: int) -> None:
+    # Holm could not do this beyond 12 cases at 5 runs (1/252 * 13 > 0.05), nor beyond 1
+    # case at 3 runs (1/20); Tarone drops the unchanged cases, which can never be
+    # significant, from the family.
     baseline = {f"c{i}": CaseSummary(attempts, attempts) for i in range(cases)}
     candidate = baseline | {"c0": CaseSummary(0, attempts)}
     report = compare_runs(baseline, candidate)
-    assert (report.regressed == ["c0"]) is flagged
-    # The suite test can't help: one changed case gives a sign-flip p of 1/2.
-    assert report.verdict == ("regression" if flagged else "no_change")
+    assert report.regressed == ["c0"]
+    assert report.verdict == "regression"
+
+
+@pytest.mark.parametrize("attempts", [1, 2])
+def test_too_few_attempts_can_never_flag_a_case(attempts: int) -> None:
+    # 1/1 -> 0/1 has p = 1/2 and 2/2 -> 0/2 has p = 1/6: above alpha whatever the family.
+    report = compare_runs({"a": CaseSummary(attempts, attempts)}, {"a": CaseSummary(0, attempts)})
+    assert report.regressed == []
+
+
+def test_a_case_that_only_turns_flaky_is_weak_evidence_at_five_runs() -> None:
+    # 5/5 -> 3/5: p = comb(8, 3) / comb(10, 5) = 56/252, far above alpha. Documented limit.
+    baseline = {f"c{i}": PASS for i in range(30)}
+    report = compare_runs(baseline, baseline | {"c0": CaseSummary(3, 5)})
+    assert report.cases[0].p_worse == pytest.approx(56 / 252)
+    assert report.verdict == "no_change"
+
+
+def test_per_case_flag_needs_its_own_drop_to_reach_min_drop() -> None:
+    baseline, candidate = {"a": CaseSummary(10, 10)}, {"a": CaseSummary(2, 10)}  # drop 0.8
+    assert compare_runs(baseline, candidate).regressed == ["a"]
+    strict = compare_runs(baseline, candidate, StatisticsConfig(min_drop=0.9))
+    threshold = strict.cases[0].p_worse_threshold
+    assert threshold is not None and strict.cases[0].p_worse <= threshold  # significant...
+    assert strict.regressed == []  # ...but a drop of 0.8 is under min_drop
+    assert strict.verdict == "no_change"
+
+
+def test_threshold_is_none_where_the_step_down_stopped() -> None:
+    # Two broken cases and one wobble: both breaks are rejected in turn, then the wobble
+    # (4/5 -> 3/5, p = 1/2) is compared and fails; nothing after it is reached.
+    baseline = {"a": PASS, "b": PASS, "c": CaseSummary(4, 5), "d": CaseSummary(3, 5)}
+    candidate = {"a": FAIL, "b": FAIL, "c": CaseSummary(3, 5), "d": CaseSummary(3, 5)}
+    cases = {c.case_id: c for c in compare_runs(baseline, candidate).cases}
+    assert cases["a"].regressed and cases["b"].regressed
+    assert cases["c"].p_worse_threshold is not None and not cases["c"].regressed
+    assert cases["d"].p_worse_threshold is None
 
 
 def test_widespread_small_drops_are_caught_at_suite_level() -> None:
