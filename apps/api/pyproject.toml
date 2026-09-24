@@ -16,6 +16,8 @@ dependencies = [
     "pyjwt==2.15.0",
     "redis==8.1.0",
     "sqlalchemy[asyncio]==2.0.54",
+    "taskiq==0.12.6",
+    "taskiq-redis==1.2.3",
     "uvicorn==0.53.0",
 ]
 

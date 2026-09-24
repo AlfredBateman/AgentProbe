@@ -7,9 +7,11 @@ from dataclasses import dataclass
 
 import httpx
 import pytest
+from fastapi import FastAPI
 
 from apitest import ClientFactory, SignUp
 from idor import Probe, assert_no_idor
+from runtest import NullQueue
 
 pytestmark = pytest.mark.integration
 
@@ -38,6 +40,11 @@ PROBES = [
     Probe("GET", "/projects/{project_id}/suites"),
     Probe("POST", "/projects/{project_id}/suites", {"yaml": VALID_YAML}),
     Probe("PUT", "/suites/{suite_id}", {"yaml": VALID_YAML}),
+    Probe("POST", "/suites/{suite_id}/runs", {}),
+    Probe("GET", "/runs/{run_id}"),
+    Probe("POST", "/runs/{run_id}/cancel"),
+    Probe("POST", "/runs/{run_id}/stream-token"),
+    Probe("GET", "/runs/{run_id}/stream"),
 ]
 SNAPSHOT = [
     "/projects",
@@ -46,6 +53,7 @@ SNAPSHOT = [
     "/projects/{project_id}/agents",
     "/agents/{agent_id}",
     "/projects/{project_id}/suites",
+    "/runs/{run_id}",
 ]
 
 
@@ -63,15 +71,17 @@ class World:
 
 
 @pytest.fixture
-async def world(sign_up: SignUp, clients: ClientFactory) -> World:
+async def world(sign_up: SignUp, clients: ClientFactory, app: FastAPI) -> World:
+    app.state.queue = NullQueue()  # runs are created but never executed here
     alice = await sign_up("alice@example.com")
     project_id, api_key_id, _ = await make_project_with_key(alice, "alice-project")
     agent = (
         await alice.post(
-            f"/projects/{project_id}/agents", json={"name": "alice-bot", "config": HTTP_CONFIG}
+            f"/projects/{project_id}/agents", json={"name": "demo-bot", "config": HTTP_CONFIG}
         )
     ).json()
     suite = (await alice.post(f"/projects/{project_id}/suites", json={"yaml": VALID_YAML})).json()
+    run = (await alice.post(f"/suites/{suite['id']}/runs", json={})).json()
     bob = await sign_up("bob@example.com")
     _, _, bob_key = await make_project_with_key(bob, "bob-project")
     return World(
@@ -81,6 +91,7 @@ async def world(sign_up: SignUp, clients: ClientFactory) -> World:
             "api_key_id": api_key_id,
             "agent_id": agent["id"],
             "suite_id": suite["id"],
+            "run_id": run["id"],
         },
         intruders={
             "bob_session": bob,

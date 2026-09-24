@@ -129,6 +129,27 @@ def _unauthenticated(message: str) -> ApiError:
     return ApiError(401, message, headers={"WWW-Authenticate": "Bearer"})
 
 
+STREAM_TOKEN_TTL = timedelta(seconds=60)
+
+
+def mint_stream_token(settings: Settings, user_id: uuid.UUID, run_id: uuid.UUID) -> str:
+    """The SSE fallback's query token (ADR 0009 §5): one run, one user, 60 seconds."""
+    return encode_token(
+        _jwt_secret(settings), "stream", user_id, STREAM_TOKEN_TTL, run_id=str(run_id)
+    )
+
+
+def stream_principal(settings: Settings, token: str, run_id: uuid.UUID) -> Principal:
+    """The user a stream token was minted for, valid only on that run's stream."""
+    try:
+        claims = decode_token(_jwt_secret(settings), "stream", token)
+    except InvalidToken:
+        raise _unauthenticated("Invalid or expired stream token") from None
+    if claims.get("run_id") != str(run_id):
+        raise _unauthenticated("This stream token is for another run")
+    return Principal(user_id=uuid.UUID(claims["sub"]))
+
+
 # --- routes ---------------------------------------------------------------------------
 
 router = APIRouter(prefix="/auth", tags=["auth"])

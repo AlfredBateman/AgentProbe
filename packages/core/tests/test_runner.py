@@ -27,7 +27,9 @@ from agentprobe_core.runner import (
     RunOptions,
     RunSummary,
     execute_attempt,
+    execute_with_retries,
     finalize_run,
+    plan_attempts,
     run_suite,
 )
 from agentprobe_core.suite.schema import Case, Suite
@@ -465,3 +467,74 @@ async def test_unrunnable_suites_are_refused_before_any_call(
     with pytest.raises(ValueError, match=message):
         await run_suite(make_suite([spec]), adapter)
     assert adapter.calls == []
+
+
+# --- the pieces the server reuses ----------------------------------------------------------
+
+
+def test_plan_attempts_lists_every_case_attempt_in_order() -> None:
+    plan = plan_attempts(slow_suite(cases=2, runs=1), 2)
+    assert [(c.id, n) for c, n in plan] == [("c0", 0), ("c0", 1), ("c1", 0), ("c1", 1)]
+
+
+async def test_execute_with_retries_retries_only_unreachable() -> None:
+    clock = NoSleepClock()
+    options = RunOptions(max_retries=2, clock=clock)
+    down = FakeAdapter([failed("down", retryable=True), ok()])
+    result = await execute_with_retries(case(), down, options=options, attempt=4)
+    assert (result.status, result.retries, result.attempt) == ("passed", 1, 4)
+    broken = FakeAdapter([failed("HTTP 500")])
+    result = await execute_with_retries(case(), broken, options=options)
+    assert (result.status, result.retries, len(broken.calls)) == ("error", 0, 1)
+
+
+async def test_run_suite_resumes_from_completed_attempts() -> None:
+    suite = slow_suite(cases=2, runs=2)
+    first = await run_suite(suite, FakeAdapter([ok("nope")]))
+    earlier = [r for r in first.results if (r.case_id, r.attempt) in {("c0", 0), ("c1", 1)}]
+    adapter = FakeAdapter()
+    seen: list[AttemptResult] = []
+
+    async def on_result(result: AttemptResult) -> None:
+        seen.append(result)
+
+    summary = await run_suite(suite, adapter, completed=earlier, on_result=on_result)
+    assert sorted(adapter.calls) == ["in0", "in1"]  # only the two missing attempts ran
+    assert {(r.case_id, r.attempt) for r in seen} == {("c0", 1), ("c1", 0)}
+    assert summary.attempts == 4
+    assert [c.summary.passes for c in summary.cases] == [1, 1]  # the "nope"s still count
+    assert summary.started_at == min(r.started_at for r in earlier)
+
+
+async def test_cancelling_never_interrupts_on_result() -> None:
+    cancel = asyncio.Event()
+    saved: list[AttemptResult] = []
+
+    async def on_result(result: AttemptResult) -> None:
+        cancel.set()  # e.g. this result fails the run
+        await asyncio.sleep(0.05)  # still saving when the cancel lands
+        saved.append(result)
+
+    summary = await run_suite(
+        slow_suite(cases=5, runs=2),
+        FakeAdapter(delay_s=0.01),
+        options=RunOptions(concurrency=3),
+        on_result=on_result,
+        cancel=cancel,
+    )
+    assert summary.status == "cancelled"
+    assert 1 <= len(saved) == summary.attempts < 10  # every delivered result was saved whole
+
+
+async def test_an_on_result_failure_during_cancellation_still_raises() -> None:
+    cancel = asyncio.Event()
+
+    async def on_result(result: AttemptResult) -> None:
+        cancel.set()
+        await asyncio.sleep(0.01)
+        raise OSError("disk full")
+
+    with pytest.raises(OSError, match="disk full"):
+        await run_suite(
+            slow_suite(cases=2, runs=1), FakeAdapter(), on_result=on_result, cancel=cancel
+        )

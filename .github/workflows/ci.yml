@@ -50,7 +50,9 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
-      - run: uv run pytest -m "not live"
+      - run: uv run pytest -m "not live and not redis"
+      # Separate and verbose, so the log shows every redis test ran (PASSED), none skipped.
+      - run: uv run pytest -m redis -v -rA
 
   web:
     runs-on: ubuntu-latest

@@ -40,7 +40,7 @@ extend-exclude = ["apps/web"]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["adapterfakes", "agentprobe", "cli_agents", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents", "apitest", "idor", "judgefakes"]
+known-first-party = ["adapterfakes", "agentprobe", "cli_agents", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents", "apitest", "idor", "judgefakes", "runtest"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101", "S105", "S106", "S311"]  # asserts; fake credentials; seeded jitter

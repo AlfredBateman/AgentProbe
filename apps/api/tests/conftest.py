@@ -6,7 +6,7 @@ that is rolled back. The session joins it via savepoints, so code under test can
 """
 
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from agentprobe_api.db import make_engine
 from agentprobe_api.main import create_app
+from agentprobe_demo_agents import flaky
+from agentprobe_demo_agents.main import serve_in_background
 from apitest import ClientFactory, SignUp, bind_db, client_for, make_settings, signed_up
 
 ALEMBIC_INI = Path(__file__).parents[1] / "alembic.ini"
@@ -85,3 +87,20 @@ def sign_up(clients: ClientFactory) -> SignUp:
         return await signed_up(clients(), email)
 
     return go
+
+
+# --- run fixtures ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def demo_url() -> Iterator[str]:
+    """The bundled demo agents (mock mode) on a free local port."""
+    with serve_in_background() as url:
+        yield url
+
+
+@pytest.fixture
+def demo_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lets the server reach the local demo agents, and restarts their seeded flakiness."""
+    monkeypatch.setenv("ALLOW_PRIVATE_TARGETS", "1")  # the server's half of the opt-in
+    flaky.reset()

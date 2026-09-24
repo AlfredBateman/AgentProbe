@@ -56,9 +56,12 @@ async def make_run(db: AsyncSession) -> tuple[Run, TestCase, RunResult]:
             runs_per_case=1,
             mock_mode=True,
             config_snapshot={"suite": "cases: []", "agent": {}},
+            attempts_total=1,
         ),
     )
-    result = await add(db, RunResult(run_id=run.id, case_id=case.id, attempt=1, status="passed"))
+    result = await add(
+        db, RunResult(run_id=run.id, case_id=case.id, attempt=1, status="passed", detail={})
+    )
     return run, case, result
 
 
@@ -73,8 +76,15 @@ async def test_full_graph_round_trips(db: AsyncSession) -> None:
     embedding = [0.5] * get_settings().embedding_dim
     for obj in [
         Trace(run_result_id=result.id, steps=[{"role": "user", "content": "hi"}]),
-        Judgment(run_result_id=result.id, judge_type="contains", passed=True),
-        Judgment(run_id=run.id, case_id=case.id, judge_type="consistency", passed=True, score=1),
+        Judgment(run_result_id=result.id, judge_type="contains", status="pass", passed=True),
+        Judgment(
+            run_id=run.id,
+            case_id=case.id,
+            judge_type="consistency",
+            status="pass",
+            passed=True,
+            score=1,
+        ),
         RunCaseSummary(
             run_id=run.id,
             case_id=case.id,
@@ -110,7 +120,10 @@ async def test_run_result_attempt_is_unique(db: AsyncSession) -> None:
     run, case, _ = await make_run(db)
     with pytest.raises(IntegrityError, match="uq_run_results_run_id_case_id_attempt"):
         async with db.begin_nested():
-            await add(db, RunResult(run_id=run.id, case_id=case.id, attempt=1, status="failed"))
+            await add(
+                db,
+                RunResult(run_id=run.id, case_id=case.id, attempt=1, status="failed", detail={}),
+            )
 
 
 @pytest.mark.parametrize("scope", ["both", "neither"])
@@ -123,7 +136,30 @@ async def test_judgment_needs_exactly_one_scope(db: AsyncSession, scope: str) ->
     )
     with pytest.raises(IntegrityError, match="ck_judgments_one_scope"):
         async with db.begin_nested():
-            await add(db, Judgment(judge_type="x", passed=False, **ids))
+            await add(db, Judgment(judge_type="x", status="fail", passed=False, **ids))
+
+
+async def test_judgment_status_and_error_kind_are_checked(db: AsyncSession) -> None:
+    run, case, result = await make_run(db)
+    with pytest.raises(IntegrityError, match="ck_judgments_status"):
+        async with db.begin_nested():
+            await add(
+                db,
+                Judgment(run_result_id=result.id, judge_type="x", status="maybe", passed=False),
+            )
+    with pytest.raises(IntegrityError, match="ck_run_results_error_kind"):
+        async with db.begin_nested():
+            await add(
+                db,
+                RunResult(
+                    run_id=run.id,
+                    case_id=case.id,
+                    attempt=2,
+                    status="error",
+                    error_kind="gremlins",
+                    detail={},
+                ),
+            )
 
 
 async def test_share_token_hash_is_unique(db: AsyncSession) -> None:

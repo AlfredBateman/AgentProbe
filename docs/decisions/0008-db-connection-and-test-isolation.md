@@ -40,7 +40,7 @@ Locally, the database is Neon: remote, TLS-only, and it suspends compute after a
 - `pgvector/pgvector:0.8.6-pg18`, the same Postgres major (18) and pgvector version as the Neon branches;
 - `redis:8-alpine`.
 
-The same `pytest -m "not live"` then runs unit, integration and `redis` tests against real services.
+The same `pytest -m "not live"` then runs unit, integration and `redis` tests against real services. (Since ADR 0017, `redis` tests run in their own verbose step: `pytest -m "not live and not redis"`, then `pytest -m redis -v -rA`.)
 
 **Guard.** The root conftest compares the (host, port, database) of `TEST_DATABASE_URL` and `DATABASE_URL`, not the raw strings. `postgresql://X` and `postgresql+psycopg://X` are the same database. `test_db_guard.py` proves every refusal path via pytester.
 
@@ -48,3 +48,11 @@ The same `pytest -m "not live"` then runs unit, integration and `redis` tests ag
 - A test that needs to observe a truly committed transaction from a second connection can't use the `db` fixture. None does yet.
 - The migration round-trip test drops and recreates the schema mid-session. It's safe because the shared connection is idle between tests, but it ties the integration suite to one test database at a time.
 - uvicorn on native Windows also needs the selector loop once the API opens DB connections. That's handled when A4 adds the first DB-backed endpoint.
+
+## Amendment (2026-09-25, ADR 0017): background work in tests
+Runs execute in the background (inline tasks, or worker jobs run in-process), each opening sessions through `app.state.sessionmaker`. `apitest.bind_db` replaces it with `SharedSessions`:
+- every `sessions()` is the test's own savepoint session, so background writes still roll back with the test;
+- one `asyncio.Lock` is shared with the per-request session, so a request and a worker never use the connection at the same time;
+- each block ends with a rollback, as closing a real session would, so a missing commit fails in tests as it would in production.
+
+The worker is never a separate process in tests, because it couldn't see the test's transaction.

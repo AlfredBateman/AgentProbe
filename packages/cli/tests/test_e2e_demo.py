@@ -4,20 +4,17 @@ regression.
 """
 
 import json
-import threading
-import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-import uvicorn
 import yaml
 from typer.testing import CliRunner
 
 from agentprobe.main import app
 from agentprobe_demo_agents import flaky
-from agentprobe_demo_agents.main import app as demo_app
+from agentprobe_demo_agents.main import serve_in_background
 
 SMOKE = Path(__file__).resolve().parents[3] / "suites/examples/smoke.yaml"
 SUPPORT = {"tool_calls": "$.tool_calls", "total_tokens": "$.usage.total_tokens"}
@@ -26,18 +23,8 @@ runner = CliRunner()
 
 @pytest.fixture(scope="module")
 def base_url() -> Iterator[str]:
-    server = uvicorn.Server(uvicorn.Config(demo_app, host="127.0.0.1", port=0, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 15
-    while not server.started:
-        if time.monotonic() > deadline or not thread.is_alive():
-            raise RuntimeError("the demo agents did not start")
-        time.sleep(0.01)
-    port = server.servers[0].sockets[0].getsockname()[1]
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(timeout=15)
+    with serve_in_background() as url:
+        yield url
 
 
 @pytest.fixture(autouse=True)
