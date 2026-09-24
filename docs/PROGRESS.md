@@ -45,8 +45,23 @@
     - rate limits (both backends);
     - an end-to-end log-capture test with SQL logging on.
   - Migration 0002 (`refresh_tokens`, `api_keys.last4/created_at/revoked_at`) applied to the Neon dev branch.
+- 2026-09-26 **B1.1: suite YAML schema; B2.1/B2.2: agents and suites CRUD** ([ADR 0010](decisions/0010-suite-schema-and-agent-config.md)):
+  - `packages/core`: a new `agentprobe_core.suite` package.
+    - `judges.py`: all 10 rule-based judges + `llm_rubric` + `consistency` as a `Field(discriminator="judge")` union, `extra="forbid"`. Implementations still come later.
+    - `attacks.py`: an extension-point registry (`register_attack`/`is_registered_attack`); `prompt_injection.direct` and `tool_misuse` are pre-registered placeholders for Prompt 12.
+    - `schema.py`: `Suite`/`Case`/`StatisticsConfig` (ADR 0006's `statistics:` block, all four fields configurable with the ADR's defaults). Limits: 256 KB, 500 cases, `runs_per_case` 1–20, 8,000-char input, unique case ids.
+    - `parser.py`: safe YAML only (`yaml.safe_load`); anchors/aliases are rejected by scanning tokens before parsing (no billion-laughs). Errors read like linter output — line/column for YAML syntax, field path for schema violations. `suite_json_schema()` exports `Suite.model_json_schema()` for the web editor.
+    - `suites/examples/support-agent-safety.yaml` (the SPEC.md §4.1 example) parses.
+  - `apps/api`:
+    - `agents.py`: CRUD at `POST/GET /projects/{id}/agents`, `GET/PUT/DELETE /agents/{id}`. Config is a discriminated union (`http`/`mcp`/`python`) validated per adapter_type; `python` is rejected (CLI-only). `auth_header` is JSON-encoded and encrypted into `secrets` via the existing `SecretBox`; responses only ever carry `has_secret`.
+    - `suites.py`: `POST/GET /projects/{id}/suites`, `PUT /suites/{id}`, `POST /suites/validate`. A version bumps only when the uploaded YAML text differs from `yaml_source`; `test_cases` rows are synced per version and never mutated (old versions stay readable, per PLAN.md §2 #1).
+    - `errors.py`: `ApiError` now carries optional `details`, so `_parse_or_422` can surface a suite's linter-style issue list in the standard error body.
+    - `main.py`: `app.state.secret_box` is built once from `settings.encryption_key`; `apitest.make_settings()` now sets a default `encryption_key` so agent tests don't need to opt in.
+    - `tests/test_idor.py`: `PROBES`/`SNAPSHOT`/`world` extended to cover every new agents/suites endpoint.
+  - Tests: 42 new `packages/core` unit tests (schema limits, judge union, YAML safety, anchor bombs, the example suite); new `apps/api` integration tests for agents and suites (`test_agents.py`, `test_suites.py`). `pnpm check` and `pnpm verify` are both green (169 unit + integration tests total).
+
 ## Next
-- B1.1: suite YAML schema — first task that needs the statistics config surface from ADR 0006 (`statistics:` block) plumbed through.
+- B1.2: LLM layer (role → model config, mock provider, budget guard) — next unbuilt item in Phase B1.
 
 ## Decisions
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -61,6 +76,7 @@
 - Share links store only `runs.share_token_hash` (SHA-256), not a plaintext token. The Fernet key env var stays `ENCRYPTION_KEY` (user decisions, 2026-09-25).
 - Data model conventions: UUID PKs, text+CHECK instead of PG enums, `NUMERIC(12,6)` costs, CASCADE along ownership, and every FK covered by a leading index ([ADR 0007](decisions/0007-data-model-additions.md)).
 - Neon connection config, sync migrations, rollback-per-test isolation, selector loop on Windows, CI on service containers ([ADR 0008](decisions/0008-db-connection-and-test-isolation.md)).
+- Suite schema field names (judge params, `attack`/`attack_params`, `context` not `fixtures`), the attack registry's extension-point shape, anchor/alias rejection by token-scanning, and agent config validation living in `apps/api` (not `packages/core`, since the HTTP adapter itself is B1.4) ([ADR 0010](decisions/0010-suite-schema-and-agent-config.md)).
 
 ## Known issues
 - `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 2.5 min against Neon from here: each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
@@ -70,3 +86,4 @@
 - `uv` and `gh` are installed but not on PATH in some shells (`%USERPROFILE%\.local\bin`, `C:\Program Files\GitHub CLI`).
 - The pytest run shows a `StarletteDeprecationWarning`: Starlette's TestClient wants `httpx2` instead of `httpx`. Swapping `httpx==0.28.1` for `httpx2` was blocked by a local permission rule this session. Redo it once allowed.
 - `next build` downloads Google Fonts (Inter, Geist), so it needs network access. `pnpm check` doesn't build.
+- Replacing or clearing an agent's `auth_header` orphans the old `secrets` row instead of deleting it (`ponytail:` comment in `agents.py`). Harmless (it's ciphertext, never returned) but worth a cleanup pass if the table's size ever matters.

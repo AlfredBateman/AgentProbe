@@ -34,11 +34,13 @@ class ApiError(Exception):
         *,
         code: str | None = None,
         headers: dict[str, str] | None = None,
+        details: list[Any] | None = None,
     ) -> None:
         self.status = status
         self.code = code or _CODES.get(status, "error")
         self.message = message
         self.headers = headers
+        self.details = details
 
 
 def error_response(
@@ -57,7 +59,9 @@ def error_response(
 
 async def _api_error(request: Request, exc: Exception) -> JSONResponse:
     err = cast(ApiError, exc)
-    return error_response(err.status, err.code, err.message, headers=err.headers)
+    return error_response(
+        err.status, err.code, err.message, details=err.details, headers=err.headers
+    )
 
 
 async def _http_error(request: Request, exc: Exception) -> JSONResponse:
