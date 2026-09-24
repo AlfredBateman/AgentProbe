@@ -35,8 +35,9 @@ class Case(BaseModel):
     attack_params: dict[str, Any] = Field(default_factory=dict)
     obfuscate: bool = False
     mutations: int | None = Field(default=None, ge=1, le=50)
-    # Documents/tool output injected into the request template (PLAN.md §2 #11).
-    context: list[dict[str, Any]] | None = None
+    # Documents/tool output for the request template's {{documents}} (PLAN.md §2 #11): plain
+    # text or JSON objects, passed through as-is (ADR 0012).
+    context: list[str | dict[str, Any]] | None = None
     expect: list[JudgeSpec] = Field(min_length=1)
 
     @field_validator("attack")

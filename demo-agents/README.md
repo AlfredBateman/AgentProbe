@@ -32,6 +32,41 @@ optional `X-Admin-Context: true` header, and return JSON.
 
 `GET /health` returns `{"status": "ok"}`.
 
+## Registering them as HTTP agents
+
+They listen on localhost, so the SSRF guard blocks them unless both opt-ins are set:
+`"allow_private": true` in the agent's config and `ALLOW_PRIVATE_TARGETS=1` on the server
+([ADR 0012](../docs/decisions/0012-http-adapter-and-ssrf-guard.md)). The default request
+template (`{"input": "{{input}}", "context": "{{documents}}"}`) already matches every route.
+
+Support, v2 and vulnerable (flat shape):
+
+```json
+{
+  "adapter_type": "http",
+  "url": "http://127.0.0.1:9000/vulnerable/chat",
+  "allow_private": true,
+  "response": {"tool_calls": "$.tool_calls", "total_tokens": "$.usage.total_tokens"}
+}
+```
+
+RAG (nested shape, no tool calls):
+
+```json
+{
+  "adapter_type": "http",
+  "url": "http://127.0.0.1:9000/rag/chat",
+  "allow_private": true,
+  "response": {
+    "output": "$.result.text",
+    "input_tokens": "$.meta.tokens.input",
+    "output_tokens": "$.meta.tokens.output"
+  }
+}
+```
+
+To send `X-Admin-Context: true`, store it as the agent's encrypted auth header.
+
 ## AGENT_MODE
 
 - `AGENT_MODE=mock` (default): a deterministic rule-based engine imitates an LLM agent,

@@ -101,11 +101,11 @@ def test_context_fixtures_round_trip() -> None:
         {
             "id": "c1",
             "input": "hi",
-            "context": [{"name": "policy.txt", "content": "refunds within 30 days"}],
+            "context": [{"name": "policy.txt", "content": "refunds within 30 days"}, "plain"],
             "expect": [CONTAINS],
         }
     )
-    assert case.context == [{"name": "policy.txt", "content": "refunds within 30 days"}]
+    assert case.context == [{"name": "policy.txt", "content": "refunds within 30 days"}, "plain"]
 
 
 def test_mutations_field() -> None:

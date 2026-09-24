@@ -87,8 +87,34 @@
   - `demo-agents/README.md`: the "deliberately vulnerable; fake data only" warning, route table, `AGENT_MODE`/flakiness docs.
   - Tests (20, `pnpm check`): each planted flaw triggers (leak, injection, unauthorized delete, API-key leak, drift, RAG indirect injection via `context`), the v1/v2 refund regression, live prompt-file editing changes behavior, and flakiness is seeded/resettable. `pyproject.toml` per-file-ignores extended for `demo-agents/src/**` (fake secrets, seeded RNG — same reasoning as the existing `tests/**` ignore).
 
+- 2026-09-24 **B1.4: adapters, trace model, SSRF guard** (`packages/core/adapters`, [ADR 0012](decisions/0012-http-adapter-and-ssrf-guard.md)):
+  - `types.py`: the `AgentAdapter` protocol (`async invoke(input, context) -> AgentResponse`) and the shared trace step model: a `type`-discriminated union of `message` / `tool_call` / `tool_result` / `error`, each with an aware `timestamp` and `duration_ms` (None = unknown). `AgentResponse` carries output, ordered steps, `TokenUsage`, `latency_ms`, `error`, and `tool_calls_reported`. Agent-side failures come back as `error` + an `ErrorStep`, never as exceptions.
+  - `http.py`, the HTTP adapter:
+    - URL, method (POST/PUT/PATCH) and plain headers come from config; secret headers are `SecretStr` values from the decrypted auth header.
+    - The JSON request template takes `{{input}}` and `{{documents}}`, substituted in the parsed structure in one pass, so input can't reshape the request.
+    - Responses map through a JSONPath subset (`$`, `.name`, `['name']`, `[n]`) for output, tool calls (name/arguments within a call; OpenAI-style JSON-string args parsed) and token usage. A configured `tool_calls` path that's missing is an error, never "no calls". Both demo response shapes are covered.
+    - Per-attempt timeout (httpx + an overall `asyncio.timeout`). Retries use full jitter and honor `Retry-After`: only connect failures and 429/502/503/504 are retried, never anything the agent may already have acted on.
+    - 2 MiB response cap; `test_connection()`.
+    - `HttpAdapterConfig` validates at config time: http(s) only, no URL credentials, no framing headers, no plaintext `Authorization`/`Cookie`, valid paths, `{{input}}` present.
+  - `ssrf.py`, the SSRF guard. An httpcore network backend under httpx's pool resolves once per connection, validates **every** address, and connects to that validated address, so there's no DNS-rebinding window. TLS still gets the hostname for SNI and verification.
+    - Blocks: cloud metadata (AWS/GCP/Azure/OCI/Alibaba/ECS/EKS, IPv4 and IPv6, plus Azure WireServer), link-local, unspecified, multicast, reserved/documentation/benchmarking, IPv4-mapped/-compatible, 6to4, Teredo and local-use NAT64. Well-known NAT64 is classified by its embedded IPv4.
+    - Private ranges (loopback, RFC 1918, CGNAT, ULA) need agent `allow_private` AND `ALLOW_PRIVATE_TARGETS=1` AND, if set, the host on `PRIVATE_TARGET_ALLOWLIST`.
+    - Env proxies are ignored (`trust_env=False`). Redirects are off by default; when on, at most 5 hops, http/https only, each hop re-validated, and secret headers dropped cross-origin.
+    - User-facing errors never include resolved addresses; the server log does.
+  - `python.py`, the Python adapter (CLI only): `module:callable`, sync (in a thread) or async, `(input)` or `(input, context)`, returning a str or `{output, steps}`. The server can't load it: `agentprobe_core.adapters` doesn't import it, `build_adapter` refuses `python`, and `load_callable` refuses in any process that has imported `agentprobe_api`.
+  - Shared changes:
+    - `with_backoff` gained `retry_on`, so the HTTP adapter reuses it.
+    - `Case.context` widened to `list[str | dict]`.
+    - `apps/api` `HttpAgentConfig` now subclasses core's `HttpAdapterConfig` (stored config = what the adapter runs), and `AuthHeader` gets the same header checks.
+    - core now pins `anyio`/`httpcore`/`httpx`; `cryptography` is a root dev dependency (TLS test certs).
+    - `.env.example`: `ALLOW_PRIVATE_AGENT_URLS` renamed to `ALLOW_PRIVATE_TARGETS`, plus `PRIVATE_TARGET_ALLOWLIST`. The unused `AGENT_TIMEOUT_SECONDS`/`AGENT_MAX_RETRIES` were dropped (per-agent config now). `DEMO_AGENT_HOST/PORT` were corrected to the `DEMO_AGENTS_PORT` the code reads.
+  - Tests:
+    - `packages/core/tests/adapters` (231 offline tests: 152 SSRF, 61 HTTP, 16 Python, 2 TLS) covering every blocked class end to end with no connection made, IP literals, mixed answers, simulated DNS rebinding, redirect-to-internal, other redirect schemes, the opt-in truth table, and proxy env vars. Also mapping, template injection, retries, limits, header secrecy at DEBUG log level, and a **real TLS handshake** (throwaway CA) proving SNI plus hostname verification while pinned to 127.0.0.1.
+    - `demo-agents/tests/test_http_adapter.py`: the adapter against the real demo agents over loopback. Both response shapes, tool-call arguments, usage, `{{documents}}` indirect injection, secret headers reaching the agent, `test_connection`, and blocked-without-opt-in through the real resolver.
+    - `apps/api`: a subprocess import of the server never loads the Python adapter, and the server's source never references it. Integration tests cover config validation and non-echoed auth-header errors.
+
 ## Next
-- B1.4: HTTP adapter (request template, dotted-path response mapping, timeouts, retries/backoff, SSRF guard) against these demo agents.
+- B1.5: rule judges (all 10), `llm_rubric`, consistency judge. Tool judges must honor `AgentResponse.tool_calls_reported` (ADR 0012).
 
 ## Decisions
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -104,6 +130,7 @@
 - Data model conventions: UUID PKs, text+CHECK instead of PG enums, `NUMERIC(12,6)` costs, CASCADE along ownership, and every FK covered by a leading index ([ADR 0007](decisions/0007-data-model-additions.md)).
 - Neon connection config, sync migrations, rollback-per-test isolation, selector loop on Windows, CI on service containers ([ADR 0008](decisions/0008-db-connection-and-test-isolation.md)).
 - Suite schema field names (judge params, `attack`/`attack_params`, `context` not `fixtures`), the attack registry's extension-point shape, anchor/alias rejection by token-scanning, and agent config validation living in `apps/api` (not `packages/core`, since the HTTP adapter itself is B1.4) ([ADR 0010](decisions/0010-suite-schema-and-agent-config.md)).
+- Adapters: errors are responses, not exceptions; a trace step union shared by runner/judges/storage/UI; `{{documents}}` + in-house JSONPath subset; strict `tool_calls` mapping; retry only what can't have reached the agent; SSRF guard as a pinned-IP httpcore backend with explicit address tables; private targets need agent + server opt-in (+ optional allowlist); Python adapter CLI-only by construction ([ADR 0012](decisions/0012-http-adapter-and-ssrf-guard.md)).
 - LLM layer: roles spread across models for per-model free-tier quotas, RPD persisted and fail-fast, one retry policy (LiteLLM retries off), USD estimates from dated paid-tier prices, LiteLLM as a lazy opt-in extra; `LLM_MODEL_DEMO_AGENT`/`LLM_MODEL_MUTATOR` renamed to `LLM_MODEL_AGENT`/`LLM_MODEL_ATTACKER` ([ADR 0011](decisions/0011-llm-layer.md)).
 
 ## Known issues
@@ -112,7 +139,9 @@
 - Deploy (F4) must set `FORWARDED_ALLOW_IPS` to the proxy and keep the API reachable only through it. Otherwise the per-IP auth limit is either global (every user shares the proxy's IP) or spoofable (ADR 0009 §9).
 - `JWT_TTL_MINUTES` now defaults to 15. A local `.env` that still says 60 keeps 60-minute access cookies.
 - `uv` and `gh` are installed but not on PATH in some shells (`%USERPROFILE%\.local\bin`, `C:\Program Files\GitHub CLI`).
-- The pytest run shows a `StarletteDeprecationWarning`: Starlette's TestClient wants `httpx2` instead of `httpx`. Swapping `httpx==0.28.1` for `httpx2` was blocked by a local permission rule this session. Redo it once allowed.
+- The pytest run shows a `StarletteDeprecationWarning`: Starlette's TestClient wants `httpx2` instead of `httpx`. Swapping `httpx==0.28.1` for `httpx2` was blocked by a local permission rule this session. Redo it once allowed. The HTTP adapter's SSRF guard swaps httpx's private `transport._pool` (ADR 0012), so rerun `packages/core/tests/adapters` after any httpx change.
+- Local `.env` files from before B1.4 still say `ALLOW_PRIVATE_AGENT_URLS`, which nothing reads. Rename it to `ALLOW_PRIVATE_TARGETS=1` to reach the demo agents on localhost.
+- An OpenAI-style agent that omits `tool_calls` when it made none gets an error under the strict mapping rule. Add an explicit "optional" flag to `ResponseMapping` if such an agent needs support (ADR 0012).
 - `next build` downloads Google Fonts (Inter, Geist), so it needs network access. `pnpm check` doesn't build.
 - Replacing or clearing an agent's `auth_header` orphans the old `secrets` row instead of deleting it (`ponytail:` comment in `agents.py`). Harmless (it's ciphertext, never returned) but worth a cleanup pass if the table's size ever matters.
 - This machine has a stale machine-level `CURL_CA_BUNDLE=C:\Program Files\PostgreSQL\18\ssl\certs\ca-bundle.crt` (the file doesn't exist; left by an uninstalled PostgreSQL). The live LLM provider refuses to start while it is set. Remove it from an admin PowerShell: `[Environment]::SetEnvironmentVariable('CURL_CA_BUNDLE', $null, 'Machine')`, then open a new terminal.

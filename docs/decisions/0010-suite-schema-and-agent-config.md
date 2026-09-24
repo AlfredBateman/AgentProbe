@@ -1,6 +1,7 @@
 # 0010: Suite schema field names and agent config shape
 
-Status: accepted (2026-09-24)
+Status: accepted (2026-09-24). HTTP agent config now lives in `packages/core`:
+see [ADR 0012](0012-http-adapter-and-ssrf-guard.md).
 
 ## Context
 Two low-impact gaps needed a concrete answer before B1.1 (suite YAML schema) and B2.1/B2.2
