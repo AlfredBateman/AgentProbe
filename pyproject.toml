@@ -16,6 +16,7 @@ dev = [
     "ruff==0.16.8",
     "types-PyYAML==6.0.12.20250915",
     "types-jsonschema==4.26.0.20260518",
+    "types-regex==2026.9.10.20260911",
 ]
 
 [tool.uv]

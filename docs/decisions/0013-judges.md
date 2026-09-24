@@ -32,7 +32,8 @@ validator, how to guard `regex` against catastrophic backtracking on this stack,
 - `tool_called`/`tool_not_called`/`tool_args_match` check `AgentResponse.tool_calls_reported`
   first (ADR 0012) and return `status="error"` when it's False — "no tool_call steps" means
   unknown, not "none were made".
-- `regex` is guarded by a length cap (`MAX_REGEX_INPUT = 4096`), not a timeout: stdlib `re` has
+- *(Superseded by [ADR 0015](0015-regex-judge-hardening.md): a length cap doesn't bound backtracking; the judge now matches with the `regex` package's timeout and refuses patterns whose counted repeats would blow up at compile time.)*
+  `regex` is guarded by a length cap (`MAX_REGEX_INPUT = 4096`), not a timeout: stdlib `re` has
   no built-in timeout, and one built from a background thread can't be cancelled, so a runaway
   pattern would leak a stuck thread per hit instead of bounding the work. A cap bounds the worst
   case outright.
