@@ -154,7 +154,14 @@ Legend:
 - `runs`: add `suite_version`, `judge_cost_usd`, `share_token_hash`. `model` is a user label.
 - `judgments`: `run_result_id` becomes nullable; add `run_id` and `case_id`, with a check that exactly one scope is set.
 - **New table `secrets`**: id, project_id, ciphertext (Fernet, key from `ENCRYPTION_KEY`), created_at. Write-only via the API; never returned or logged. `agents.secret_ref` is the id of a row here. See [ADR 0003](decisions/0003-secret-storage.md).
-- `findings.embedding`: `vector(768)`.
+- `findings.embedding`: `vector(EMBEDDING_DIM)`, default 768.
+- **Added in A3** ([ADR 0007](decisions/0007-data-model-additions.md)):
+  - `runs`: `config_snapshot`, `error`, `mock_mode`, `pr_number`, `share_expires_at`, `created_at`.
+  - `run_results`: unique (run_id, case_id, attempt).
+  - New table `run_case_summaries`.
+  - Every FK is covered by an index, plus `runs (suite_id, created_at)`.
+
+A1–A3 are done (2026-09-25).
 
 API additions: `POST /projects/{id}/runs:ingest`, `GET /projects/{id}/baselines/{branch}`, `POST|DELETE /runs/{id}/share`, `GET /share/{token}`, `POST /auth/logout`.
 
