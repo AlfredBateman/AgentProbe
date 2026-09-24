@@ -2,8 +2,9 @@
 ADR 0006, ADR 0014).
 
 A drop is flagged only when it is statistically significant at `alpha` AND at least
-`min_drop`, per case (Fisher exact, Holm-corrected) or for the suite (paired sign-flip
-permutation test on the cases both runs share). Rises are flagged the same way.
+`min_drop`: per case (one-sided Fisher exact, Tarone-Holm step-down across the shared
+cases) or for the suite (paired sign-flip permutation test on the shared cases). Rises are
+flagged the same way, as a separate family.
 """
 
 import math
@@ -13,7 +14,12 @@ from fractions import Fraction
 from statistics import fmean
 from typing import Literal
 
-from agentprobe_core.stats.significance import fisher_exact, holm, sign_flip_test
+from agentprobe_core.stats.significance import (
+    StepDownDecision,
+    fisher_exact,
+    sign_flip_test,
+    tarone_holm,
+)
 from agentprobe_core.stats.summary import DEFAULT_SEED, CaseSummary
 from agentprobe_core.suite.schema import StatisticsConfig
 
@@ -29,15 +35,22 @@ class MetricDelta:
 
 @dataclass(frozen=True)
 class CaseComparison:
+    """One shared case. There are no "adjusted p-values": Tarone's procedure isn't monotone
+    in alpha, so a case is described by its raw p-value, the smallest p-value its margins
+    allow, and the critical value it was compared against at the configured alpha.
+    """
+
     case_id: str
     baseline: CaseSummary
     candidate: CaseSummary
     pass_rate_delta: float  # candidate - baseline
     p_worse: float  # one-sided Fisher exact, uncorrected
-    p_worse_adjusted: float  # Holm-corrected across the compared cases
+    p_worse_min: float  # smallest p_worse these margins allow; 1.0: can never be significant
+    p_worse_threshold: float | None  # alpha / K at its step; None: step-down stopped earlier
     p_better: float
-    p_better_adjusted: float
-    regressed: bool
+    p_better_min: float
+    p_better_threshold: float | None
+    regressed: bool  # p_worse <= its threshold AND the drop is at least min_drop
     improved: bool
     score_delta: float | None
     latency_delta_ms: float | None
@@ -90,40 +103,26 @@ def compare_runs(
 ) -> RegressionReport:
     """Compares two runs keyed by case id.
 
-    Verdict: `regression` if any case or the suite is flagged worse (this wins over any
-    improvement, since it's what a CI gate must catch), else `improvement` if any case or
-    the suite is flagged better, else `no_change`. The per-case family and the suite test
-    each hold their false-alarm rate at alpha, so the verdict's worst case is 2 * alpha
-    (union bound); docs/metrics.md measures the actual rate.
+    Verdict: `regression` if at least one case is flagged worse by the per-case family, or
+    the suite is flagged worse by the suite test. A flagged case is enough on its own: its
+    own drop must be at least `min_drop`, but the suite's mean drop needn't be (one broken
+    case in 30 moves the mean by only 1/30). Regression wins over any improvement, since
+    it's what a CI gate must catch. Otherwise `improvement` if any case or the suite is
+    flagged better, else `no_change`.
 
-    Power is limited at small N: with 5 attempts per case the smallest possible per-case
-    p-value is 1/252, which Holm can't bring under 0.05 once 13+ cases are compared (ADR 0014).
+    The per-case family holds its family-wise false-alarm rate at alpha, and so does the
+    suite test, so the verdict's worst case is 2 * alpha (union bound); the calibration
+    tests and docs/metrics.md measure the actual rates.
     """
     config = config if config is not None else StatisticsConfig()
     alpha = _exact(config.alpha)
     min_drop = _exact(config.min_drop)
     shared = [case_id for case_id in baseline if case_id in candidate]
-
-    deltas = [_rate(candidate[c]) - _rate(baseline[c]) for c in shared]
-    fisher = [fisher_exact(baseline[c], candidate[c]) for c in shared]
-    worse_adjusted = holm([p_worse for p_worse, _ in fisher])
-    better_adjusted = holm([p_better for _, p_better in fisher])
-    cases = [
-        _compare_case(
-            case_id,
-            baseline[case_id],
-            candidate[case_id],
-            delta,
-            fisher[i],
-            (worse_adjusted[i], better_adjusted[i]),
-            alpha,
-            min_drop,
-        )
-        for i, (case_id, delta) in enumerate(zip(shared, deltas, strict=True))
-    ]
+    cases = compare_cases(baseline, candidate, config)
 
     suite = None
     if shared:
+        deltas = [_rate(candidate[c]) - _rate(baseline[c]) for c in shared]
         test = sign_flip_test(deltas, draws=config.permutation_draws, seed=seed)
         mean_delta = sum(deltas, Fraction(0)) / len(deltas)
         pairs = [(baseline[c], candidate[c]) for c in shared]
@@ -172,33 +171,53 @@ def compare_runs(
     )
 
 
-def _compare_case(
-    case_id: str,
-    baseline: CaseSummary,
-    candidate: CaseSummary,
-    delta: Fraction,
-    p_values: tuple[Fraction, Fraction],
-    adjusted: tuple[Fraction, Fraction],
-    alpha: Fraction,
-    min_drop: Fraction,
-) -> CaseComparison:
-    return CaseComparison(
-        case_id=case_id,
-        baseline=baseline,
-        candidate=candidate,
-        pass_rate_delta=float(delta),
-        p_worse=float(p_values[0]),
-        p_worse_adjusted=float(adjusted[0]),
-        p_better=float(p_values[1]),
-        p_better_adjusted=float(adjusted[1]),
-        regressed=adjusted[0] <= alpha and -delta >= min_drop,
-        improved=adjusted[1] <= alpha and delta >= min_drop,
-        score_delta=_difference(baseline.mean_score, candidate.mean_score),
-        latency_delta_ms=_difference(baseline.mean_latency_ms, candidate.mean_latency_ms),
-        cost_per_attempt_delta_usd=_difference(
-            _cost_per_attempt(baseline), _cost_per_attempt(candidate)
-        ),
-    )
+def compare_cases(
+    baseline: Mapping[str, CaseSummary],
+    candidate: Mapping[str, CaseSummary],
+    config: StatisticsConfig | None = None,
+) -> list[CaseComparison]:
+    """The per-case family on its own: one-sided Fisher exact tests on every shared case,
+    Tarone-Holm step-down at `alpha` (worse and better are separate families), then the
+    `min_drop` filter. In baseline order.
+    """
+    config = config if config is not None else StatisticsConfig()
+    alpha = _exact(config.alpha)
+    min_drop = _exact(config.min_drop)
+    shared = [case_id for case_id in baseline if case_id in candidate]
+    fisher = [fisher_exact(baseline[c], candidate[c]) for c in shared]
+    worse = tarone_holm([f.p_worse for f in fisher], [f.min_p_worse for f in fisher], alpha)
+    better = tarone_holm([f.p_better for f in fisher], [f.min_p_better for f in fisher], alpha)
+
+    comparisons = []
+    for i, case_id in enumerate(shared):
+        before, after = baseline[case_id], candidate[case_id]
+        delta = _rate(after) - _rate(before)
+        comparisons.append(
+            CaseComparison(
+                case_id=case_id,
+                baseline=before,
+                candidate=after,
+                pass_rate_delta=float(delta),
+                p_worse=float(fisher[i].p_worse),
+                p_worse_min=float(fisher[i].min_p_worse),
+                p_worse_threshold=_threshold(worse[i]),
+                p_better=float(fisher[i].p_better),
+                p_better_min=float(fisher[i].min_p_better),
+                p_better_threshold=_threshold(better[i]),
+                regressed=worse[i].rejected and -delta >= min_drop,
+                improved=better[i].rejected and delta >= min_drop,
+                score_delta=_difference(before.mean_score, after.mean_score),
+                latency_delta_ms=_difference(before.mean_latency_ms, after.mean_latency_ms),
+                cost_per_attempt_delta_usd=_difference(
+                    _cost_per_attempt(before), _cost_per_attempt(after)
+                ),
+            )
+        )
+    return comparisons
+
+
+def _threshold(decision: StepDownDecision) -> float | None:
+    return None if decision.threshold is None else float(decision.threshold)
 
 
 def _exact(value: float) -> Fraction:

@@ -1,6 +1,6 @@
 # 0006: Regression statistics methodology
 
-Status: accepted (2026-09-25)
+Status: accepted (2026-09-25). Amended 2026-09-24 by the user's decision: the per-case correction is Holm's step-down with Tarone's modification for discrete tests, not plain Holm. See [ADR 0014](0014-statistics-implementation.md#per-case-tests). Everything else here stands.
 
 ## Context
 SPEC.md §4.6–4.7 requires that "a regression is flagged only when the drop is statistically meaningful" but specifies no method. Given non-deterministic agents and a small `runs_per_case` (typically 3–10), the method has to handle: per-case pass rates that are really small binomial samples, a suite-level pass rate that's a mean over cases (not over pooled attempts, since attempts within a case are correlated, not independent), and users who want to compare two runs (baseline vs. candidate) without hand-picking a statistical test.
