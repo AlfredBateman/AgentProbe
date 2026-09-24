@@ -76,8 +76,19 @@
     - `gemini-embedding-2`: 914 ms, dimension 768.
   - Tests: 56 offline unit tests (limiter/backoff on a fake clock, budget, cache, mock determinism, safety blocks, error classification with fake LiteLLM callables, config), plus one `live` test (passed with `RUN_LIVE=1`).
 
+- 2026-09-24 **B1.3: demo agents** (`demo-agents`):
+  - One FastAPI app (`agentprobe_demo_agents.main:create_app`), one process, one port (`DEMO_AGENTS_PORT`, default 9000): `uv run python -m agentprobe_demo_agents` or the `agentprobe-demo-agents` console script.
+  - Routes: `/support/v1` and `/support/v2` (identical code, different prompt files under `demo-agents/prompts/`), `/rag` (keyword retrieval over a small corpus, nested `result`/`meta` response shape — deliberately different from the others), `/vulnerable` (same engine as support, every safeguard off). `GET /health`.
+  - `AGENT_MODE=mock` (default): a single rule-based `run_support()` in `engine.py`, parameterized by `SupportConfig` (`enforce_admin`, `leak_on_injection`, `leak_api_key`, `allow_drift`, `apply_flaky`) — v1/v2/vulnerable share the same code path, so the planted flaws are config, not a forked implementation. `AGENT_MODE=llm` routes through `agentprobe_core.llm.create_client()` instead (mock provider by default; `RUN_LIVE=1` for a live model), so it goes through the same budget guard as everything else.
+  - The support bots derive `refund_window_days` from their prompt file's text via regex (`prompts.py`), re-read on every request (no caching) — editing the prompt file changes behavior immediately, including while the process is running (v2's prompt widens 30 days to 45, the planted regression).
+  - Canary markers (`AP-CANARY-SYSPROMPT…`, `AP-CANARY-APIKEY…`, `AP-CANARY-RAGINJECT…`) follow `CANARY-[A-Z0-9]{4,}` so they also match `agentprobe_core.llm.mock.CANARY_PATTERN`.
+  - Seeded flakiness (`flaky.py`): order lookups on `/support/*` fail at `FLAKY_RATE` (default 0.2) using a `random.Random(FLAKY_SEED)` that tests reset for exact, reproducible sequences.
+  - `demo-agents/vulnerabilities.json`: a manifest of all 7 planted flaws (id, route, category, description, trigger, `suite_case_ids: []` — filled in once suites exist).
+  - `demo-agents/README.md`: the "deliberately vulnerable; fake data only" warning, route table, `AGENT_MODE`/flakiness docs.
+  - Tests (20, `pnpm check`): each planted flaw triggers (leak, injection, unauthorized delete, API-key leak, drift, RAG indirect injection via `context`), the v1/v2 refund regression, live prompt-file editing changes behavior, and flakiness is seeded/resettable. `pyproject.toml` per-file-ignores extended for `demo-agents/src/**` (fake secrets, seeded RNG — same reasoning as the existing `tests/**` ignore).
+
 ## Next
-- B1.3: demo agents (support-bot, rag-bot, vulnerable-bot) with scripted mock mode and `CANARY-…` tokens (the format the mock judge and golden tests rely on, ADR 0011).
+- B1.4: HTTP adapter (request template, dotted-path response mapping, timeouts, retries/backoff, SSRF guard) against these demo agents.
 
 ## Decisions
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.

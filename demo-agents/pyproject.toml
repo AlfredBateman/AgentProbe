@@ -3,7 +3,15 @@ name = "agentprobe-demo-agents"
 version = "0.0.0"
 description = "Bundled demo agents with planted flaws, used by golden tests."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "agentprobe-core",
+    "fastapi==0.141.1",
+    "pydantic==2.13.5",
+    "uvicorn==0.53.0",
+]
+
+[project.scripts]
+agentprobe-demo-agents = "agentprobe_demo_agents.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13"]

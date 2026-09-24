@@ -87,6 +87,20 @@ provides-extras = ["live"]
 name = "agentprobe-demo-agents"
 version = "0.0.0"
 source = { editable = "demo-agents" }
+dependencies = [
+    { name = "agentprobe-core" },
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agentprobe-core", editable = "packages/core" },
+    { name = "fastapi", specifier = "==0.141.1" },
+    { name = "pydantic", specifier = "==2.13.5" },
+    { name = "uvicorn", specifier = "==0.53.0" },
+]
 
 [[package]]
 name = "agentprobe-workspace"
