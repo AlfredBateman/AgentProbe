@@ -64,6 +64,9 @@ name = "agentprobe-core"
 version = "0.0.0"
 source = { editable = "packages/core" }
 dependencies = [
+    { name = "anyio" },
+    { name = "httpcore" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
@@ -76,6 +79,9 @@ live = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = "==4.15.1" },
+    { name = "httpcore", specifier = "==1.0.9" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "litellm", marker = "extra == 'live'", specifier = "==1.102.1" },
     { name = "pydantic", specifier = "==2.13.5" },
     { name = "pyyaml", specifier = "==6.0.2" },
@@ -115,6 +121,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "cryptography" },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
@@ -134,6 +141,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "cryptography", specifier = "==50.0.1" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "mypy", specifier = "==2.3.1" },
     { name = "pytest", specifier = "==9.1.1" },

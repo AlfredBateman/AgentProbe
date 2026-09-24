@@ -182,20 +182,22 @@ async def with_backoff[T](
     rng: random.Random,
     base_s: float = 1.0,
     cap_s: float = 60.0,
+    retry_on: type[Exception] = TransientLLMError,
 ) -> T:
-    """Retries TransientLLMError with full-jitter exponential backoff, waiting at least as
-    long as the provider's Retry-After.
+    """Retries `retry_on` with full-jitter exponential backoff, waiting at least as long as
+    the exception's `retry_after` (the provider's Retry-After), if it has one.
     """
     for n in range(max_retries + 1):
         try:
             return await attempt()
-        except TransientLLMError as exc:
+        except retry_on as exc:
+            retry_after: float | None = getattr(exc, "retry_after", None)
             if n == max_retries:
                 raise
-            if exc.retry_after is not None and exc.retry_after > MAX_RETRY_AFTER_S:
+            if retry_after is not None and retry_after > MAX_RETRY_AFTER_S:
                 raise
             delay = rng.uniform(0, min(cap_s, base_s * 2**n))
-            if exc.retry_after is not None:
-                delay = max(delay, exc.retry_after)
+            if retry_after is not None:
+                delay = max(delay, retry_after)
             await clock.sleep(delay)
     raise AssertionError("unreachable")

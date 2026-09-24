@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentprobe_api.models import Secret
+from agentprobe_core.adapters import HttpAdapterConfig
 from apitest import SignUp
 
 pytestmark = pytest.mark.integration
@@ -81,6 +82,57 @@ async def test_invalid_http_config_rejected(sign_up: SignUp) -> None:
         json={"name": "bad", "config": {"adapter_type": "http"}},  # missing url
     )
     assert r.status_code == 422
+
+
+async def test_http_config_is_the_adapters_config(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    config = {**HTTP_CONFIG, "response": {"output": "$.result.text"}, "allow_private": True}
+    r = await alice.post(
+        f"/projects/{project['id']}/agents", json={"name": "rag", "config": config}
+    )
+    assert r.status_code == 201, r.text
+    stored = r.json()["config"]
+    assert stored["response"]["output"] == "$.result.text"
+    assert stored["allow_private"] is True
+    HttpAdapterConfig.model_validate(stored)  # what's stored is what the adapter runs
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {**HTTP_CONFIG, "headers": {"Authorization": "Bearer in-plaintext"}},
+        {**HTTP_CONFIG, "url": "file:///etc/passwd"},
+        {**HTTP_CONFIG, "url": "https://user:pw@agent.example.com/"},
+        {**HTTP_CONFIG, "response": {"output": "$..anything"}},
+        {**HTTP_CONFIG, "request_template": {"q": "no input placeholder"}},
+        {**HTTP_CONFIG, "method": "GET"},
+    ],
+)
+async def test_invalid_http_adapter_config_rejected(
+    sign_up: SignUp, config: dict[str, object]
+) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    r = await alice.post(f"/projects/{project['id']}/agents", json={"name": "b", "config": config})
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.parametrize(
+    "auth_header",
+    [{"name": "Host", "value": "sekrit-value"}, {"name": "X-Key", "value": "sekrit-value\r\nX: y"}],
+)
+async def test_unsendable_auth_header_rejected_without_echo(
+    sign_up: SignUp, auth_header: dict[str, str]
+) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    r = await alice.post(
+        f"/projects/{project['id']}/agents",
+        json={"name": "b", "config": HTTP_CONFIG, "auth_header": auth_header},
+    )
+    assert r.status_code == 422
+    assert "sekrit" not in r.text
 
 
 async def test_duplicate_agent_name_rejected(sign_up: SignUp) -> None:

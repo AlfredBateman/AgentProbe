@@ -8,7 +8,7 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Request
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,22 +18,17 @@ from agentprobe_api.crypto import SecretBox
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Project, Secret
 from agentprobe_api.projects import owned_project
+from agentprobe_core.adapters import HttpAdapterConfig, check_header
 
 router = APIRouter(tags=["agents"])
 
 # --- adapter configs (SPEC.md §4.2) -----------------------------------------------------
 
 
-class HttpAgentConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class HttpAgentConfig(HttpAdapterConfig):
+    """The HTTP adapter's own config (ADR 0012), so what's stored is what the adapter runs."""
+
     adapter_type: Literal["http"]
-    url: AnyHttpUrl
-    method: Literal["GET", "POST"] = "POST"
-    headers: dict[str, str] = Field(default_factory=dict)
-    request_template: dict[str, Any] | None = None
-    response_output_path: str = "output"
-    response_tool_calls_path: str | None = None
-    timeout_ms: int = Field(default=30_000, gt=0, le=120_000)
 
 
 class McpAgentConfig(BaseModel):
@@ -71,6 +66,11 @@ class AuthHeader(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=200)
     value: str = Field(min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def _sendable(self) -> "AuthHeader":
+        check_header(self.name, self.value, secret=True)  # its errors never echo the value
+        return self
 
 
 class AgentIn(BaseModel):
