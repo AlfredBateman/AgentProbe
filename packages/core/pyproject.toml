@@ -10,6 +10,7 @@ dependencies = [
     "jsonschema==4.26.0",
     "pydantic==2.13.5",
     "pyyaml==6.0.2",
+    "regex==2026.9.10",
     "tzdata==2026.4; sys_platform == 'win32'",  # zoneinfo has no system tz database on Windows
 ]
 

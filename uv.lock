@@ -70,6 +70,7 @@ dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "regex" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 
@@ -87,6 +88,7 @@ requires-dist = [
     { name = "litellm", marker = "extra == 'live'", specifier = "==1.102.1" },
     { name = "pydantic", specifier = "==2.13.5" },
     { name = "pyyaml", specifier = "==6.0.2" },
+    { name = "regex", specifier = "==2026.9.10" },
     { name = "tzdata", marker = "sys_platform == 'win32'", specifier = "==2026.4" },
 ]
 provides-extras = ["live"]
@@ -133,6 +135,7 @@ dev = [
     { name = "ruff" },
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
+    { name = "types-regex" },
 ]
 
 [package.metadata]
@@ -155,6 +158,7 @@ dev = [
     { name = "ruff", specifier = "==0.16.8" },
     { name = "types-jsonschema", specifier = "==4.26.0.20260518" },
     { name = "types-pyyaml", specifier = "==6.0.12.20250915" },
+    { name = "types-regex", specifier = "==2026.9.10.20260911" },
 ]
 
 [[package]]
@@ -1577,6 +1581,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7e/69/3c51b36d04da19b92f9e815be12753125bd8bc247ba0470a982e6979e71c/types_pyyaml-6.0.12.20250915.tar.gz", hash = "sha256:0f8b54a528c303f0e6f7165687dd33fafa81c807fcac23f632b63aa624ced1d3", size = 17522, upload-time = "2025-09-15T03:01:00.728Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/e0/1eed384f02555dde685fff1a1ac805c1c7dcb6dd019c916fe659b1c1f9ec/types_pyyaml-6.0.12.20250915-py3-none-any.whl", hash = "sha256:e7d4d9e064e89a3b3cae120b4990cd370874d2bf12fa5f46c97018dd5d3c9ab6", size = 20338, upload-time = "2025-09-15T03:00:59.218Z" },
+]
+
+[[package]]
+name = "types-regex"
+version = "2026.9.10.20260911"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/df/3a585f38e180cd6f4588a9549f380a81dd0b71b43c307eb35c10944390a3/types_regex-2026.9.10.20260911.tar.gz", hash = "sha256:049b83eebc92c38fff283444b4046f58a5dea45bfea20c352bc5159308175b6a", size = 13841, upload-time = "2026-09-11T06:45:05.953Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/58/3ac578b782e529fe803abf8c7e05b3f9f8da42bbfd2d5020da30c1ae1daa/types_regex-2026.9.10.20260911-py3-none-any.whl", hash = "sha256:2b55d91d317164800d5630a2273b70b723d9e0e7c40654d2b89465670c62ab06", size = 11192, upload-time = "2026-09-11T06:45:05.064Z" },
 ]
 
 [[package]]

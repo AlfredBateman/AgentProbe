@@ -170,9 +170,38 @@
 
     Coverage of `agentprobe_core.stats` is 100%. `hypothesis==6.168.1` is now a pinned dev dependency. `pnpm check` and `pnpm verify` are both green (575 unit + 80 integration tests).
 
+- 2026-09-24 **B1.6 follow-up: Tarone–Holm per case** (user decision; [ADR 0014](decisions/0014-statistics-implementation.md#per-case-tests) amended, [ADR 0006](decisions/0006-statistics-methodology.md) and PLAN.md §2 #9 annotated):
+  - `significance.py`:
+    - `fisher_exact` now returns a `FisherResult`: `p_worse`, `p_better`, and the smallest p each direction's margins allow. It is memoized per table.
+    - `tarone_holm(p, min_p, alpha)` replaces `holm`: Holm's step-down with Tarone's exclusion recomputed at each step. With every min p at 0 it is exactly Holm.
+  - `regression.py`:
+    - The new `compare_cases()` runs the per-case family on its own.
+    - `CaseComparison` reports `p_worse` / `p_worse_min` / `p_worse_threshold` (the `alpha`/K the case was compared against; `None` if not reached) in place of Holm-adjusted p-values, because Tarone isn't monotone in `alpha`.
+  - The Fisher test was already one-sided; ADR 0014 now says so explicitly and why.
+  - **Verdict rule** (documented and tested): one flagged case makes a `regression` even when the suite's mean drop is below `min_drop`. The demo (the refund case 5/5 → 0/5 in a 30-case suite, with and without flaky cases around it) returns `regression`, with the refund case compared against `alpha` itself.
+  - **The per-case family's error rate is proven at or below `alpha`** in two ways:
+    - exactly, by enumerating all outcomes for small families (Hypothesis-drawn true rates, up to 3 cases × 4 runs, plus 3 cases × 5 runs);
+    - by a seeded simulation test (`test_family_wise_error.py`) over sizes 5/13/30/100 × 20%/50%/100% flaky, a different true rate per case, and all coin flips, plus 3 and 10 runs. Each cell's 97.5% Wilson upper bound must be ≤ `alpha`; the maximum measured is 3.2%.
+  - [docs/metrics.md](metrics.md): the new honest headline is **70.6% → 2.3% false alarms, a 96.7% reduction**, with single-break detection going from 4.1% (Holm) to 100%. Holm and Tarone–Holm are shown side by side in every scenario. A null calibration grid separates the per-case family from the whole verdict. The simulation parameters were unchanged.
+  - Tests: 80 new or rewritten across stats and judges. `pnpm check` (655 unit tests) and `pnpm verify` are green.
+
+- 2026-09-24 **Regex judge hardening** ([ADR 0015](decisions/0015-regex-judge-hardening.md), supersedes ADR 0013's regex bullet):
+  - Matching now uses the `regex` package (`regex==2026.9.10`, already locked through tiktoken; `types-regex` for mypy) with a 0.25 s timeout. A timeout becomes `status=error`.
+  - Before compiling, the pattern is parsed with the stdlib parser (Python `re` syntax, as before) and refused if its counted repeats would expand past 10,000 elements. Measurement showed `regex` unrolls counted repeats at compile time, which the timeout doesn't cover: `(?:(?:a{1000}){1000}){1000}` is 29 characters and about 250 GB.
+  - The output cap went from 4,096 to 100,000 characters, since it no longer stands in for a timeout.
+  - Tests:
+    - `^(a|aa)+$` times out as an error;
+    - `(a+)+$` is fine at 28 characters and a bounded timeout at 5,000 (the `regex` engine's guards make it cubic, not safe);
+    - the compile bomb is refused instantly;
+    - the limit boundary and the expansion estimates;
+    - lookbehind, backreferences and verbose mode still work;
+    - deep nesting, huge counts and regex-only syntax are errors.
+
+    Judges coverage is 98%.
+
 ## Next
 - B1.7: `execute_attempt` / `finalize_run` / `run_suite` builds a `CaseSummary` per case and feeds `suite_stats` / `compare_runs`.
-- Decision needed (ADR 0014, docs/metrics.md): at 5 runs per case, a single broken case can't be flagged once 13+ cases are compared. Options: Tarone's discrete-aware correction, or a higher default `runs_per_case`.
+- Decision needed (ADR 0014 §Verdict, docs/metrics.md): the whole verdict (per-case family + suite test) is bounded by 2·`alpha`, not `alpha`. It measures up to 6.5% on heavily flaky suites, while the per-case family stays at or below `alpha`. Option: split `alpha` between the two (for example `alpha`/2 each). At 5 runs a single break would still be flagged; at 3 runs it never could be.
 
 ## Decisions
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -181,7 +210,7 @@
 - `agents.secret_ref` references a new `secrets` table, Fernet-encrypted, write-only ([ADR 0003](decisions/0003-secret-storage.md)). Unblocks B2.1.
 - Display font: Geist; monospace: Geist Mono; body: Inter Variable (unchanged) ([ADR 0004](decisions/0004-font-substitution.md)).
 - Trace timeline: plain HTML/CSS, no React Flow ([ADR 0005](decisions/0005-trace-timeline-no-react-flow.md)).
-- Regression statistics: Fisher exact + Holm (per case), paired sign-flip permutation (suite), case-level bootstrap CI; α=0.05, min_drop=0.05, all configurable via suite YAML and CLI flags ([ADR 0006](decisions/0006-statistics-methodology.md)).
+- Regression statistics: Fisher exact (one-sided) + Holm (per case), paired sign-flip permutation (suite), case-level bootstrap CI; α=0.05, min_drop=0.05, all configurable via suite YAML and CLI flags ([ADR 0006](decisions/0006-statistics-methodology.md)). The per-case correction was later amended to Tarone–Holm (user decision, ADR 0014).
 - Hosting for the API/worker (Q2) is deliberately deferred to Phase F4; the only binding constraint now is that the worker stays behind the `QueueBackend` interface with `inline` as the local default.
 - `packages/core` must contain exactly one run-execution implementation (`execute_attempt` / `finalize_run` / `run_suite`), shared by the CLI's local run and the server runner — no duplicate run loops (Q6 requirement, tracked at B1.7).
 - Share links store only `runs.share_token_hash` (SHA-256), not a plaintext token. The Fernet key env var stays `ENCRYPTION_KEY` (user decisions, 2026-09-25).
@@ -190,20 +219,27 @@
 - Suite schema field names (judge params, `attack`/`attack_params`, `context` not `fixtures`), the attack registry's extension-point shape, anchor/alias rejection by token-scanning, and agent config validation living in `apps/api` (not `packages/core`, since the HTTP adapter itself is B1.4) ([ADR 0010](decisions/0010-suite-schema-and-agent-config.md)).
 - Adapters: errors are responses, not exceptions; a trace step union shared by runner/judges/storage/UI; `{{documents}}` + in-house JSONPath subset; strict `tool_calls` mapping; retry only what can't have reached the agent; SSRF guard as a pinned-IP httpcore backend with explicit address tables; private targets need agent + server opt-in (+ optional allowlist); Python adapter CLI-only by construction ([ADR 0012](decisions/0012-http-adapter-and-ssrf-guard.md)).
 - LLM layer: roles spread across models for per-model free-tier quotas, RPD persisted and fail-fast, one retry policy (LiteLLM retries off), USD estimates from dated paid-tier prices, LiteLLM as a lazy opt-in extra; `LLM_MODEL_DEMO_AGENT`/`LLM_MODEL_MUTATOR` renamed to `LLM_MODEL_AGENT`/`LLM_MODEL_ATTACKER` ([ADR 0011](decisions/0011-llm-layer.md)).
-- Judges: `JudgeContext` wraps `case`/`response` rather than duplicating their fields; `json_schema` validates via the `jsonschema` library (now a direct core dependency) instead of a hand-rolled validator; `regex` is guarded by a length cap, not a timeout; `llm_rubric` neutralizes literal delimiter tags found inside the untrusted output/input before wrapping them, and gained `samples: int` for majority voting; `consistency` reads `ctx.case_outputs`, populated by the executor, rather than having its own interface ([ADR 0013](decisions/0013-judges.md)).
+- Judges: `JudgeContext` wraps `case`/`response` rather than duplicating their fields; `json_schema` validates via the `jsonschema` library (now a direct core dependency) instead of a hand-rolled validator; `regex` was guarded by a length cap, not a timeout (superseded by ADR 0015, below); `llm_rubric` neutralizes literal delimiter tags found inside the untrusted output/input before wrapping them, and gained `samples: int` for majority voting; `consistency` reads `ctx.case_outputs`, populated by the executor, rather than having its own interface ([ADR 0013](decisions/0013-judges.md)).
 
 - Statistics implementation ([ADR 0014](decisions/0014-statistics-implementation.md)):
   - The case is the resampling unit (within-case correlation).
   - A Wilson floor for degenerate bootstraps.
-  - Separate Holm families for worse and better.
+  - One-sided Fisher tests; a Tarone–Holm step-down per case (user decision), with worse and better as separate families. Thresholds are reported, not adjusted p-values.
   - Exact sign-flip by dynamic programming (exact beyond ADR 0006's 20 cases when cheap), with a Monte Carlo fallback.
   - Exact rational threshold comparisons.
-  - Regression wins the verdict; its worst-case false-alarm rate is 2·`alpha` (measured at 0.7%).
+  - One flagged case is a regression even when the suite drop is below `min_drop`. Regression wins the verdict. The per-case family is held at `alpha`; the whole verdict at 2·`alpha` (union bound).
   - Only shared cases are compared.
   - Cost deltas are per attempt.
+- Regex judge ([ADR 0015](decisions/0015-regex-judge-hardening.md)): the `regex` package with a 0.25 s matching timeout; a stdlib-parser expansion bound (10,000 elements) before compiling; the output cap raised to 100,000. RE2 was considered and rejected: it has no lookarounds, backreferences or verbose mode, and logs parse errors to stderr.
 
 ## Known issues
-- Statistics power limit (ADR 0014): at 5 runs per case, Fisher + Holm can't flag a single case once 13+ cases are compared, and the suite test can't see one changed case. In docs/metrics.md, a single hard-broken case among 30 is detected 4.1% of the time. Awaiting a decision: Tarone's correction, or a higher `runs_per_case`.
+- Statistics power (ADR 0014 §Power):
+  - At 3 runs per case, a single break has p = 1/20 = `alpha` and is detected only 38.4% of the time (any other case able to reach `alpha` raises K). Use 5 or more runs.
+  - A case that only turns flaky (5/5 → 3/5) is weak evidence at 5 runs.
+- The whole verdict's false-alarm rate can exceed `alpha` on heavily flaky suites: up to 6.5% measured, 2·`alpha` bound. See Next.
+- `test_family_wise_error.py` adds about 12 s to `pnpm check` (24 seeded cells × 1,000 trials).
+- The regex judge blocks the event loop for up to 0.25 s per attempt when a pattern times out. A suite that times out everywhere costs that on every attempt. B1.7/B2.3 should add a run-level time budget, or fail a pattern fast after its first timeout in a run.
+- The regex judge's compile-time guard relies on the stdlib parser (`re._parser`, private, no stubs) agreeing with `regex` on how repeats nest. The 10,000-element limit leaves 100× headroom for disagreement (ADR 0015).
 - The suite CI under-covers with few cases: 87% at 10 cases vs 94% at 30 (percentile cluster bootstrap, ADR 0014).
 - The `--alpha` / `--min-drop` / `--permutation-draws` / `--bootstrap-resamples` CLI flags, and the `--help` text that states the small-N limitation (ADR 0006), land with D1.1 (`run`) and D2.1 (`compare`). The core side (`StatisticsConfig.override`) is done.
 - `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 2.5 min against Neon from here: each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.

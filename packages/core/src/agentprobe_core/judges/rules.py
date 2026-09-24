@@ -8,9 +8,13 @@ report is an error, never a silent pass.
 
 import json
 import re
+import re._constants as _sre  # type: ignore[import-not-found]  # stdlib parser: no stubs
+import re._parser as _sre_parser  # type: ignore[import-not-found]
+from collections.abc import Iterable
 from typing import Any, cast
 
 import jsonschema
+import regex as regexlib
 from pydantic import JsonValue
 
 from agentprobe_core.judges.types import JudgeContext, Judgment
@@ -27,13 +31,25 @@ from agentprobe_core.suite.judges import (
     ToolNotCalledJudge,
 )
 
-# ponytail: a length cap (not a timeout) guards regex against catastrophic backtracking --
-# stdlib `re` has no built-in timeout, and one enforced by a background thread can't be
-# killed, so it would leak a runaway thread per hit instead of bounding the work. A cap
-# bounds the worst case outright and needs nothing else.
-MAX_REGEX_INPUT = 4_096
+# Suite YAML is user-supplied, so a regex pattern is hostile input (ADR 0015). Three guards:
+# 1. Matching runs on the `regex` package with a timeout that covers the whole search, so
+#    catastrophic backtracking (e.g. ^(a|aa)+$) ends as status=error instead of a hung worker.
+REGEX_TIMEOUT_SECONDS = 0.25
+# 2. Compiling has no timeout, and `regex` unrolls counted repeats while compiling: the 29
+#    characters (?:(?:a{1000}){1000}){1000} would need a billion elements. Patterns are parsed
+#    first with the stdlib parser (Python `re` syntax, which never unrolls) and refused when
+#    their repeats would expand past this many elements, as RE2 refuses them.
+MAX_REGEX_EXPANSION = 10_000
+# 3. Bounds memory and keeps matching proportionate. Not the backtracking guard (1 is).
+MAX_REGEX_INPUT = 100_000
 
-_REGEX_FLAGS = {"i": re.IGNORECASE, "m": re.MULTILINE, "s": re.DOTALL, "x": re.VERBOSE}
+_REGEX_FLAGS = {  # suite flag -> (stdlib flag for parsing, regex flag for matching)
+    "i": (re.IGNORECASE, regexlib.IGNORECASE),
+    "m": (re.MULTILINE, regexlib.MULTILINE),
+    "s": (re.DOTALL, regexlib.DOTALL),
+    "x": (re.VERBOSE, regexlib.VERBOSE),
+}
+_REPEATS = (_sre.MAX_REPEAT, _sre.MIN_REPEAT, _sre.POSSESSIVE_REPEAT)
 
 
 async def contains(spec: ContainsJudge, ctx: JudgeContext) -> Judgment:
@@ -75,20 +91,75 @@ async def not_contains(spec: NotContainsJudge, ctx: JudgeContext) -> Judgment:
     )
 
 
+def _regex_error(reason: str) -> Judgment:
+    return Judgment(status="error", score=0.0, reason=f"regex judge: {reason}")
+
+
+def _expansion(items: Iterable[tuple[Any, Any]]) -> int:
+    """How many elements a parsed pattern becomes once counted repeats are unrolled: each
+    repeat multiplies its body by its count (the upper bound when there is one, so the
+    estimate never undercounts; the lower bound for open-ended ones).
+    """
+    size = 0
+    for op, arg in items:
+        if op in _REPEATS:
+            low, high, body = arg
+            count = low if high == _sre.MAXREPEAT else high
+            size += _expansion(body) * max(count, 1)
+        elif op is _sre.SUBPATTERN:
+            size += _expansion(arg[3])
+        elif op is _sre.ATOMIC_GROUP:
+            size += _expansion(arg)
+        elif op in (_sre.ASSERT, _sre.ASSERT_NOT):
+            size += _expansion(arg[1])
+        elif op is _sre.BRANCH:
+            size += sum(_expansion(branch) for branch in arg[1])
+        elif op is _sre.GROUPREF_EXISTS:
+            size += _expansion(arg[1]) + (_expansion(arg[2]) if arg[2] is not None else 0)
+        else:
+            size += 1
+    return size
+
+
 async def regex(spec: RegexJudge, ctx: JudgeContext) -> Judgment:
-    flags = 0
+    parse_flags = match_flags = 0
     for char in spec.flags:
         if char not in _REGEX_FLAGS:
-            return Judgment(status="error", score=0.0, reason=f"regex judge: unknown flag {char!r}")
-        flags |= _REGEX_FLAGS[char]
+            return _regex_error(f"unknown flag {char!r}")
+        parse_flags |= _REGEX_FLAGS[char][0]
+        match_flags |= _REGEX_FLAGS[char][1]
     try:
-        pattern = re.compile(spec.pattern, flags)
+        expansion = _expansion(_sre_parser.parse(spec.pattern, parse_flags))
     except re.error as exc:
-        return Judgment(status="error", score=0.0, reason=f"regex judge: invalid pattern: {exc}")
+        return _regex_error(f"invalid pattern: {exc}")
+    except RecursionError:
+        return _regex_error("invalid pattern: nested too deeply")
+    except OverflowError:  # a repeat count above the engine's maximum
+        return _regex_error(f"pattern too large (limit {MAX_REGEX_EXPANSION:,} elements)")
+    if expansion > MAX_REGEX_EXPANSION:
+        return _regex_error(
+            f"pattern too large: its counted repeats expand to {expansion:,} elements "
+            f"(limit {MAX_REGEX_EXPANSION:,}); use * or + instead of large {{m,n}} counts"
+        )
+    try:
+        pattern = regexlib.compile(spec.pattern, match_flags)
+    except (regexlib.error, RecursionError) as exc:
+        return _regex_error(f"invalid pattern: {exc}")
 
     truncated = len(ctx.output) > MAX_REGEX_INPUT
     text = ctx.output[:MAX_REGEX_INPUT]
-    match = pattern.search(text)
+    try:
+        match = pattern.search(text, timeout=REGEX_TIMEOUT_SECONDS)
+    except TimeoutError:
+        return Judgment(
+            status="error",
+            score=0.0,
+            reason=(
+                f"regex judge: matching timed out after {REGEX_TIMEOUT_SECONDS}s "
+                "(catastrophic backtracking?); rewrite the pattern"
+            ),
+            evidence={"truncated": truncated, "timeout_seconds": REGEX_TIMEOUT_SECONDS},
+        )
     found = match is not None
     reason = f"pattern matched at offset {match.start()}" if match else "pattern did not match"
     if truncated:
