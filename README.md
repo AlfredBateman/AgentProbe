@@ -1,5 +1,19 @@
 # AgentProbe
 
+## Run a suite locally
+
+No server, database or queue needed. Start the bundled demo agents (mock mode, port 9000), then run the smoke suite against them. The agents are configured in `agentprobe.yaml`.
+
+```bash
+uv run python -m agentprobe_demo_agents                                          # terminal 1
+uv run agentprobe run suites/examples/smoke.yaml --fail-under 0.9               # /support/v1
+uv run agentprobe run suites/examples/smoke.yaml --agent vulnerable             # planted flaws: exit 1
+uv run agentprobe baseline set .agentprobe/runs/<v1-run>.json                    # save as "main"
+uv run agentprobe run suites/examples/smoke.yaml --agent support-v2 --baseline main  # exit 2
+```
+
+Every run is saved to `.agentprobe/runs/`. `agentprobe compare <a> <b>` diffs two runs. The exit codes are `0` passed, `1` below `--fail-under` (default 1.0), `2` regression, `3` usage/config error and `4` infrastructure error; `agentprobe --help` lists them. `agentprobe init` scaffolds `agentprobe.yaml` and an example suite for your own agent.
+
 ## Database
 
 AgentProbe uses Postgres with pgvector. Locally that's Neon branches: one for development (`DATABASE_URL`) and a separate one for integration tests (`TEST_DATABASE_URL`).

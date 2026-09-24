@@ -40,7 +40,7 @@ extend-exclude = ["apps/web"]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["adapterfakes", "agentprobe", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents", "apitest", "idor", "judgefakes"]
+known-first-party = ["adapterfakes", "agentprobe", "cli_agents", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents", "apitest", "idor", "judgefakes"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101", "S105", "S106", "S311"]  # asserts; fake credentials; seeded jitter
@@ -58,7 +58,7 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "apps/api", "demo-agents"]
-pythonpath = ["apps/api/tests", "packages/core/tests/adapters", "packages/core/tests/judges"]  # helpers: apitest, idor, adapterfakes, judgefakes
+pythonpath = ["apps/api/tests", "packages/cli/tests", "packages/core/tests/adapters", "packages/core/tests/judges"]  # helpers: apitest, idor, cli_agents, adapterfakes, judgefakes
 addopts = "--import-mode=importlib -m 'not integration and not redis and not live'"
 asyncio_mode = "auto"
 # One loop per session so the integration engine (and its warm Neon connection) is shared.

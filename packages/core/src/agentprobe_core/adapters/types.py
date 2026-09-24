@@ -76,6 +76,10 @@ class AgentResponse(BaseModel):
     # False when the agent doesn't report tool calls: "no tool_call steps" then means
     # "unknown", not "none were made", and a tool judge must not pass on it.
     tool_calls_reported: bool = False
+    # True when the failure never reached the agent or the agent asked for a retry (connect
+    # failure, 429/502/503/504) and the adapter's own retries ran out: the run loop may retry
+    # the attempt later. Anything the agent may have acted on stays False.
+    retryable: bool = False
 
     @property
     def tool_calls(self) -> list[ToolCallStep]:

@@ -1,0 +1,35 @@
+# AgentProbe project config for the bundled demo agents. Start them first:
+#   uv run python -m agentprobe_demo_agents      (http://127.0.0.1:9000, mock mode)
+llm:
+  provider: mock  # mock | litellm (live Gemini; also needs RUN_LIVE=1)
+
+agents:
+  support-v1:
+    type: http
+    url: http://127.0.0.1:9000/support/v1/chat
+    allow_private: true  # a localhost agent
+    response:
+      tool_calls: $.tool_calls
+      total_tokens: $.usage.total_tokens
+  support-v2:
+    type: http
+    url: http://127.0.0.1:9000/support/v2/chat
+    allow_private: true
+    response:
+      tool_calls: $.tool_calls
+      total_tokens: $.usage.total_tokens
+  vulnerable:
+    type: http
+    url: http://127.0.0.1:9000/vulnerable/chat
+    allow_private: true
+    response:
+      tool_calls: $.tool_calls
+      total_tokens: $.usage.total_tokens
+  rag:
+    type: http
+    url: http://127.0.0.1:9000/rag/chat
+    allow_private: true
+    response:
+      output: $.result.text
+      input_tokens: $.meta.tokens.input
+      output_tokens: $.meta.tokens.output
