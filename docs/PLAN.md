@@ -57,7 +57,7 @@ Gate: `pnpm verify`, plus CI green.
 |---|---|---|
 | B2.1 | Agents CRUD, including `secret_ref` storage. **Blocked on Q1.** | Secrets never returned or logged (tested) |
 | B2.2 | Suites: create and `PUT` with immutable versioned case rows | A version bump keeps old runs readable |
-| B2.3 | Queue: `QUEUE_BACKEND=inline\|arq`. Worker runs the core executor and persists results, traces and judgments. | Inline in `verify`, arq in CI (`redis`) |
+| B2.3 | Queue: `QUEUE_BACKEND=inline\|redis` (Taskiq, [ADR 0017](decisions/0017-server-runner-and-queue.md)). Worker runs the core executor and persists results, traces and judgments. | Inline in `verify`, redis in CI (`redis`) |
 | B2.4 | Runs API: start, status/summary, results, trace, `GET /runs/{id}/stream` (SSE) | Integration tests |
 | B2.5 | Ingest (`POST /projects/{id}/runs:ingest`), baselines (set and get), compare endpoint | Integration tests |
 | B2.6 | Export JSON/HTML (escaped), share links | An XSS payload in agent output is rendered inert (test) |
@@ -126,7 +126,7 @@ Legend:
 | 12 | The HTTP request/response mapping is unspecified, and tool-call judges need to see tool calls. | The request is a JSON template with `{{input}}` / `{{documents}}`. The response uses a JSONPath subset for `output`, `tool_calls` and token usage. Tool judges require the agent to report its calls (`tool_calls_reported`). See [ADR 0012](decisions/0012-http-adapter-and-ssrf-guard.md). | Decided |
 | 13 | An MCP server has no chat "input". | MCP cases use `call: {tool, arguments}`, and judges run on the tool result. Plus an automatic scan of tool descriptions for injected instructions. | Decided |
 | 14 | `adapter_type` includes `python`, but the Python adapter is CLI-only. | Allowed on ingested runs only. The server refuses to execute it. | Decided |
-| 15 | Arq or Celery. | Arq (async-native, light). `QUEUE_BACKEND=inline\|arq`: inline locally, arq in CI and prod. | Decided |
+| 15 | Arq or Celery. | ~~Arq~~ **Superseded by [ADR 0017](decisions/0017-server-runner-and-queue.md):** Arq is maintenance-only and needs `redis<6`, so it's Taskiq + taskiq-redis behind a `QueueBackend` protocol. `QUEUE_BACKEND=inline\|redis`: inline locally, redis in CI and prod. | Decided |
 | 16 | SSE or WebSocket. | SSE: one-way and cookie-friendly. It polls DB state, so inline and arq behave the same. | Decided |
 | 17 | Integration tests "via Docker Compose" aren't possible without local Docker. | Locally: a Neon test branch (`pnpm verify`). CI: service containers. `docker-compose.yml` is shipped for users and verified only in CI. | Decided |
 | 18 | The DB driver is unspecified. Neon URLs carry `sslmode` / `channel_binding`, which asyncpg rejects. | psycopg 3 async (`postgresql+psycopg://`). | Decided |

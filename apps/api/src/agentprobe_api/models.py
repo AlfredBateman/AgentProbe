@@ -164,7 +164,7 @@ class Run(Base):
     suite_id: Mapped[uuid.UUID] = _fk("suites.id", index=False)
     suite_version: Mapped[int]
     agent_id: Mapped[uuid.UUID] = _fk("agents.id")
-    status: Mapped[str]
+    status: Mapped[str] = mapped_column(index=True)  # recovery scans by status
     git_sha: Mapped[str | None]
     branch: Mapped[str | None]
     pr_number: Mapped[int | None]
@@ -173,9 +173,14 @@ class Run(Base):
     mock_mode: Mapped[bool]
     config_snapshot: Mapped[dict[str, Any]]  # suite YAML + agent config at run start
     error: Mapped[str | None]
+    attempts_total: Mapped[int]
+    attempts_done: Mapped[int] = mapped_column(server_default="0")
+    heartbeat_at: Mapped[datetime | None]  # last persisted attempt; stale runs are recovered
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]
     pass_rate: Mapped[float | None]
+    ci_lower: Mapped[float | None]
+    ci_upper: Mapped[float | None]
     total_cost: Mapped[Decimal | None] = mapped_column(Money)  # the agent's own spend
     total_tokens: Mapped[int | None]
     judge_cost_usd: Mapped[Decimal | None] = mapped_column(Money)
@@ -189,6 +194,10 @@ class RunResult(Base):
     __table_args__ = (
         UniqueConstraint("run_id", "case_id", "attempt"),
         CheckConstraint("status IN ('passed', 'failed', 'error')", name="status"),
+        CheckConstraint(
+            "error_kind IN ('timeout', 'agent', 'unreachable', 'judge', 'budget', 'internal')",
+            name="error_kind",
+        ),
     )
     id: Mapped[uuid.UUID] = _pk()
     run_id: Mapped[uuid.UUID] = _fk("runs.id", index=False)
@@ -198,7 +207,14 @@ class RunResult(Base):
     output: Mapped[str | None]
     latency_ms: Mapped[int | None]
     tokens: Mapped[int | None]
-    cost: Mapped[Decimal | None] = mapped_column(Money)
+    cost: Mapped[Decimal | None] = mapped_column(Money)  # the agent's own, estimated
+    error_kind: Mapped[str | None]
+    score: Mapped[float | None]
+    judge_cost_usd: Mapped[Decimal | None] = mapped_column(Money)
+    retries: Mapped[int] = mapped_column(server_default="0")
+    # core's AttemptResult without response.steps (those are in traces): what the server
+    # rebuilds the attempt from to finalize or resume a run (ADR 0017).
+    detail: Mapped[dict[str, Any]]
 
 
 class Trace(Base):
@@ -220,15 +236,18 @@ class Judgment(Base):
             " OR (run_result_id IS NULL AND run_id IS NOT NULL AND case_id IS NOT NULL)",
             name="one_scope",
         ),
+        CheckConstraint("status IN ('pass', 'fail', 'error')", name="status"),
     )
     id: Mapped[uuid.UUID] = _pk()
     run_result_id: Mapped[uuid.UUID | None] = _fk("run_results.id", nullable=True)
     run_id: Mapped[uuid.UUID | None] = _fk("runs.id", nullable=True)
     case_id: Mapped[uuid.UUID | None] = _fk("test_cases.id", nullable=True)
     judge_type: Mapped[str]
-    passed: Mapped[bool]
+    status: Mapped[str]  # error: the judge couldn't evaluate (never a silent pass or fail)
+    passed: Mapped[bool]  # status == "pass"
     score: Mapped[float | None]
     reason: Mapped[str | None]
+    evidence: Mapped[dict[str, Any]] = mapped_column(server_default="{}")
 
 
 class RunCaseSummary(Base):
@@ -245,6 +264,7 @@ class RunCaseSummary(Base):
     )
     attempts: Mapped[int]
     passes: Mapped[int]
+    errors: Mapped[int] = mapped_column(server_default="0")
     pass_rate: Mapped[float]
     label: Mapped[str]
     mean_score: Mapped[float | None]

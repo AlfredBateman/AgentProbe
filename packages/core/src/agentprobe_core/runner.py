@@ -437,14 +437,20 @@ async def finalize_run(
     )
 
 
+def uses_llm(suite: Suite) -> bool:
+    """Whether a judge in the suite calls an LLM: `llm_rubric`, or `consistency` (embeddings)."""
+    return any(spec.judge in ("llm_rubric", CONSISTENCY) for c in suite.cases for spec in c.expect)
+
+
 class _Retry(Exception):
     def __init__(self, result: AttemptResult) -> None:
         self.result = result
 
 
-def _plan(suite: Suite, runs_per_case: int) -> list[tuple[Case, int]]:
-    """Every (case, attempt index) to run. Mutation variants (`<id>#<n>`) will expand here
-    once the mutator exists; until then a case that needs one is refused up front.
+def plan_attempts(suite: Suite, runs_per_case: int) -> list[tuple[Case, int]]:
+    """Every (case, attempt index) a run executes. Raises `ValueError` if the suite can't
+    run. Mutation variants (`<id>#<n>`) will expand here once the mutator exists; until then
+    a case that needs one is refused up front.
     """
     for case in suite.cases:
         if case.input is None:
@@ -459,6 +465,53 @@ def _plan(suite: Suite, runs_per_case: int) -> list[tuple[Case, int]]:
     return [(case, n) for case in suite.cases for n in range(runs_per_case)]
 
 
+async def execute_with_retries(
+    case: Case,
+    adapter: AgentAdapter,
+    judges: Mapping[str, JudgeFn] = REGISTRY,
+    llm: LLMClient | None = None,
+    options: RunOptions = RunOptions(),  # noqa: B008 (frozen dataclass)
+    *,
+    attempt: int = 0,
+    rng: random.Random | None = None,
+) -> AttemptResult:
+    """`execute_attempt`, retrying an `unreachable` result up to `options.max_retries` times
+    with full-jitter backoff. Nothing the agent may have acted on is retried. The result's
+    `retries` says how many retries it took.
+    """
+    tries = 0
+
+    async def once() -> AttemptResult:
+        nonlocal tries
+        tries += 1
+        result = await execute_attempt(
+            case,
+            adapter,
+            judges,
+            llm,
+            options.limits,
+            attempt=attempt,
+            agent_price=options.agent_price,
+        )
+        if result.error is not None and result.error.retryable:
+            raise _Retry(result)
+        return result
+
+    try:
+        result = await with_backoff(
+            once,
+            max_retries=options.max_retries,
+            clock=options.clock,
+            rng=rng or random.Random(),  # noqa: S311 (jitter, not crypto)
+            base_s=options.backoff_base_s,
+            cap_s=options.backoff_cap_s,
+            retry_on=_Retry,
+        )
+    except _Retry as exc:
+        result = exc.result
+    return result.model_copy(update={"retries": tries - 1})
+
+
 async def run_suite(
     suite: Suite,
     adapter: AgentAdapter,
@@ -469,63 +522,41 @@ async def run_suite(
     agent: str | None = None,
     on_result: Callable[[AttemptResult], Awaitable[None]] | None = None,
     cancel: asyncio.Event | None = None,
+    completed: Sequence[AttemptResult] = (),
 ) -> RunSummary:
     """Runs a whole suite. Raises `ValueError` before any call if the suite can't run.
 
-    Attempts run `options.concurrency` at a time. An `unreachable` attempt is retried up to
-    `options.max_retries` times with full-jitter backoff; nothing the agent may have acted
-    on is retried. Setting `cancel` stops new attempts, cancels those in flight and returns
-    a `cancelled` summary of the attempts that finished. `on_result` sees each final
-    attempt as it finishes; an exception from it aborts the run.
+    Attempts run `options.concurrency` at a time, through `execute_with_retries`. Setting
+    `cancel` stops new attempts, cancels those in flight and returns a `cancelled` summary
+    of the attempts that finished. `on_result` sees each final attempt as it finishes; an
+    exception from it aborts the run. `completed` resumes a run: those (case, attempt)
+    pairs aren't run again, and they count in the summary.
     """
     if options.concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, got {options.concurrency}")
     runs_per_case = options.runs_per_case or suite.runs_per_case
-    queue = _plan(suite, runs_per_case)
+    done = {(r.case_id, r.attempt) for r in completed}
+    queue = [(c, n) for c, n in plan_attempts(suite, runs_per_case) if (c.id, n) not in done]
     queue.reverse()  # pop() from the end, in suite order
-    started = _now()
+    started = min((r.started_at for r in completed), default=_now())
     rng = random.Random()  # noqa: S311 (jitter, not crypto)
-    results: list[AttemptResult] = []
+    results: list[AttemptResult] = list(completed)
 
     async def attempt(case: Case, n: int) -> AttemptResult:
-        tries = 0
+        return await execute_with_retries(case, adapter, judges, llm, options, attempt=n, rng=rng)
 
-        async def once() -> AttemptResult:
-            nonlocal tries
-            tries += 1
-            result = await execute_attempt(
-                case,
-                adapter,
-                judges,
-                llm,
-                options.limits,
-                attempt=n,
-                agent_price=options.agent_price,
-            )
-            if result.error is not None and result.error.retryable:
-                raise _Retry(result)
-            return result
-
-        try:
-            result = await with_backoff(
-                once,
-                max_retries=options.max_retries,
-                clock=options.clock,
-                rng=rng,
-                base_s=options.backoff_base_s,
-                cap_s=options.backoff_cap_s,
-                retry_on=_Retry,
-            )
-        except _Retry as exc:
-            result = exc.result
-        return result.model_copy(update={"retries": tries - 1})
+    # A finished attempt is always delivered whole: cancelling the run interrupts agent
+    # calls, never an on_result that is saving a result.
+    deliveries: list[asyncio.Future[None]] = []
 
     async def worker() -> None:
         while queue:
             result = await attempt(*queue.pop())
             results.append(result)
             if on_result is not None:
-                await on_result(result)
+                delivery = asyncio.ensure_future(on_result(result))
+                deliveries.append(delivery)
+                await asyncio.shield(delivery)
 
     async def work() -> None:
         async with asyncio.TaskGroup() as group:  # one failure cancels the other workers
@@ -544,10 +575,15 @@ async def run_suite(
                 await workers
             except asyncio.CancelledError:
                 pass
+        if unfinished := [d for d in deliveries if not d.done()]:
+            await asyncio.wait(unfinished)
     cancelled = workers.cancelled()
     if not cancelled and (exc := workers.exception()) is not None:
         # An on_result failure; TaskGroup wraps it, so re-raise the original.
         raise exc.exceptions[0] if isinstance(exc, ExceptionGroup) else exc
+    for delivery in deliveries:
+        if (failure := delivery.exception()) is not None:
+            raise failure  # an on_result that failed while the run was being cancelled
     return await finalize_run(
         results,
         suite=suite,

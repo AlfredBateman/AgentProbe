@@ -216,9 +216,46 @@
   - Tests: 27 runner tests (concurrency: parallel beats sequential with a slow fake adapter; bounded concurrency; retries with backoff; timeouts; cancellation by event and by task; `on_result` failure; JSON round trip), 36 CliRunner tests covering every command and exit code (including markup/escape injection and suite-name path traversal), and 4 end-to-end tests against the real demo agents over loopback: v1 passes, vulnerable fails, `--fail-under` boundary, and a v1 baseline vs v2 candidate exits 2.
   - Measured on the demo agents (mock mode): v1 97.5% (order-status flaky 4/5), vulnerable 50.0% (4 planted flaws stable-fail), v2 vs a v1 baseline is a `regression`: refund-outside-window 5/5 → 0/5, p = 0.0040.
 
+- 2026-09-25 **B2.3 + B2.4 (start/cancel/stream): server runner, queue backends, SSE** ([ADR 0017](decisions/0017-server-runner-and-queue.md)):
+  - Queue library: **Taskiq 0.12.6 + taskiq-redis 1.2.3**, not Arq. Arq is maintenance-only (#510) and needs `redis<6`; SAQ's redis extra needs `redis<8`; we pin `redis==8.1.0`.
+  - Both backends sit behind a `QueueBackend` protocol (`QUEUE_BACKEND=inline|redis`):
+    - `inline` runs a whole run through core's `run_suite` under a semaphore;
+    - `redis` runs idempotent jobs `start_run` → `run_attempt` per (run, case, attempt) → `finalize_run`, in `agentprobe_api.worker` (`pnpm dev:worker`).
+  - Core, with no new run logic: `plan_attempts`, `execute_with_retries` and `run_suite(completed=…)` are public, and `uses_llm` moved from the CLI to core. `run_suite` no longer interrupts an `on_result` that is saving when the run is cancelled.
+  - Migration 0003 (schema approved by the user), applied to the Neon test branch:
+    - `run_results.error_kind/score/judge_cost_usd/retries/detail` (the `AttemptResult` without its steps);
+    - `judgments.status/evidence`;
+    - `run_case_summaries.errors`;
+    - `runs.attempts_total/attempts_done/heartbeat_at/ci_lower/ci_upper`, and an index on `status`.
+  - `runstore.py`:
+    - the config snapshot (secret id only);
+    - attempt upserts on (run, case, attempt), saved only while the run is running;
+    - an exact rebuild of attempts from `detail` + `traces.steps`;
+    - idempotent summaries;
+    - the stale-run query.
+  - `progress.py`: a `ProgressBus` (in-process queues / Redis pub/sub).
+  - `runs.py`:
+    - `POST /suites/{id}/runs` (202; `runs_per_case`, `model`, `mock`);
+    - `GET /runs/{id}`;
+    - `POST /runs/{id}/cancel`;
+    - `POST /runs/{id}/stream-token` (ADR 0009 §5);
+    - `GET /runs/{id}/stream` (SSE: `snapshot`, `attempt`, `status`, keep-alives).
+  - Policy:
+    - the first infrastructure error fails the run and stops the rest (as the CLI does);
+    - crash recovery resumes queued/running runs and skips saved attempts; an unrecoverable snapshot means `failed`.
+  - Tests (ADR 0008 amendment: background work shares the test transaction through `SharedSessions` under one lock):
+    - `test_runs.py`, inline on Neon: the 40-attempt smoke suite against `/support/v1` with results, traces, judgments, summaries and CI persisted; the secret kept out of the snapshot but still sent; live SSE; the stream-token matrix; cancel mid-run and while queued; an unreachable agent failing the run after retries; 422s; crash resume; an unrecoverable run; idempotent saves.
+    - `test_runs_redis.py` (`redis`): the same key scenarios through the real worker jobs in-process; a redelivered job never calling the agent twice; the startup sweep; and **both backends giving identical results and summaries** for the same suite and seed.
+    - IDOR probes cover the five run endpoints.
+    - Six of the seven Redis tests were also run locally on fakeredis's TCP server. Its pub/sub doesn't cross connections, so the SSE-over-Redis test is CI-only.
+  - Shared helper `agentprobe_demo_agents.main.serve_in_background()` replaces two copies of the uvicorn thread fixture.
+  - CI: the `redis` tests run in their own `pytest -m redis -v -rA` step. `pnpm verify` runs `integration and not redis`.
+  - Measured through the real API (uvicorn, inline, Neon dev branch, demo agents): the smoke suite against `/support/v1` completed, 40/40 attempts, pass rate 97.5% (CI 87.1–100%), order-status flaky 4/5, identical to the CLI. 40 `run_results`, 40 traces, 65 attempt judgments and 8 case summaries were persisted. The SSE stream showed `snapshot` → 40 `attempt` → `completed`.
+  - `pnpm check` (723 unit tests) and `pnpm verify` (94 integration tests) are green. Migration 0003 is applied to the Neon dev branch.
+
 ## Next
 - B1.8: golden tests. Fill in `demo-agents/vulnerabilities.json` `suite_case_ids` (the smoke suite covers 5 of the 7 planted flaws; instruction injection and RAG indirect injection need cases with `context`).
-- B2.3: the server runner calls `run_suite` with a DB-writing `on_result` and a status-driven `cancel` event (ADR 0016), and adds no run loop of its own.
+- B2.4 (rest): run results and trace read endpoints, built on `run_results.detail` + `traces.steps`.
 - Decision needed (ADR 0014 §Verdict, docs/metrics.md): the whole verdict (per-case family + suite test) is bounded by 2·`alpha`, not `alpha`. It measures up to 6.5% on heavily flaky suites, while the per-case family stays at or below `alpha`. Option: split `alpha` between the two (for example `alpha`/2 each). At 5 runs a single break would still be flagged; at 3 runs it never could be.
 
 ## Decisions
@@ -248,6 +285,15 @@
   - One flagged case is a regression even when the suite drop is below `min_drop`. Regression wins the verdict. The per-case family is held at `alpha`; the whole verdict at 2·`alpha` (union bound).
   - Only shared cases are compared.
   - Cost deltas are per attempt.
+- Server runner ([ADR 0017](decisions/0017-server-runner-and-queue.md)):
+  - Taskiq + taskiq-redis instead of Arq.
+  - `QUEUE_BACKEND=inline|redis` behind `QueueBackend`.
+  - Runs execute from a config snapshot.
+  - Attempts are saved only while the run is running, and idempotent on (run, case, attempt).
+  - The first infrastructure error fails the run.
+  - Crash recovery resumes and skips saved attempts.
+  - SSE via a `ProgressBus` (in-process / Redis pub/sub), with subscribe-then-snapshot.
+  - The Redis LLM budget is per job for now (user decision).
 - Regex judge ([ADR 0015](decisions/0015-regex-judge-hardening.md)): the `regex` package with a 0.25 s matching timeout; a stdlib-parser expansion bound (10,000 elements) before compiling; the output cap raised to 100,000. RE2 was considered and rejected: it has no lookarounds, backreferences or verbose mode, and logs parse errors to stderr.
 - Run execution and CLI ([ADR 0016](decisions/0016-run-execution-and-local-cli.md)):
   - A judge `error` makes the attempt an `error`.
@@ -264,12 +310,12 @@
   - A case that only turns flaky (5/5 → 3/5) is weak evidence at 5 runs.
 - The whole verdict's false-alarm rate can exceed `alpha` on heavily flaky suites: up to 6.5% measured, 2·`alpha` bound. See Next.
 - `test_family_wise_error.py` adds about 12 s to `pnpm check` (24 seeded cells × 1,000 trials).
-- The regex judge blocks the event loop for up to 0.25 s per attempt when a pattern times out. A suite that times out everywhere costs that on every attempt. B1.7 did not add a run-level time budget; B2.3 should, or fail a pattern fast after its first timeout in a run.
+- The regex judge blocks the event loop for up to 0.25 s per attempt when a pattern times out. A suite that times out everywhere costs that on every attempt. Neither B1.7 nor B2.3 added a run-level time budget; add one (or fail a pattern fast after its first timeout in a run) if it shows.
 - `agentprobe run` with `llm.provider: litellm` outside the repo root fails with exit 3 ("config/llm.yaml not found"): the live LLM config is read from `AGENTPROBE_CONFIG_DIR` (default `config/`). A pip-installed CLI needs the model/pricing config shipped as package data before live judging works outside the repo (F6).
 - The CLI stops at the first infrastructure error (ADR 0016), but that first attempt still spends its full retry budget. On Windows a refused localhost connect takes about 2 s, so a down agent costs about 20 s before exit 4.
 - The regex judge's compile-time guard relies on the stdlib parser (`re._parser`, private, no stubs) agreeing with `regex` on how repeats nest. The 10,000-element limit leaves 100× headroom for disagreement (ADR 0015).
 - The suite CI under-covers with few cases: 87% at 10 cases vs 94% at 30 (percentile cluster bootstrap, ADR 0014).
-- `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 2.5 min against Neon from here: each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
+- `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 4.5 min against Neon from here (the run tests add about 2 min): each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
 - On native Windows, psycopg async needs `SelectorEventLoop`. Tests use the root conftest hook; `pnpm dev:api` passes `--loop asyncio:SelectorEventLoop`. Production start commands on Windows would need the same flag (Linux doesn't).
 - Deploy (F4) must set `FORWARDED_ALLOW_IPS` to the proxy and keep the API reachable only through it. Otherwise the per-IP auth limit is either global (every user shares the proxy's IP) or spoofable (ADR 0009 §9).
 - `JWT_TTL_MINUTES` now defaults to 15. A local `.env` that still says 60 keeps 60-minute access cookies.
@@ -281,5 +327,10 @@
 - Replacing or clearing an agent's `auth_header` orphans the old `secrets` row instead of deleting it (`ponytail:` comment in `agents.py`). Harmless (it's ciphertext, never returned) but worth a cleanup pass if the table's size ever matters.
 - This machine has a stale machine-level `CURL_CA_BUNDLE=C:\Program Files\PostgreSQL\18\ssl\certs\ca-bundle.crt` (the file doesn't exist; left by an uninstalled PostgreSQL). The live LLM provider refuses to start while it is set. Remove it from an admin PowerShell: `[Environment]::SetEnvironmentVariable('CURL_CA_BUNDLE', $null, 'Machine')`, then open a new terminal.
 - LiteLLM 1.102.1 ships a `cl100k_base` tokenizer file that fails tiktoken's hash check, so the first live import downloads the canonical file (hash-verified) into `.agentprobe/tiktoken/`. It needs network once; after that imports are offline.
-- The daily quota file (`.agentprobe/llm-quota.json`) has no cross-process lock: concurrent processes can undercount by a few requests. Move the counters to Redis/Postgres with the multi-worker runner (B2.3).
+- The daily quota file (`.agentprobe/llm-quota.json`) has no cross-process lock: concurrent processes can undercount by a few requests. It is also per host, so each worker host has its own daily cap.
+- LLM budget on the Redis backend (user decision: deferred, ADR 0017): each job builds its own LLM client, so the per-run caps apply per attempt. The per-host daily USD cap is the backstop. Move the run budget and the daily cap to Postgres/Redis before F4 (deploy).
 - Free-tier RPM/RPD defaults (10/250) are placeholders: Google only shows the real per-model values in AI Studio. Set `LLM_RPM`/`LLM_RPD` in `.env` from https://aistudio.google.com/rate-limit.
+- On native Windows the Redis worker needs the selector event loop for psycopg, like the API. Local development uses `QUEUE_BACKEND=inline`, so this only matters for running the worker on Windows.
+- taskiq-redis only reclaims a dead worker's unacknowledged jobs after it fetches a new message; an idle queue never reclaims. The worker's startup sweep (`RUN_STALE_AFTER_S`) covers runs left behind.
+- Inline crash recovery treats every queued/running run as orphaned at API startup, which is correct for one API process only. Use `QUEUE_BACKEND=redis` with several.
+- Every attempt save takes a row lock on its run (ordering against cancel/fail and the `attempts_done` counter), which serializes one run's saves: about 6 round trips per attempt, around 25 s for 40 attempts on Neon from here. Batch the saves if it matters.

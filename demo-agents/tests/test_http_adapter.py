@@ -2,17 +2,14 @@
 response shapes, tool calls, usage, documents, headers from secrets, and the SSRF opt-in.
 """
 
-import threading
-import time
 from collections.abc import Iterator
 from typing import Any
 
 import pytest
-import uvicorn
 from pydantic import SecretStr
 
 from agentprobe_core.adapters import HttpAdapter, HttpAdapterConfig, TargetPolicy
-from agentprobe_demo_agents.main import app
+from agentprobe_demo_agents.main import serve_in_background
 from agentprobe_demo_agents.secrets import RAG_INJECT_CANARY
 
 LOCAL_OK = TargetPolicy(allow_private=True)  # the server's half of the opt-in, for these tests
@@ -26,18 +23,8 @@ RAG = {
 
 @pytest.fixture(scope="module")
 def base_url() -> Iterator[str]:
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 15
-    while not server.started:
-        if time.monotonic() > deadline or not thread.is_alive():
-            raise RuntimeError("the demo agents did not start")
-        time.sleep(0.01)
-    port = server.servers[0].sockets[0].getsockname()[1]
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(timeout=15)
+    with serve_in_background() as url:
+        yield url
 
 
 def adapter(url: str, *, policy: TargetPolicy = LOCAL_OK, **config: Any) -> HttpAdapter:

@@ -1,6 +1,8 @@
 """Helpers shared by API tests (importable: apps/api/tests is on pytest's pythonpath)."""
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -44,18 +46,41 @@ def client_for(app: FastAPI, *, ip: str = "127.0.0.1", **kwargs: Any) -> httpx.A
     )
 
 
+class SharedSessions:
+    """Background work's sessions in tests (ADR 0008 amendment): every `sessions()` is the
+    test's own session, so what runs and workers write still rolls back with the test.
+    One user at a time: requests (`bind_db`) and background work take the same lock.
+    """
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self.lock = asyncio.Lock()
+
+    @asynccontextmanager
+    async def __call__(self) -> AsyncIterator[AsyncSession]:
+        async with self.lock:
+            try:
+                yield self.db
+            finally:
+                await self.db.rollback()  # like closing a real session: uncommitted work is lost
+                self.db.expunge_all()
+
+
 def bind_db(app: FastAPI, db: AsyncSession) -> FastAPI:
-    """Route the app's per-request sessions to the test transaction."""
+    """Route the app's per-request sessions, and its background work, to the test transaction."""
+    shared = SharedSessions(db)
+    app.state.sessionmaker = shared
 
     async def test_db() -> AsyncIterator[AsyncSession]:
-        try:
-            yield db
-            await db.commit()  # releases a savepoint; the outer transaction still rolls back
-        except Exception:
-            await db.rollback()
-            raise
-        finally:
-            db.expunge_all()  # each request starts with an empty identity map, as in prod
+        async with shared.lock:
+            try:
+                yield db
+                await db.commit()  # releases a savepoint; the outer transaction still rolls back
+            except Exception:
+                await db.rollback()
+                raise
+            finally:
+                db.expunge_all()  # each request starts with an empty identity map, as in prod
 
     app.dependency_overrides[get_db] = test_db
     return app

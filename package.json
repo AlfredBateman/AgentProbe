@@ -9,9 +9,10 @@
     "check": "pnpm run check:py && pnpm run check:web",
     "check:py": "uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest",
     "check:web": "pnpm --filter web lint && pnpm --filter web typecheck && pnpm --filter web test",
-    "verify": "pnpm run check && uv run --env-file .env pytest -m integration",
+    "verify": "pnpm run check && uv run --env-file .env pytest -m \"integration and not redis\"",
     "dev:api": "uv run --env-file .env uvicorn agentprobe_api.main:app --reload --port 8000 --loop asyncio:SelectorEventLoop",
     "dev:web": "pnpm --filter web dev",
+    "dev:worker": "uv run --env-file .env taskiq worker agentprobe_api.worker:broker",
     "db:migrate": "uv run --env-file .env alembic -c apps/api/alembic.ini upgrade head"
   }
 }

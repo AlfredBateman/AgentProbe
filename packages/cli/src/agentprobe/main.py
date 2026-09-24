@@ -29,7 +29,14 @@ from agentprobe import report
 from agentprobe.config import CONFIG_FILE, ConfigError, build_adapter, load_config
 from agentprobe_core.adapters.types import AgentAdapter
 from agentprobe_core.llm import LLMConfig, LLMConfigError, create_client
-from agentprobe_core.runner import INFRA_ERRORS, AttemptResult, RunOptions, RunSummary, run_suite
+from agentprobe_core.runner import (
+    INFRA_ERRORS,
+    AttemptResult,
+    RunOptions,
+    RunSummary,
+    run_suite,
+    uses_llm,
+)
 from agentprobe_core.stats import RegressionReport, compare_runs
 from agentprobe_core.suite import StatisticsConfig, Suite, SuiteParseError, parse_suite_yaml
 
@@ -153,12 +160,6 @@ def _exit_code(
     return ExitCode.OK
 
 
-def _needs_llm(suite: Suite) -> bool:
-    return any(
-        spec.judge in ("llm_rubric", "consistency") for c in suite.cases for spec in c.expect
-    )
-
-
 async def _execute(
     suite: Suite,
     adapter: AgentAdapter,
@@ -275,7 +276,7 @@ def run(
             have = ", ".join(sorted(project.agents)) or "none"
             raise ConfigError(f"agent {agent!r} is not in {config} (agents: {have})")
         llm_config = None
-        if _needs_llm(suite):
+        if uses_llm(suite):
             env = dict(os.environ)
             env.setdefault("LLM_PROVIDER", project.llm.provider)
             if mock:

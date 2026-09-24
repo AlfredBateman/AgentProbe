@@ -10,11 +10,13 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from agentprobe_api import agents, auth, projects, suites
+from agentprobe_api import agents, auth, projects, runs, suites
 from agentprobe_api.crypto import SecretBox
 from agentprobe_api.db import make_engine
 from agentprobe_api.errors import error_response, install_error_handlers
 from agentprobe_api.logs import configure_logging, redact_query, request_id_var
+from agentprobe_api.progress import InProcessBus, ProgressBus, RedisBus
+from agentprobe_api.queue import Deps, make_queue
 from agentprobe_api.ratelimit import MemoryTokenBucket, RateLimiter, RedisTokenBucket
 from agentprobe_api.settings import Settings, get_settings
 
@@ -97,7 +99,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise RuntimeError("JWT_SECRET must be set to at least 32 characters")
         engine = make_engine(settings.database_url)
         app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+        await app.state.queue.start()
+        await app.state.queue.recover()
         yield
+        await app.state.queue.aclose()
+        await app.state.bus.aclose()
         await engine.dispose()
         if redis is not None:
             await redis.aclose()
@@ -108,12 +114,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     redis = Redis.from_url(settings.redis_url) if settings.rate_limit_backend == "redis" else None
     app.state.api_key_limiter = _limiter(redis, settings.rate_limit_per_minute, "rl:key:")
     app.state.auth_limiter = _limiter(redis, settings.auth_rate_limit_per_minute, "rl:ip:")
+    bus: ProgressBus = (
+        RedisBus(Redis.from_url(settings.redis_url))
+        if settings.queue_backend == "redis"
+        else InProcessBus()
+    )
+    app.state.bus = bus
+    # Background work opens its own sessions; resolved per call so tests can swap it.
+    app.state.queue = make_queue(
+        Deps(settings, lambda: app.state.sessionmaker(), app.state.secret_box, bus)
+    )
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(agents.router)
     app.include_router(suites.router)
+    app.include_router(runs.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

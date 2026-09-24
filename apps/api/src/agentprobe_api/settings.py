@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     auth_rate_limit_per_minute: int = 10  # per client IP on /auth/register and /auth/login
     redis_url: str = "redis://localhost:6379/0"
 
+    # Runs (ADR 0017). inline: runs execute in the API process (local dev, `pnpm verify`);
+    # redis: one Taskiq job per attempt on Redis, executed by `agentprobe_api.worker`.
+    queue_backend: Literal["inline", "redis"] = "inline"
+    inline_max_runs: int = 2  # runs executing at once in the API process
+    run_concurrency: int = 4  # attempts in flight per run (inline)
+    run_max_retries: int = 2  # per attempt, for unreachable agents only
+    run_backoff_base_s: float = 1.0
+    run_stale_after_s: int = 600  # a queued/running run this quiet is resumed on startup
+
     log_level: str = "INFO"
 
     @property
