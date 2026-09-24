@@ -1,6 +1,8 @@
+from collections.abc import AsyncIterator
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from fastapi import Request
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from agentprobe_api.settings import get_settings
 
@@ -25,6 +27,17 @@ def normalize_url(url: str) -> str:
     if parts.hostname not in _LOCAL_HOSTS and not any(k == "sslmode" for k, _ in query):
         query.append(("sslmode", "require"))
     return urlunsplit(parts._replace(scheme=scheme, query=urlencode(query)))
+
+
+async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
+    """One session per request, committed when the endpoint returns without raising.
+
+    Use as Depends(get_db, scope="function") so the commit happens before the response is
+    sent, and a failed commit becomes a 500 instead of a silently lost write.
+    """
+    async with request.app.state.sessionmaker() as session:
+        yield session
+        await session.commit()
 
 
 def make_engine(url: str | None = None) -> AsyncEngine:
