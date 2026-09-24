@@ -378,7 +378,13 @@ class HttpAdapter:
                 retry_on=_Transient,
             )
         except _CallFailed as exc:
-            return AgentResponse(output="", steps=steps, latency_ms=latency_ms, error=str(exc))
+            return AgentResponse(
+                output="",
+                steps=steps,
+                latency_ms=latency_ms,
+                error=str(exc),
+                retryable=isinstance(exc, _Transient),
+            )
 
     def _headers(self) -> httpx.Headers:
         headers = httpx.Headers(

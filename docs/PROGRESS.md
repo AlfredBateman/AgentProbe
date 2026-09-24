@@ -199,8 +199,26 @@
 
     Judges coverage is 98%.
 
+- 2026-09-25 **B1.7 + D1.1: run execution and the local CLI run** ([ADR 0016](decisions/0016-run-execution-and-local-cli.md)):
+  - `packages/core/runner.py`, the single implementation of how a run works:
+    - `execute_attempt` captures the full trace (input, `AgentResponse` steps and tool calls with arguments, latency, tokens, the agent's cost estimate and the metered judge cost) and turns every failure into a typed `AttemptError` (`timeout`/`agent`/`unreachable`/`judge`/`budget`/`internal`).
+    - `finalize_run` builds per-case `CaseSummary`s (labels, Wilson intervals), runs `consistency` per case, and computes the suite pass rate with its CI, tokens and both costs.
+    - `run_suite` runs attempts with bounded concurrency (TaskGroup workers), retries `unreachable` attempts with full-jitter backoff, streams results to `on_result`, and supports cancellation via an `asyncio.Event`.
+    - `AgentResponse.retryable` is new; the HTTP adapter sets it when its retryable failures ran out.
+  - `packages/cli` (`agentprobe`, Typer 0.27.2 + Rich 15.0.0):
+    - `init`, `run` (`--agent --config --mock --json --runs-per-case --fail-under --baseline --concurrency --alpha --min-drop --permutation-draws --bootstrap-resamples`), `compare`, and `baseline set`.
+    - Exit codes 0/1/2/3/4, documented in `--help` along with the small-N limitation. Click's usage exit 2 is remapped to 3.
+    - `agentprobe.yaml` holds http/python agents, `secret_headers_env`, `price`, `llm.provider` and `run.concurrency/retries`. A repo-root `agentprobe.yaml` points at the demo agents.
+    - Runs are saved to `.agentprobe/runs/`; baselines are named files in `.agentprobe/baselines/`.
+    - All run-derived terminal text is sanitized (no Rich markup, control characters shown as `\xNN`).
+    - The CLI stops at the first infrastructure error through `run_suite`'s `cancel` hook, saves the run as `cancelled` and exits 4.
+  - `suites/examples/smoke.yaml`: 8 plain cases with rule judges, covering the refund window (the v2 regression), a seeded-flaky order lookup, the prompt leak, the API-key leak, unauthorized delete and scope drift.
+  - Tests: 27 runner tests (concurrency: parallel beats sequential with a slow fake adapter; bounded concurrency; retries with backoff; timeouts; cancellation by event and by task; `on_result` failure; JSON round trip), 36 CliRunner tests covering every command and exit code (including markup/escape injection and suite-name path traversal), and 4 end-to-end tests against the real demo agents over loopback: v1 passes, vulnerable fails, `--fail-under` boundary, and a v1 baseline vs v2 candidate exits 2.
+  - Measured on the demo agents (mock mode): v1 97.5% (order-status flaky 4/5), vulnerable 50.0% (4 planted flaws stable-fail), v2 vs a v1 baseline is a `regression`: refund-outside-window 5/5 → 0/5, p = 0.0040.
+
 ## Next
-- B1.7: `execute_attempt` / `finalize_run` / `run_suite` builds a `CaseSummary` per case and feeds `suite_stats` / `compare_runs`.
+- B1.8: golden tests. Fill in `demo-agents/vulnerabilities.json` `suite_case_ids` (the smoke suite covers 5 of the 7 planted flaws; instruction injection and RAG indirect injection need cases with `context`).
+- B2.3: the server runner calls `run_suite` with a DB-writing `on_result` and a status-driven `cancel` event (ADR 0016), and adds no run loop of its own.
 - Decision needed (ADR 0014 §Verdict, docs/metrics.md): the whole verdict (per-case family + suite test) is bounded by 2·`alpha`, not `alpha`. It measures up to 6.5% on heavily flaky suites, while the per-case family stays at or below `alpha`. Option: split `alpha` between the two (for example `alpha`/2 each). At 5 runs a single break would still be flagged; at 3 runs it never could be.
 
 ## Decisions
@@ -231,6 +249,14 @@
   - Only shared cases are compared.
   - Cost deltas are per attempt.
 - Regex judge ([ADR 0015](decisions/0015-regex-judge-hardening.md)): the `regex` package with a 0.25 s matching timeout; a stdlib-parser expansion bound (10,000 elements) before compiling; the output cap raised to 100,000. RE2 was considered and rejected: it has no lookarounds, backreferences or verbose mode, and logs parse errors to stderr.
+- Run execution and CLI ([ADR 0016](decisions/0016-run-execution-and-local-cli.md)):
+  - A judge `error` makes the attempt an `error`.
+  - Only `unreachable` attempts are retried at run level.
+  - Consistency is reported per case and doesn't change the pass counts.
+  - The agent's cost is `None` without a configured price.
+  - `--fail-under` defaults to 1.0. Exit precedence is 4 > 2 > 1.
+  - The CLI grants the policy half of the private-target opt-in itself; the agent must still set `allow_private: true`.
+  - Attack-only and `mutations` cases are refused up front until the attack library and the mutator exist.
 
 ## Known issues
 - Statistics power (ADR 0014 §Power):
@@ -238,10 +264,11 @@
   - A case that only turns flaky (5/5 → 3/5) is weak evidence at 5 runs.
 - The whole verdict's false-alarm rate can exceed `alpha` on heavily flaky suites: up to 6.5% measured, 2·`alpha` bound. See Next.
 - `test_family_wise_error.py` adds about 12 s to `pnpm check` (24 seeded cells × 1,000 trials).
-- The regex judge blocks the event loop for up to 0.25 s per attempt when a pattern times out. A suite that times out everywhere costs that on every attempt. B1.7/B2.3 should add a run-level time budget, or fail a pattern fast after its first timeout in a run.
+- The regex judge blocks the event loop for up to 0.25 s per attempt when a pattern times out. A suite that times out everywhere costs that on every attempt. B1.7 did not add a run-level time budget; B2.3 should, or fail a pattern fast after its first timeout in a run.
+- `agentprobe run` with `llm.provider: litellm` outside the repo root fails with exit 3 ("config/llm.yaml not found"): the live LLM config is read from `AGENTPROBE_CONFIG_DIR` (default `config/`). A pip-installed CLI needs the model/pricing config shipped as package data before live judging works outside the repo (F6).
+- The CLI stops at the first infrastructure error (ADR 0016), but that first attempt still spends its full retry budget. On Windows a refused localhost connect takes about 2 s, so a down agent costs about 20 s before exit 4.
 - The regex judge's compile-time guard relies on the stdlib parser (`re._parser`, private, no stubs) agreeing with `regex` on how repeats nest. The 10,000-element limit leaves 100× headroom for disagreement (ADR 0015).
 - The suite CI under-covers with few cases: 87% at 10 cases vs 94% at 30 (percentile cluster bootstrap, ADR 0014).
-- The `--alpha` / `--min-drop` / `--permutation-draws` / `--bootstrap-resamples` CLI flags, and the `--help` text that states the small-N limitation (ADR 0006), land with D1.1 (`run`) and D2.1 (`compare`). The core side (`StatisticsConfig.override`) is done.
 - `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 2.5 min against Neon from here: each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
 - On native Windows, psycopg async needs `SelectorEventLoop`. Tests use the root conftest hook; `pnpm dev:api` passes `--loop asyncio:SelectorEventLoop`. Production start commands on Windows would need the same flag (Linux doesn't).
 - Deploy (F4) must set `FORWARDED_ALLOW_IPS` to the proxy and keep the API reachable only through it. Otherwise the per-IP auth limit is either global (every user shares the proxy's IP) or spoofable (ADR 0009 §9).
