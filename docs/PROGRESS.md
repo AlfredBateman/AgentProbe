@@ -113,8 +113,39 @@
     - `demo-agents/tests/test_http_adapter.py`: the adapter against the real demo agents over loopback. Both response shapes, tool-call arguments, usage, `{{documents}}` indirect injection, secret headers reaching the agent, `test_connection`, and blocked-without-opt-in through the real resolver.
     - `apps/api`: a subprocess import of the server never loads the Python adapter, and the server's source never references it. Integration tests cover config validation and non-echoed auth-header errors.
 
+- 2026-09-24 **B1.5: judges** (`packages/core/judges`, [ADR 0013](decisions/0013-judges.md)):
+  - `types.py`: `Judgment(status: pass|fail|error, score, reason, evidence)`; `JudgeContext` wraps
+    `case`/`response` (ADR 0012) with `input`/`output`/`steps`/`latency_ms` read-only properties,
+    plus `llm` (for `llm_rubric`/`consistency`) and `case_outputs` (for `consistency`).
+    `REGISTRY: dict[str, JudgeFn]` keyed by `JudgeSpec.judge`; `evaluate(spec, ctx)` dispatches
+    through it.
+  - `rules.py`: all 10 rule-based judges. Tool judges (`tool_called`/`tool_not_called`/
+    `tool_args_match`) error when `AgentResponse.tool_calls_reported` is False, per ADR 0012.
+    `regex` is guarded by a length cap (`MAX_REGEX_INPUT`), not a timeout — stdlib `re` has none,
+    and a thread-based one can't be cancelled. `json_schema` validates with the `jsonschema`
+    library (now a direct, pinned `packages/core` dependency) rather than a hand-rolled
+    validator; an invalid schema is `status=error`, a failing instance is `status=fail`.
+  - `llm_rubric.py`: the agent's input/output are wrapped in `<agent_input>`/`<agent_output>`
+    tags; any literal tag text found inside that untrusted text is neutralized first, so a
+    hostile output can't forge or close the real delimiter (tested end to end against the mock
+    judge with a forged closing tag hiding a canary). The verdict is requested against
+    `JUDGE_VERDICT_SCHEMA` and parsed with one repair retry; a blocked or still-unparseable
+    response is `status=error`, never a silent pass. `LlmRubricJudge` gained `samples: int`
+    (default 1, max 10) for majority voting; any one bad sample errors the whole judgment, and
+    ties fail.
+  - `consistency.py`: scores a case (not one attempt) from `ctx.case_outputs`, mean pairwise
+    `difflib` text similarity averaged with mean pairwise embedding cosine similarity when
+    `ctx.llm` is given. A single output is trivially consistent. Feeds
+    `run_case_summaries.consistency_score` (ADR 0007); the executor (B1.7) calls it once per
+    case and is responsible for populating `case_outputs` and `ctx.llm`.
+  - Tests: 65 unit tests (`packages/core/tests/judges`), 98% coverage of the package. New test
+    helper `judgefakes.py` (pythonpath entry alongside `adapterfakes`/`apitest`/`idor`),
+    including `ScriptedLLM`, a minimal `LLMClient` double for exact control over verdicts/
+    embeddings without going through the mock provider's content heuristics.
+  - `pnpm check` and `pnpm verify` are both green (481 unit + 80 integration tests).
+
 ## Next
-- B1.5: rule judges (all 10), `llm_rubric`, consistency judge. Tool judges must honor `AgentResponse.tool_calls_reported` (ADR 0012).
+- B1.6: statistics (labels, suite CI, regression tests, SPEC.md §2 #9) + ADR.
 
 ## Decisions
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -132,6 +163,7 @@
 - Suite schema field names (judge params, `attack`/`attack_params`, `context` not `fixtures`), the attack registry's extension-point shape, anchor/alias rejection by token-scanning, and agent config validation living in `apps/api` (not `packages/core`, since the HTTP adapter itself is B1.4) ([ADR 0010](decisions/0010-suite-schema-and-agent-config.md)).
 - Adapters: errors are responses, not exceptions; a trace step union shared by runner/judges/storage/UI; `{{documents}}` + in-house JSONPath subset; strict `tool_calls` mapping; retry only what can't have reached the agent; SSRF guard as a pinned-IP httpcore backend with explicit address tables; private targets need agent + server opt-in (+ optional allowlist); Python adapter CLI-only by construction ([ADR 0012](decisions/0012-http-adapter-and-ssrf-guard.md)).
 - LLM layer: roles spread across models for per-model free-tier quotas, RPD persisted and fail-fast, one retry policy (LiteLLM retries off), USD estimates from dated paid-tier prices, LiteLLM as a lazy opt-in extra; `LLM_MODEL_DEMO_AGENT`/`LLM_MODEL_MUTATOR` renamed to `LLM_MODEL_AGENT`/`LLM_MODEL_ATTACKER` ([ADR 0011](decisions/0011-llm-layer.md)).
+- Judges: `JudgeContext` wraps `case`/`response` rather than duplicating their fields; `json_schema` validates via the `jsonschema` library (now a direct core dependency) instead of a hand-rolled validator; `regex` is guarded by a length cap, not a timeout; `llm_rubric` neutralizes literal delimiter tags found inside the untrusted output/input before wrapping them, and gained `samples: int` for majority voting; `consistency` reads `ctx.case_outputs`, populated by the executor, rather than having its own interface ([ADR 0013](decisions/0013-judges.md)).
 
 ## Known issues
 - `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 2.5 min against Neon from here: each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
