@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from agentprobe_api import agents, auth, projects, runs, suites
+from agentprobe_api import agents, auth, baselines, ci, projects, results, runs, share, suites
 from agentprobe_api.crypto import SecretBox
 from agentprobe_api.db import make_engine
 from agentprobe_api.errors import error_response, install_error_handlers
@@ -130,7 +130,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(projects.router)
     app.include_router(agents.router)
     app.include_router(suites.router)
+    # results.router's literal /runs/compare must be matched before runs.router's
+    # /runs/{run_id}, since Starlette tries routes in registration order and {run_id}'s
+    # default (str) converter would otherwise swallow "compare" as a path param.
+    app.include_router(results.router)
     app.include_router(runs.router)
+    app.include_router(baselines.router)
+    app.include_router(ci.router)
+    app.include_router(share.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

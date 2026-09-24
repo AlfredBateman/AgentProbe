@@ -125,6 +125,16 @@ def require_user(principal: CurrentPrincipal) -> Principal:
 CurrentUser = Annotated[Principal, Depends(require_user)]
 
 
+def require_api_key(principal: CurrentPrincipal) -> Principal:
+    """For CI-facing actions (`/ci/report`) that a browser session must never reach."""
+    if not principal.is_api_key:
+        raise ApiError(403, "This action requires a project API key, not a user session")
+    return principal
+
+
+CurrentApiKey = Annotated[Principal, Depends(require_api_key)]
+
+
 def _unauthenticated(message: str) -> ApiError:
     return ApiError(401, message, headers={"WWW-Authenticate": "Bearer"})
 

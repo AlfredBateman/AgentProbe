@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     run_backoff_base_s: float = 1.0
     run_stale_after_s: int = 600  # a queued/running run this quiet is resumed on startup
 
+    # Base URL of the deployed dashboard, used for links in PR comments and exports
+    # (SPEC.md §4.11-4.12). None: dashboard_url in responses is omitted.
+    public_web_url: str | None = None
+
     log_level: str = "INFO"
 
     @property
