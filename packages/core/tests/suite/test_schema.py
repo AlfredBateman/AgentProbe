@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from agentprobe_core.suite.attacks import register_attack
-from agentprobe_core.suite.schema import Case, Suite
+from agentprobe_core.suite.schema import Case, StatisticsConfig, Suite
 
 CONTAINS = {"judge": "contains", "value": "ok"}
 
@@ -33,6 +33,20 @@ def test_statistics_block_overrides() -> None:
     assert suite.statistics.min_drop == 0.1
     assert suite.statistics.permutation_draws == 500
     assert suite.statistics.bootstrap_resamples == 10_000  # untouched default
+
+
+def test_statistics_cli_overrides() -> None:
+    from_yaml = StatisticsConfig(alpha=0.01, permutation_draws=500)
+    # None = flag not given: the YAML value (or default) stays.
+    config = from_yaml.override(alpha=None, min_drop=0.1, bootstrap_resamples=None)
+    assert (config.alpha, config.min_drop, config.permutation_draws) == (0.01, 0.1, 500)
+    assert from_yaml.min_drop == 0.05  # not mutated
+
+
+@pytest.mark.parametrize("flags", [{"alpha": 1.5}, {"min_drop": 0}, {"bogus": 1}])
+def test_statistics_cli_overrides_are_validated(flags: dict[str, float]) -> None:
+    with pytest.raises(ValidationError):
+        StatisticsConfig().override(**flags)
 
 
 @pytest.mark.parametrize("runs_per_case", [0, 21])
