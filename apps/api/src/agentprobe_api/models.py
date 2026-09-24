@@ -72,12 +72,29 @@ class Project(Base):
 
 
 class ApiKey(Base):
+    """`ap_…` project keys. Only the SHA-256 and the last 4 chars are stored (ADR 0009)."""
+
     __tablename__ = "api_keys"
     id: Mapped[uuid.UUID] = _pk()
     project_id: Mapped[uuid.UUID] = _fk("projects.id")
     key_hash: Mapped[str] = mapped_column(unique=True)
+    last4: Mapped[str]
     label: Mapped[str]
+    created_at: Mapped[datetime] = _created_at()
     last_used_at: Mapped[datetime | None]
+    revoked_at: Mapped[datetime | None]
+
+
+class RefreshToken(Base):
+    """Opaque refresh tokens, stored hashed, rotated on every use (ADR 0009)."""
+
+    __tablename__ = "refresh_tokens"
+    id: Mapped[uuid.UUID] = _pk()
+    user_id: Mapped[uuid.UUID] = _fk("users.id")
+    token_hash: Mapped[str] = mapped_column(unique=True)
+    expires_at: Mapped[datetime]
+    revoked_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = _created_at()
 
 
 class Secret(Base):

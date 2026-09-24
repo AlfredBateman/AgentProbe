@@ -35,10 +35,10 @@ extend-exclude = ["apps/web"]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["agentprobe", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents"]
+known-first-party = ["agentprobe", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents", "apitest", "idor"]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101", "S106"]  # asserts; fake credentials in fixtures
+"**/tests/**" = ["S101", "S105", "S106"]  # asserts; fake credentials in fixtures
 
 [tool.mypy]
 python_version = "3.12"
@@ -52,6 +52,7 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "apps/api", "demo-agents"]
+pythonpath = ["apps/api/tests"]  # shared helpers: apitest, idor
 addopts = "--import-mode=importlib -m 'not integration and not redis and not live'"
 asyncio_mode = "auto"
 # One loop per session so the integration engine (and its warm Neon connection) is shared.

@@ -114,7 +114,7 @@ Legend:
 |---|---|---|---|
 | 1 | `PUT /suites/{id}` rewrites `test_cases`, but `run_results.case_id` points at them, so editing a suite corrupts history. | Case rows are immutable per version. Add `test_cases.suite_version` and `runs.suite_version`, unique on (suite_id, suite_version, case_key). Runs compare across versions by `case_key`. | Approved |
 | 2 | `--push` exists but there's no endpoint that accepts a locally executed run. The CLI and Action must execute locally anyway, because the agent is often on localhost in the user's CI. `/ci/report` is undefined. | `POST /projects/{id}/runs:ingest` (API key) upserts the agent and suite by name and stores the results. `GET /projects/{id}/baselines/{branch}`. `POST /ci/report` returns the verdict + PR-comment markdown. The Action posts the comment itself with `GITHUB_TOKEN`, so the API never holds GitHub tokens. | Approved |
-| 3 | The auth mechanism is only "JWT/session". Web (Vercel) and API (Render) are cross-site. | Next.js rewrites `/api/*` to FastAPI (same origin). The API sets a short-lived JWT in an httpOnly, Secure, SameSite=Lax cookie. Mutations require a JSON content type (CSRF). CLI/CI use project API keys (`ap_…`, stored as SHA-256) as Bearer tokens. | Approved |
+| 3 | The auth mechanism is only "JWT/session". Web (Vercel) and API (Render) are cross-site. | Next.js rewrites `/api/*` to FastAPI (same origin). The API sets a short-lived JWT in an httpOnly, Secure, SameSite=Lax cookie. Mutations require a JSON content type (CSRF). CLI/CI use project API keys (`ap_…`, stored as SHA-256) as Bearer tokens. **Refined by [ADR 0009](decisions/0009-session-scheme.md):** a 15-minute access cookie, plus a rotating, hashed refresh cookie with reuse detection. Cookie mutations must also carry `Origin: WEB_ORIGIN`. An SSE stream-token fallback is designed for B2.4. | Approved |
 | 4 | On a public deployment, anyone who registers spends the owner's LLM quota. Settings mentions "provider config", but there's no table for it. | Signup allowlist (`SIGNUP_ALLOWED_EMAILS`). The server key is used only through the budget guard (per-run and per-day USD caps). The public sees the demo via read-only share links. No BYOK in v1; Settings shows model config read-only. | Approved |
 | 5 | The consistency judge is per case, but `judgments.run_result_id` is per attempt. | `run_result_id` becomes nullable. Add `run_id` and `case_id`, with a check constraint that exactly one scope is set. | Approved |
 | 6 | "Shareable read-only link" has no storage. | `runs.share_token_hash`. `POST /runs/{id}/share` returns the token once; `DELETE /runs/{id}/share`; public `GET /share/{token}`. | Approved |
@@ -131,7 +131,7 @@ Legend:
 | 17 | Integration tests "via Docker Compose" aren't possible without local Docker. | Locally: a Neon test branch (`pnpm verify`). CI: service containers. `docker-compose.yml` is shipped for users and verified only in CI. | Decided |
 | 18 | The DB driver is unspecified. Neon URLs carry `sslmode` / `channel_binding`, which asyncpg rejects. | psycopg 3 async (`postgresql+psycopg://`). | Decided |
 | 19 | A pgvector column needs a fixed dimension, but the embedding model is configurable. | `EMBEDDING_DIM=768`. The embedding call requests 768 dimensions, and the mock embeds to 768. Changing it needs a migration. | Decided |
-| 20 | Rate-limit storage isn't specified. | An in-process fixed window per API key, marked `ponytail:` (single-process ceiling). Move it to Redis if the API ever scales out. | Decided |
+| 20 | Rate-limit storage isn't specified. | **Superseded by [ADR 0009](decisions/0009-session-scheme.md):** a `RateLimiter` token-bucket interface. In-memory by default (marked `ponytail:`); a Redis Lua implementation for multi-instance deployments. Limits are per API key, and per IP on register/login. Over the limit: 429 with `Retry-After`. | Decided |
 | 21 | 80% coverage on "backend core": scope and timing. | `--cov-fail-under=80` on `packages/core` + `apps/api`, enforced from B1.9 (not on the empty scaffold). | Decided |
 | 22 | React Flow for the trace timeline. | A trace is an ordered list, so React Flow is dropped for plain semantic HTML/CSS (E5). See [ADR 0005](decisions/0005-trace-timeline-no-react-flow.md). | Approved |
 | 23 | Mock LLM behaviour isn't defined. | A pure function of (role, prompt): a fixture table matched by substring, otherwise a hash-seeded default. Demo agents have a scripted mock mode, so planted flaws are deterministic. Golden tests rely on canary tokens and rule judges, so they're meaningful offline. | Decided |
@@ -162,6 +162,8 @@ Legend:
   - Every FK is covered by an index, plus `runs (suite_id, created_at)`.
 
 A1–A3 are done (2026-09-25).
+
+A4–A5 are done (2026-09-25). `refresh_tokens` table and `api_keys.last4 / created_at / revoked_at` added in migration 0002 ([ADR 0009](decisions/0009-session-scheme.md)).
 
 API additions: `POST /projects/{id}/runs:ingest`, `GET /projects/{id}/baselines/{branch}`, `POST|DELETE /runs/{id}/share`, `GET /share/{token}`, `POST /auth/logout`.
 

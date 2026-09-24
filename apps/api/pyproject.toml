@@ -6,11 +6,15 @@ requires-python = ">=3.12"
 dependencies = [
     "agentprobe-core",
     "alembic==1.20.0",
+    "argon2-cffi==25.1.0",
     "cryptography==50.0.1",
+    "email-validator==2.3.0",
     "fastapi==0.141.1",
     "pgvector==0.5.0",
     "psycopg[binary]==3.3.6",
     "pydantic-settings==2.15.0",
+    "pyjwt==2.15.0",
+    "redis==8.1.0",
     "sqlalchemy[asyncio]==2.0.54",
     "uvicorn==0.53.0",
 ]
