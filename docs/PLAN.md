@@ -4,7 +4,7 @@ Source of truth for scope: [SPEC.md](../SPEC.md). UI: [DESIGN.md](../DESIGN.md).
 
 ## 1. Build order
 
-The order you asked for was A → F. I suggest four changes, marked ★. They're applied below and still open as question Q6.
+The order you asked for was A → F. I suggested four changes, marked ★. **Approved 2026-09-25 (Q6)**, with one added requirement: `packages/core` must contain exactly one implementation of how a run executes (`execute_attempt`, `finalize_run`, `run_suite`); both the CLI's local run (D1.1) and the server runner (B2.3) call it directly and never reimplement it. B1.7 below carries this requirement.
 
 - ★ **Minimal CI moves into Phase A.** Two reasons:
   - CLAUDE.md says red CI blocks "done".
@@ -39,7 +39,7 @@ Gate: `pnpm check`.
 | B1.4 | HTTP adapter: request template, dotted-path response mapping, timeouts, retries/backoff, SSRF guard | Unit tests, including private-IP blocking |
 | B1.5 | Rule judges (all 10 in SPEC §4.5), `llm_rubric` (structured JSON verdict), consistency judge | Unit test per judge |
 | B1.6 | Statistics: labels, suite CI, regression tests (§2 #9) + ADR | Property and known-value tests |
-| B1.7 | Single-attempt executor and a concurrent multi-attempt run loop (asyncio semaphore) | Unit tests with a fake adapter |
+| B1.7 | `execute_attempt` / `finalize_run` / `run_suite`: the single implementation of how a run executes, with a concurrent multi-attempt run loop (asyncio semaphore). This is the **only** place run logic lives — the CLI (D1.1) and the server runner (B2.3) both call it, neither reimplements it. | Unit tests with a fake adapter; D1.1 and B2.3 both import it (checked by an ADR-referencing comment, not a duplicate loop) |
 | B1.8 | Golden tests: vulnerable-bot's planted flaws are all detected in mock mode | Test asserts "X of Y planted flaws detected" |
 | B1.9 | Coverage gate `--cov-fail-under=80` on core + api | `pnpm check` enforces it |
 
@@ -106,8 +106,8 @@ Gate: `pnpm check` + Playwright screenshots at 1440/810/390, compared against DE
 ## 2. Ambiguities and contradictions in SPEC.md
 
 Legend:
-- **Approved**: you decided it on 2026-09-24.
-- **Open**: waiting on you (see §5).
+- **Approved**: you decided it (2026-09-24 or 2026-09-25).
+- **Deferred**: intentionally postponed to a later phase; see the note.
 - **Decided**: low impact; I'll record an ADR when the phase starts.
 
 | # | Issue | Resolution | Status |
@@ -118,9 +118,9 @@ Legend:
 | 4 | On a public deployment, anyone who registers spends the owner's LLM quota. Settings mentions "provider config", but there's no table for it. | Signup allowlist (`SIGNUP_ALLOWED_EMAILS`). The server key is used only through the budget guard (per-run and per-day USD caps). The public sees the demo via read-only share links. No BYOK in v1; Settings shows model config read-only. | Approved |
 | 5 | The consistency judge is per case, but `judgments.run_result_id` is per attempt. | `run_result_id` becomes nullable. Add `run_id` and `case_id`, with a check constraint that exactly one scope is set. | Approved |
 | 6 | "Shareable read-only link" has no storage. | `runs.share_token_hash`. `POST /runs/{id}/share` returns the token once; `DELETE /runs/{id}/share`; public `GET /share/{token}`. | Approved |
-| 7 | `agents.secret_ref` doesn't say what it references. | Kept as SPEC wrote it. What it points to (inline ciphertext, a secrets table, or an external store) is **Q1**. | Open, blocks B2.1 |
+| 7 | `agents.secret_ref` doesn't say what it references. | A separate `secrets` table (id, project_id, ciphertext, created_at); `secret_ref` is the id of its row. Fernet encryption, key from `ENCRYPTION_KEY`, write-only, never returned or logged. See [ADR 0003](decisions/0003-secret-storage.md). | Approved |
 | 8 | Two costs are implied: the agent's own tokens/cost, and AgentProbe's judge spend. `runs.model` is also unclear. | Add `runs.judge_cost_usd`. `total_cost`/`total_tokens` are the agent's, as reported through response mapping, and nullable. `runs.model` is a user-supplied label for the agent's model (A/B compare). | Approved |
-| 9 | The statistics behind "statistically meaningful" aren't specified. | See the list after this table. | Decided (Q5 to confirm) |
+| 9 | The statistics behind "statistically meaningful" aren't specified. | See the list after this table. Approved as proposed. Every threshold (α, `min_drop`, bootstrap/permutation iteration counts) is configurable via the suite YAML and CLI flags, not hardcoded, and the small-N limitation is documented prominently in `--help` and the docs. See [ADR 0006](decisions/0006-statistics-methodology.md). | Approved |
 | 10 | `attack:` in the example is only a label, but §4.4 promises parameterized generators. | `attack` + `input` is a labelled literal case. `attack` without `input` expands library templates: `variants: N`, `mutate: true` for LLM variants, deterministic ids `<id>#<n>`, per-category default expectations that `expect` can override. | Decided |
 | 11 | Indirect injection needs injected documents, but an HTTP black box can't receive them. | An optional case field `context:` (documents) is exposed to the request template. The demo support bot also has a planted malicious tool output. | Decided |
 | 12 | The HTTP request/response mapping is unspecified, and tool-call judges need to see tool calls. | The request is a JSON template with `{{input}}` / `{{context}}`. The response uses dotted paths for `output`, `tool_calls`, `steps`, `usage`. Tool judges require the agent to report its calls; this is documented. | Decided |
@@ -133,9 +133,9 @@ Legend:
 | 19 | A pgvector column needs a fixed dimension, but the embedding model is configurable. | `EMBEDDING_DIM=768`. The embedding call requests 768 dimensions, and the mock embeds to 768. Changing it needs a migration. | Decided |
 | 20 | Rate-limit storage isn't specified. | An in-process fixed window per API key, marked `ponytail:` (single-process ceiling). Move it to Redis if the API ever scales out. | Decided |
 | 21 | 80% coverage on "backend core": scope and timing. | `--cov-fail-under=80` on `packages/core` + `apps/api`, enforced from B1.9 (not on the empty scaffold). | Decided |
-| 22 | React Flow for the trace timeline. | A trace is an ordered list, so a CSS vertical timeline is enough. Drop React Flow unless branching traces appear. | Decided (Q4 to confirm) |
+| 22 | React Flow for the trace timeline. | A trace is an ordered list, so React Flow is dropped for plain semantic HTML/CSS (E5). See [ADR 0005](decisions/0005-trace-timeline-no-react-flow.md). | Approved |
 | 23 | Mock LLM behaviour isn't defined. | A pure function of (role, prompt): a fixture table matched by substring, otherwise a hash-seeded default. Demo agents have a scripted mock mode, so planted flaws are deterministic. Golden tests rely on canary tokens and rule judges, so they're meaningful offline. | Decided |
-| 24 | Hosting cost: Render's free tier has no background workers. | Proposed: run the Arq worker inside the API process on one Render web service, with Upstash Redis and Neon. | Open (Q2) |
+| 24 | Hosting cost: Render's free tier has no background workers. | Deferred to F4 (deployment phase): decide after checking then-current free-tier terms. What's fixed now is that the worker sits behind the `QueueBackend` interface (item 15) with `inline` as the local default, so the hosting choice doesn't leak into `packages/core` or `apps/api` business logic. | Deferred to F4 |
 | 25 | The Python version was 3.11+, and the repo layout put the engine inside `apps/api`. | Python 3.12. The engine lives in `packages/core` ([ADR 0001](decisions/0001-core-package.md)). | Decided |
 
 ### #9: statistics
@@ -153,7 +153,7 @@ Legend:
 - `test_cases`: add `suite_version`; unique (suite_id, suite_version, case_key); add `context` JSONB and `call` JSONB (MCP).
 - `runs`: add `suite_version`, `judge_cost_usd`, `share_token_hash`. `model` is a user label.
 - `judgments`: `run_result_id` becomes nullable; add `run_id` and `case_id`, with a check that exactly one scope is set.
-- `agents.secret_ref`: unchanged, meaning pending (Q1).
+- **New table `secrets`**: id, project_id, ciphertext (Fernet, key from `ENCRYPTION_KEY`), created_at. Write-only via the API; never returned or logged. `agents.secret_ref` is the id of a row here. See [ADR 0003](decisions/0003-secret-storage.md).
 - `findings.embedding`: `vector(768)`.
 
 API additions: `POST /projects/{id}/runs:ingest`, `GET /projects/{id}/baselines/{branch}`, `POST|DELETE /runs/{id}/share`, `GET /share/{token}`, `POST /auth/logout`.
@@ -161,23 +161,18 @@ API additions: `POST /projects/{id}/runs:ingest`, `GET /projects/{id}/baselines/
 ## 4. DESIGN.md vs. a dashboard (ADR at E0)
 DESIGN.md describes a marketing site. These are the proposed adaptations:
 - **Type sizes.** Page titles use display-md/lg. The 85–110px sizes are for marketing only.
-- **Fonts.** GT Walsheim is proprietary. **Geist** substitutes for display (Q3); body stays Inter with the listed cv/ss features.
+- **Fonts. Approved (Q3).** GT Walsheim is proprietary. **Geist** substitutes for display, **Geist Mono** for monospace/code (YAML editor, trace payloads), **Inter Variable** stays for body with the documented cv/ss OpenType features. See [ADR 0004](decisions/0004-font-substitution.md).
 - **Status colors.** Pass/fail/flaky need danger and warning colors. They'll be added as glyph/badge-only tokens, the same way `semantic-success` is used; never as surfaces.
 - **Charts.** Series use ink, ink-muted and the gradient anchors. `accent-blue` stays reserved for links, focus and selection.
 - **Screenshot widths.** 1440 / 810 / 390. The "Mobile-XS 98px" breakpoint is treated as a typo.
+- **Trace timeline. Approved (Q4).** Plain semantic HTML/CSS, not React Flow — see item 22 above and [ADR 0005](decisions/0005-trace-timeline-no-react-flow.md).
 
-## 5. Questions for you
-1. **Q1 (blocks B2.1). What should `agents.secret_ref` reference?**
-   - (a) An inline encrypted column: Fernet with `ENCRYPTION_KEY`.
-   - (b) A separate `secrets` table: encrypted, one row per secret, with `secret_ref` as its id.
-   - (c) An external secret manager.
+## 5. Decisions (resolved 2026-09-25)
+All six blocking questions are answered. Nothing in this section is open.
 
-   I recommend (b) if you want `secret_ref` kept as a reference.
-2. **Q2. Hosting for the API and worker.** Options:
-   - Render free web service with the Arq worker embedded (proposed).
-   - A paid Render background worker.
-   - Fly.io.
-3. **Q3. Display font substitute.** Geist (proposed) or Mona Sans.
-4. **Q4. Drop React Flow** for a CSS timeline (proposed)?
-5. **Q5. The statistics method in #9.** Are the defaults (α = 0.05, `min_drop` = 0.05) and the low power at 5 runs/case acceptable?
-6. **Q6. The build-order changes marked ★ in §1.**
+1. **Q1 — `agents.secret_ref`.** A separate `secrets` table (id, project_id, ciphertext, created_at); `secret_ref` is that row's id. [ADR 0003](decisions/0003-secret-storage.md). Unblocks B2.1.
+2. **Q2 — hosting for the API and worker.** Deferred to F4, deliberately: decide after checking free-tier terms current at deploy time. The one fixed requirement, already true of the design (item 15), is that the worker stays behind the `QueueBackend` interface with `inline` as the local default — the hosting choice must never leak into `packages/core` or `apps/api` business logic.
+3. **Q3 — display font substitute.** Geist for display, Geist Mono for monospace, Inter Variable for body. [ADR 0004](decisions/0004-font-substitution.md).
+4. **Q4 — React Flow.** Dropped. Plain semantic HTML/CSS timeline (E5). Revisit only if branching multi-agent traces are added. [ADR 0005](decisions/0005-trace-timeline-no-react-flow.md).
+5. **Q5 — statistics method (#9).** Approved as proposed: Fisher exact per case with Holm correction, a paired sign-flip permutation test at suite level, a case-level bootstrap for the CI, α = 0.05, `min_drop` = 0.05. All of these are configurable via the suite YAML and CLI flags, not hardcoded, and the small-N power limitation is documented prominently (CLI `--help` and the docs). [ADR 0006](decisions/0006-statistics-methodology.md).
+6. **Q6 — build-order changes (★ in §1).** Approved, with one added requirement: `packages/core` holds exactly one implementation of how a run executes (`execute_attempt` / `finalize_run` / `run_suite`); the CLI's local run and the server runner both call it, neither reimplements it. Carried into B1.7 above.
