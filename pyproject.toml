@@ -38,7 +38,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 known-first-party = ["agentprobe", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents"]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101"]
+"**/tests/**" = ["S101", "S106"]  # asserts; fake credentials in fixtures
 
 [tool.mypy]
 python_version = "3.12"
@@ -54,7 +54,9 @@ strict = true
 testpaths = ["packages", "apps/api", "demo-agents"]
 addopts = "--import-mode=importlib -m 'not integration and not redis and not live'"
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+# One loop per session so the integration engine (and its warm Neon connection) is shared.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 markers = [
     "integration: needs the Neon test database (TEST_DATABASE_URL, ALLOW_DB_TESTS=1)",
     "redis: needs Redis; runs only in CI",
