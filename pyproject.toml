@@ -2,7 +2,7 @@
 name = "agentprobe-workspace"
 version = "0.0.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["agentprobe-core", "agentprobe", "agentprobe-api", "agentprobe-demo-agents"]
+dependencies = ["agentprobe-core[live]", "agentprobe", "agentprobe-api", "agentprobe-demo-agents"]
 
 [dependency-groups]
 dev = [
@@ -39,7 +39,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 known-first-party = ["agentprobe", "agentprobe_api", "agentprobe_core", "agentprobe_demo_agents", "apitest", "idor"]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101", "S105", "S106"]  # asserts; fake credentials in fixtures
+"**/tests/**" = ["S101", "S105", "S106", "S311"]  # asserts; fake credentials; seeded jitter
 
 [tool.mypy]
 python_version = "3.12"

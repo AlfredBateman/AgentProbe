@@ -45,7 +45,7 @@
     - rate limits (both backends);
     - an end-to-end log-capture test with SQL logging on.
   - Migration 0002 (`refresh_tokens`, `api_keys.last4/created_at/revoked_at`) applied to the Neon dev branch.
-- 2026-09-26 **B1.1: suite YAML schema; B2.1/B2.2: agents and suites CRUD** ([ADR 0010](decisions/0010-suite-schema-and-agent-config.md)):
+- 2026-09-24 **B1.1: suite YAML schema; B2.1/B2.2: agents and suites CRUD** ([ADR 0010](decisions/0010-suite-schema-and-agent-config.md)):
   - `packages/core`: a new `agentprobe_core.suite` package.
     - `judges.py`: all 10 rule-based judges + `llm_rubric` + `consistency` as a `Field(discriminator="judge")` union, `extra="forbid"`. Implementations still come later.
     - `attacks.py`: an extension-point registry (`register_attack`/`is_registered_attack`); `prompt_injection.direct` and `tool_misuse` are pre-registered placeholders for Prompt 12.
@@ -60,8 +60,24 @@
     - `tests/test_idor.py`: `PROBES`/`SNAPSHOT`/`world` extended to cover every new agents/suites endpoint.
   - Tests: 42 new `packages/core` unit tests (schema limits, judge union, YAML safety, anchor bombs, the example suite); new `apps/api` integration tests for agents and suites (`test_agents.py`, `test_suites.py`). `pnpm check` and `pnpm verify` are both green (169 unit + integration tests total).
 
+- 2026-09-24 **B1.2: LLM layer** (`packages/core/llm`, [ADR 0011](decisions/0011-llm-layer.md)):
+  - `LLMClient` protocol (`complete(messages, role, json_schema=None, …)`, `embed(texts)`) and the `Client` that implements it over a `Provider`. Roles: agent, judge, attacker, summarizer, embedding. Models come from `config/llm.yaml`, overridable with `LLM_MODEL_<ROLE>`.
+  - `mock` provider (default): deterministic; scriptable `Fixture`s (text or a whole `Completion`, e.g. a scripted safety block); a heuristic judge verdict (documented as not evidence of detection quality); 768-d fake embeddings whose cosine tracks text overlap.
+  - `litellm` provider (Gemini), live only with `RUN_LIVE=1`. A LiteLLM extra `agentprobe-core[live]==1.102.1`, imported lazily, with no network at import.
+  - Reliability:
+    - per-model RPM window (waits);
+    - per-model RPD persisted in `.agentprobe/llm-quota.json` on the Pacific day (fails with `QuotaExhausted`);
+    - full-jitter backoff honoring Retry-After / Gemini `retryDelay`;
+    - max concurrency;
+    - per-run budget (calls, tokens, estimated USD) and a per-day USD cap.
+  - Safety blocks come back as `Completion(blocked=True)`. Disk cache via `LLM_CACHE=1` (hits skip quota and budget). Pricing lives in `config/pricing.yaml`; a live client refuses to start if any configured model has no price. `EMBEDDING_DIM` is verified at startup.
+  - `scripts/smoke_gemini.py`: one completion and one embedding. Run on the dev machine on 2026-09-24:
+    - `gemini-3.5-flash-lite`: 1344 ms, 27/36 tokens, valid JSON verdict;
+    - `gemini-embedding-2`: 914 ms, dimension 768.
+  - Tests: 56 offline unit tests (limiter/backoff on a fake clock, budget, cache, mock determinism, safety blocks, error classification with fake LiteLLM callables, config), plus one `live` test (passed with `RUN_LIVE=1`).
+
 ## Next
-- B1.2: LLM layer (role → model config, mock provider, budget guard) — next unbuilt item in Phase B1.
+- B1.3: demo agents (support-bot, rag-bot, vulnerable-bot) with scripted mock mode and `CANARY-…` tokens (the format the mock judge and golden tests rely on, ADR 0011).
 
 ## Decisions
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -77,6 +93,7 @@
 - Data model conventions: UUID PKs, text+CHECK instead of PG enums, `NUMERIC(12,6)` costs, CASCADE along ownership, and every FK covered by a leading index ([ADR 0007](decisions/0007-data-model-additions.md)).
 - Neon connection config, sync migrations, rollback-per-test isolation, selector loop on Windows, CI on service containers ([ADR 0008](decisions/0008-db-connection-and-test-isolation.md)).
 - Suite schema field names (judge params, `attack`/`attack_params`, `context` not `fixtures`), the attack registry's extension-point shape, anchor/alias rejection by token-scanning, and agent config validation living in `apps/api` (not `packages/core`, since the HTTP adapter itself is B1.4) ([ADR 0010](decisions/0010-suite-schema-and-agent-config.md)).
+- LLM layer: roles spread across models for per-model free-tier quotas, RPD persisted and fail-fast, one retry policy (LiteLLM retries off), USD estimates from dated paid-tier prices, LiteLLM as a lazy opt-in extra; `LLM_MODEL_DEMO_AGENT`/`LLM_MODEL_MUTATOR` renamed to `LLM_MODEL_AGENT`/`LLM_MODEL_ATTACKER` ([ADR 0011](decisions/0011-llm-layer.md)).
 
 ## Known issues
 - `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 2.5 min against Neon from here: each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
@@ -87,3 +104,7 @@
 - The pytest run shows a `StarletteDeprecationWarning`: Starlette's TestClient wants `httpx2` instead of `httpx`. Swapping `httpx==0.28.1` for `httpx2` was blocked by a local permission rule this session. Redo it once allowed.
 - `next build` downloads Google Fonts (Inter, Geist), so it needs network access. `pnpm check` doesn't build.
 - Replacing or clearing an agent's `auth_header` orphans the old `secrets` row instead of deleting it (`ponytail:` comment in `agents.py`). Harmless (it's ciphertext, never returned) but worth a cleanup pass if the table's size ever matters.
+- This machine has a stale machine-level `CURL_CA_BUNDLE=C:\Program Files\PostgreSQL\18\ssl\certs\ca-bundle.crt` (the file doesn't exist; left by an uninstalled PostgreSQL). The live LLM provider refuses to start while it is set. Remove it from an admin PowerShell: `[Environment]::SetEnvironmentVariable('CURL_CA_BUNDLE', $null, 'Machine')`, then open a new terminal.
+- LiteLLM 1.102.1 ships a `cl100k_base` tokenizer file that fails tiktoken's hash check, so the first live import downloads the canonical file (hash-verified) into `.agentprobe/tiktoken/`. It needs network once; after that imports are offline.
+- The daily quota file (`.agentprobe/llm-quota.json`) has no cross-process lock: concurrent processes can undercount by a few requests. Move the counters to Redis/Postgres with the multi-worker runner (B2.3).
+- Free-tier RPM/RPD defaults (10/250) are placeholders: Google only shows the real per-model values in AI Studio. Set `LLM_RPM`/`LLM_RPD` in `.env` from https://aistudio.google.com/rate-limit.

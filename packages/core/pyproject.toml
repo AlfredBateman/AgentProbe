@@ -6,7 +6,12 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic==2.13.5",
     "pyyaml==6.0.2",
+    "tzdata==2026.4; sys_platform == 'win32'",  # zoneinfo has no system tz database on Windows
 ]
+
+[project.optional-dependencies]
+# Live LLM calls (Gemini via LiteLLM). Opt-in: large dependency tree, imported lazily.
+live = ["litellm==1.102.1"]
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13"]
