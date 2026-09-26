@@ -145,6 +145,7 @@ Legend:
 - **Per-case regression.** One-sided Fisher exact test, Holm-corrected, α = 0.05. **Amended (user decision, B1.6):** Holm with Tarone's modification for discrete tests, so cases that can never reach significance (e.g. unchanged 5/5) don't dilute the correction ([ADR 0014](decisions/0014-statistics-implementation.md#per-case-tests)).
 - **Suite regression.** One-sided paired sign-flip permutation test on per-case deltas: exact up to 20 cases, otherwise 10k seeded draws.
 - **When a regression is flagged.** Only when the result is significant *and* the drop is at least `min_drop` = 0.05.
+- **α is the whole verdict's budget** (amended 2026-09-26, user decision). Either the per-case family or the suite test firing is a regression, so α is split between them (`alpha_cases` and `alpha_suite`, α/2 each by default) instead of being spent in full on each, which had put the verdict's measured false-alarm rate at 6.5% against a configured 5% ([ADR 0014](decisions/0014-statistics-implementation.md#verdict)).
 - **`--fail-under`.** Applies to the point estimate.
 - **Implementation.** stdlib only (`math.comb`, `random.Random(seed)`).
 - **Known limit.** At 5 runs, a single case reaches significance only on large drops (5/5 → 1/5).

@@ -63,9 +63,12 @@ SMALL_N = (
     "Statistics: an attempt passes when every judge passes; the pass rate is the mean of "
     "per-case pass rates, with a 95% case-level bootstrap CI. A regression needs a "
     "significant drop (one-sided Fisher exact per case with Tarone-Holm, paired sign-flip "
-    "for the suite) of at least --min-drop. Small-N limit: at 5 runs per case a single case "
-    "is flagged only on a large drop (5/5 -> 1/5 or worse); at 3 runs even 3/3 -> 0/3 is "
-    "borderline (p = 0.05). Use 5 or more runs per case to gate on regressions."
+    "for the suite) of at least --min-drop. Either test firing is a regression, so --alpha "
+    "is the budget for both together and is split half and half, which is what keeps the "
+    "verdict's false-alarm rate at --alpha. Small-N limit: at 5 runs per case a single case "
+    "is flagged only on a large drop (5/5 -> 1/5 or worse); at 3 runs it can never be "
+    "flagged, since its smallest possible p (1/20) is above half of --alpha. Use 5 or more "
+    "runs per case to gate on regressions."
 )
 
 _NAME = re.compile(r"[A-Za-z0-9_.-]{1,64}")
@@ -246,7 +249,10 @@ def run(
     concurrency: Annotated[
         int | None, typer.Option(min=1, max=64, help="Attempts in flight at once.")
     ] = None,
-    alpha: Annotated[float | None, typer.Option(help="Significance level (default 0.05).")] = None,
+    alpha: Annotated[
+        float | None,
+        typer.Option(help="False-alarm budget for the whole verdict (default 0.05)."),
+    ] = None,
     min_drop: Annotated[
         float | None, typer.Option(help="Smallest pass-rate drop that counts (default 0.05).")
     ] = None,
@@ -377,7 +383,9 @@ def run(
 def compare(
     baseline: Annotated[str, typer.Argument(help="Baseline run file or baseline name.")],
     candidate: Annotated[str, typer.Argument(help="Candidate run file or baseline name.")],
-    alpha: Annotated[float | None, typer.Option(help="Significance level.")] = None,
+    alpha: Annotated[
+        float | None, typer.Option(help="False-alarm budget for the whole verdict.")
+    ] = None,
     min_drop: Annotated[float | None, typer.Option(help="Smallest drop that counts.")] = None,
     permutation_draws: Annotated[int | None, typer.Option(help="Suite-test draws.")] = None,
 ) -> None:

@@ -5,6 +5,7 @@ import random
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from agentprobe_core.stats import CaseSummary, compare_runs
 from agentprobe_core.suite.schema import StatisticsConfig
@@ -40,12 +41,24 @@ def test_single_case_hard_break_is_a_regression() -> None:
     assert report.newly_failing == ["a"]
 
 
-def test_p_value_exactly_at_alpha_is_significant() -> None:
-    # 3/3 -> 0/3: p = 1/20 exactly, and 0.05 must mean 1/20, not the float just above it.
-    report = compare_runs({"a": CaseSummary(3, 3)}, {"a": CaseSummary(0, 3)})
+def test_p_value_exactly_at_the_threshold_is_significant() -> None:
+    # 3/3 -> 0/3: p = 1/20 exactly. alpha=0.1 puts the per-case channel's own budget at
+    # 0.05, and 0.05 must mean 1/20, not the float just above it.
+    baseline, candidate = {"a": CaseSummary(3, 3)}, {"a": CaseSummary(0, 3)}
+    report = compare_runs(baseline, candidate, StatisticsConfig(alpha=0.1))
     assert report.cases[0].p_worse == 0.05
     assert report.cases[0].p_worse_threshold == 0.05
     assert report.verdict == "regression"
+
+
+def test_three_runs_cannot_flag_a_break_under_the_default_split() -> None:
+    # The documented cost of splitting alpha (ADR 0014 §Verdict): 3 runs give a smallest
+    # possible p of 1/20, above the per-case channel's 0.025 share of the default alpha.
+    report = compare_runs({"a": CaseSummary(3, 3)}, {"a": CaseSummary(0, 3)})
+    assert (report.alpha, report.alpha_cases, report.alpha_suite) == (0.05, 0.025, 0.025)
+    assert report.cases[0].p_worse == 0.05
+    assert report.cases[0].p_worse_threshold == 0.025
+    assert report.verdict == "no_change"  # use 5 or more runs per case
 
 
 def _demo_suite(flaky: bool) -> tuple[dict[str, CaseSummary], dict[str, CaseSummary]]:
@@ -76,8 +89,9 @@ def test_demo_one_refund_case_breaking_in_30_is_a_regression(flaky: bool) -> Non
     refund = next(c for c in report.cases if c.case_id == "refund-policy-basic")
     assert refund.p_worse == pytest.approx(1 / 252)
     # Unchanged 5/5 cases (min p = 1) and wobbling ones (min p >= 21/252) can't reach
-    # 0.05, so Tarone's family is just the refund case: its threshold is alpha itself.
-    assert refund.p_worse_threshold == 0.05
+    # 0.025, so Tarone's family is just the refund case: its threshold is the whole per-case
+    # budget. p = 1/252 = 0.0040 clears it with room (it would need K > 6 to fail).
+    assert refund.p_worse_threshold == 0.025
     # The suite's mean drop is below min_drop and the suite test isn't significant:
     # the per-case flag alone makes this a regression.
     assert report.suite is not None
@@ -86,11 +100,11 @@ def test_demo_one_refund_case_breaking_in_30_is_a_regression(flaky: bool) -> Non
 
 
 @pytest.mark.parametrize("cases", [5, 13, 30, 100, 500])
-@pytest.mark.parametrize("attempts", [3, 5, 10])
+@pytest.mark.parametrize("attempts", [5, 10])
 def test_one_hard_break_is_flagged_at_any_suite_size(cases: int, attempts: int) -> None:
-    # Holm could not do this beyond 12 cases at 5 runs (1/252 * 13 > 0.05), nor beyond 1
-    # case at 3 runs (1/20); Tarone drops the unchanged cases, which can never be
-    # significant, from the family.
+    # Holm could not do this beyond 12 cases at 5 runs (1/252 * 13 > 0.05); Tarone drops the
+    # unchanged cases, which can never be significant, from the family. 3 runs are excluded:
+    # their smallest p (1/20) is above the split per-case budget (see the test above).
     baseline = {f"c{i}": CaseSummary(attempts, attempts) for i in range(cases)}
     candidate = baseline | {"c0": CaseSummary(0, attempts)}
     report = compare_runs(baseline, candidate)
@@ -163,13 +177,54 @@ def test_significant_drop_below_min_drop_is_not_flagged() -> None:
 
 
 def test_drop_exactly_min_drop_is_flagged() -> None:
-    # 5 of 20 cases drop by 0.2: mean drop is exactly 0.05 (in floats, 0.2 * 5 / 20 isn't).
-    baseline = run(*[(5, 5)] * 20)
-    candidate = run(*[(4, 5)] * 5 + [(5, 5)] * 15)
+    # 6 of 24 cases drop by 0.2: the mean drop is exactly 0.05, which floats get wrong
+    # (6 * (4/5 - 5/5) / 24 is 0.049999999999999996, just under min_drop).
+    baseline = run(*[(5, 5)] * 24)
+    candidate = run(*[(4, 5)] * 6 + [(5, 5)] * 18)
     report = compare_runs(baseline, candidate)
+    assert 6 * (4 / 5 - 5 / 5) / 24 < 0.05  # the float trap this test guards against
     assert report.suite is not None
-    assert report.suite.p_worse == pytest.approx(1 / 32)
+    assert report.suite.pass_rate_delta == -0.05
+    assert report.suite.p_worse == pytest.approx(1 / 64)  # <= alpha_suite (0.025)
     assert report.verdict == "regression"
+
+
+def test_the_budget_can_be_spent_unevenly() -> None:
+    # 3/3 -> 0/3 has p = 1/20, so flagging it needs a per-case channel at 0.05. Spending the
+    # budget mostly on that channel buys it back; both shares are reported.
+    baseline, candidate = {"a": CaseSummary(3, 3)}, {"a": CaseSummary(0, 3)}
+    config = StatisticsConfig(alpha=0.06, alpha_cases=0.05, alpha_suite=0.01)
+    report = compare_runs(baseline, candidate, config)
+    assert (report.alpha, report.alpha_cases, report.alpha_suite) == (0.06, 0.05, 0.01)
+    assert report.cases[0].p_worse_threshold == 0.05
+    assert report.verdict == "regression"
+
+
+def test_the_two_channels_cannot_overspend_the_budget() -> None:
+    # Guards the verdict's bound: two alpha-level channels OR'd together are 2 * alpha.
+    with pytest.raises(ValidationError, match="more than alpha"):
+        StatisticsConfig(alpha_cases=0.05, alpha_suite=0.05)
+    # Exactly the budget is fine, and 0.025 + 0.025 must count as exactly 0.05.
+    assert StatisticsConfig(alpha_cases=0.025, alpha_suite=0.025).alpha == 0.05
+    # An unset channel always takes half of alpha, so setting only one can overspend.
+    with pytest.raises(ValidationError, match="more than alpha"):
+        StatisticsConfig(alpha_suite=0.05)
+    # Raising alpha is how you buy power for both channels.
+    wide = StatisticsConfig(alpha=0.1)
+    assert (wide.cases_alpha, wide.suite_alpha) == (0.05, 0.05)
+
+
+def test_suite_and_case_channels_are_judged_separately() -> None:
+    # A suite-level drop that clears 0.05 but not 0.025: significant only if the suite
+    # channel is given the wider budget, and no case is individually significant either way.
+    baseline = run(*[(5, 5)] * 20)
+    candidate = run(*[(4, 5)] * 5 + [(5, 5)] * 15)  # p_worse = 1/32 = 0.031, drop 0.05
+    assert compare_runs(baseline, candidate).verdict == "no_change"
+    config = StatisticsConfig(alpha=0.06, alpha_cases=0.01, alpha_suite=0.05)
+    generous = compare_runs(baseline, candidate, config)
+    assert generous.suite is not None and generous.suite.p_worse == pytest.approx(1 / 32)
+    assert generous.regressed == []  # the flag came from the suite test alone
+    assert generous.verdict == "regression"
 
 
 def test_alpha_from_config() -> None:
@@ -331,9 +386,10 @@ def test_a_run_compared_with_itself_never_changes(
 
 
 def test_false_alarm_rate_under_no_change_is_bounded() -> None:
-    # Calibration: 30 cases x 5 runs, 20% flaky, the agent unchanged. The verdict's
-    # documented bound is 2 * alpha (per-case family + suite test); scripts/
-    # measure_false_alarms.py reports the measured rate in docs/metrics.md.
+    # Calibration: 30 cases x 5 runs, 20% flaky, the agent unchanged. Splitting alpha over
+    # the per-case family and the suite test bounds the verdict at alpha itself;
+    # test_family_wise_error.py checks that across sizes and flakiness levels, and
+    # scripts/measure_false_alarms.py reports the measured rates in docs/metrics.md.
     rng = random.Random(14)
 
     def sample(rates: list[float]) -> dict[str, CaseSummary]:
@@ -347,4 +403,4 @@ def test_false_alarm_rate_under_no_change_is_bounded() -> None:
     for _ in range(trials):
         rates = [1.0] * 22 + [0.0] * 2 + [rng.uniform(0.5, 0.95) for _ in range(6)]
         false_alarms += compare_runs(sample(rates), sample(rates)).verdict == "regression"
-    assert false_alarms / trials <= 0.10
+    assert false_alarms / trials <= StatisticsConfig().alpha

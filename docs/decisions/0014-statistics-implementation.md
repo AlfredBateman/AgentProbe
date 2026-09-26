@@ -1,6 +1,8 @@
 # 0014: Statistics implementation
 
-Status: accepted (2026-09-24). Amended the same day: the per-case correction is Tarone–Holm, not plain Holm (user decision, see [Per-case tests](#per-case-tests)).
+Status: accepted (2026-09-24). Amended twice, both user decisions:
+- 2026-09-24: the per-case correction is Tarone–Holm, not plain Holm (see [Per-case tests](#per-case-tests)).
+- 2026-09-26: `alpha` is the budget for the whole verdict and is split over the per-case family and the suite test, so the verdict's false-alarm rate is held at `alpha` instead of 2·`alpha` (see [Verdict](#verdict)).
 
 ## Context
 [ADR 0006](0006-statistics-methodology.md) picked the methods (approved in PLAN.md §2 #9 / Q5): a case-level bootstrap CI for the suite pass rate, one-sided Fisher exact tests with Holm correction per case, a paired sign-flip permutation test at suite level, and a flag only when a drop is significant at `alpha` and at least `min_drop`. B1.6 implements them in `packages/core/stats`.
@@ -78,7 +80,7 @@ The percentile cluster bootstrap is known to under-cover when there are few clus
 
 The problem with plain Holm on Fisher tests: Fisher tests are discrete, and many can never reach significance at all. An unchanged 5/5 → 5/5 case has only one possible table given its margins, so its smallest achievable p is 1. Holm still counts it, dividing `alpha` by every compared case. At 5 runs and 13 or more cases, that made a single broken case (5/5 → 0/5, p = 1/252) impossible to flag.
 
-**Procedure** (`significance.tarone_holm`):
+**Procedure** (`significance.tarone_holm`), run at `alpha_cases` (the per-case channel's share of the budget; `alpha` below means that share):
 1. For each case, Fisher also returns the smallest p its margins allow (`min_p_worse` / `min_p_better`). That is P(X = the lowest / highest value the margins permit).
 2. Tarone's K for a set S of hypotheses is the smallest K ≥ 1 with #{i ∈ S : min_p_i ≤ `alpha`/K} ≤ K. Hypotheses that can't reach `alpha`/K don't count towards the correction.
 3. Step-down: sort by p. At each step, compute K over the hypotheses not yet rejected, and reject while p ≤ `alpha`/K. Stop at the first p that isn't.
@@ -122,23 +124,30 @@ This is the step-down form described by Hommel & Krummenauer (1998, *Biometrics*
 
 ### Verdict
 **Rule.**
-- `regression` if at least one case is flagged worse, or the suite is. A case is flagged when the Tarone–Holm step-down rejects it at `alpha` AND its own pass rate dropped by at least `min_drop`.
+- `regression` if at least one case is flagged worse, or the suite is. A case is flagged when the Tarone–Holm step-down rejects it at `alpha_cases` AND its own pass rate dropped by at least `min_drop`.
 - **A flagged case is enough on its own**, even when the suite's mean drop is below `min_drop` and the suite test isn't significant. One broken case in 30 moves the suite mean by only 1/30 = 0.033.
-- The demo scenario is a test (`test_demo_one_refund_case_breaking_in_30_is_a_regression`), with and without flaky cases around it: support-bot v2's refund case goes 5/5 → 0/5 in a 30-case suite. The verdict is `regression`, the refund case is compared against `alpha` itself (K = 1), the suite drop is under `min_drop`, and the suite test isn't significant.
+- The demo scenario is a test (`test_demo_one_refund_case_breaking_in_30_is_a_regression`), with and without flaky cases around it: support-bot v2's refund case goes 5/5 → 0/5 in a 30-case suite. The verdict is `regression`, the refund case is compared against the whole per-case budget (K = 1, threshold 0.025, p = 1/252 = 0.0040), the suite drop is under `min_drop`, and the suite test isn't significant. The split leaves room here: this case would stay flagged up to K = 6.
 - Otherwise `improvement` if any case or the suite is flagged better, by the mirror rule.
 - Otherwise `no_change`.
 - A regression wins over an improvement, because a regression is what a CI gate has to catch.
 
-**Error rate: what is proven, and what isn't.**
-- **The per-case family's false-alarm rate is at most `alpha`.** This follows from the argument above, and is checked two ways:
-  - *Exactly*, by enumerating every joint outcome for small families (up to 3 cases at up to 4 runs from Hypothesis-drawn true rates, plus 3 cases at 5 runs). For example, true rates 1/2, 9/10 and 19/20 at 5 runs give exactly 1.10%.
-  - *By seeded simulation* (`test_family_wise_error.py`, 1,000 trials per cell): suite sizes 5, 13, 30 and 100 × 20% / 50% / 100% flaky, every case at a different true rate (0.05–0.95), and every case a coin flip, plus 3 and 10 runs per case. The test requires the upper 97.5% Wilson bound of each measured rate to be at or below `alpha`, so passing isn't luck of the seed. The highest measured rate is 3.2%, with an upper bound of 4.5%.
-- **The whole verdict is not held at `alpha`.** It adds the suite test, which is also held at `alpha`, so its worst case is 2·`alpha` (union bound).
-  - In the realistic reference scenario it stays low: 2.3%.
-  - On heavily flaky suites it exceeds `alpha`. [docs/metrics.md](../metrics.md) measures up to 6.5% (100 cases each at its own true rate) and 6.2% (30 or 100 cases, all flaky or all coin flips).
-  - The calibration unit test pins it at ≤ 2·`alpha`.
-  - Holding the verdict itself at `alpha` would mean splitting `alpha` between the family and the suite test (for example `alpha`/2 each). That changes the approved method, so it is left for a decision.
-  - The cost of a split, worked out analytically: at 5 runs a single break (p = 1/252) would still be flagged, but at 3 runs (p = 1/20) it never could be.
+**The `alpha` budget is split over the two channels (amended 2026-09-26, user decision).**
+
+A verdict fires when the per-case family OR the suite test fires. Running both at `alpha` made the verdict's own false-alarm rate as high as 2·`alpha` by the union bound, and the simulation measured 6.5% against a configured 5% — so the number users actually gate on was not the number they configured.
+
+`alpha` is now the budget for the **verdict**, split between the channels by Bonferroni:
+- `alpha_cases` (default `alpha`/2) is what the Tarone–Holm step-down is run at;
+- `alpha_suite` (default `alpha`/2) is what the sign-flip p-value is compared against;
+- each is a `StatisticsConfig` field, so a suite can spend the budget unevenly (all of it on the per-case family, say). Their sum may not exceed `alpha`; the config refuses it, since that is exactly the bound being claimed. Raising `alpha` is how to buy power for both.
+
+Why a plain Bonferroni split rather than something sharper: the two channels are strongly dependent (both read the same per-case deltas), so the union bound is loose and the true rate lands well under `alpha`. A sharper split would need the dependence structure, which varies with the suite's flakiness and size. Bonferroni needs no assumptions and is conservative in the safe direction, and `docs/metrics.md` measures how much is left on the table.
+
+**Error rate: what is proven, and what is measured.**
+- **The verdict's false-alarm rate is at most `alpha`.** Each channel holds its own rate at its share (below), and a verdict is their union, so the total is at most `alpha_cases` + `alpha_suite` = `alpha`. Measured across suite sizes 5/13/30/100 and five flakiness levels in `test_family_wise_error.py` and `docs/metrics.md`.
+- **The per-case family's false-alarm rate is at most `alpha_cases`.** This follows from the argument above with `alpha_cases` in place of `alpha`, and is checked two ways:
+  - *Exactly*, by enumerating every joint outcome for small families (up to 3 cases at up to 4 runs from Hypothesis-drawn true rates, plus 3 cases at 5 runs). These drive `tarone_holm` at a given level, so they prove the procedure for any budget it is handed; at 0.05, true rates 1/2, 9/10 and 19/20 with 5 runs give exactly 1.10%.
+  - *By seeded simulation* (`test_family_wise_error.py`, 1,000 trials per cell) at the shipped `alpha_cases` of 0.025: suite sizes 5, 13, 30 and 100 × 20% / 50% / 100% flaky, every case at a different true rate (0.05–0.95), and every case a coin flip, plus 3 and 10 runs per case. The highest rate measured across that grid is 1.5%.
+- **The suite test's false-alarm rate is at most `alpha_suite`.** The sign-flip test is exact conditional on the observed |deltas|: with equal attempts per case each delta is symmetric about 0, so under the null its sign is ±1 with probability 1/2 independently of its size, which is precisely the permutation null. The `min_drop` filter only removes flags. Measured at 2.1% (5,000 trials, 100 coin-flip cases) against a budget of 2.5%.
 
 **Label-transition lists** (`newly_failing`, `newly_passing`, `newly_flaky`, `no_longer_flaky`) are descriptive and can overlap. For example, flaky → stable-fail appears in both `newly_failing` and `no_longer_flaky`.
 
@@ -165,16 +174,23 @@ This is the step-down form described by Hommel & Krummenauer (1998, *Biometrics*
 
 At 5 runs and 30 cases, Holm never flagged a deterministic break of one case (5/5 → 0/5). The suite test couldn't catch it either, because one changed case gives a sign-flip p of 1/2. Measured detection was 4.1%.
 
-**With Tarone–Holm.** Unchanged deterministic cases (min p = 1) leave the family, so a single break is flagged at any suite size. A test covers 5 to 500 cases at 3, 5 and 10 runs. Measured in [docs/metrics.md](../metrics.md), reference scenario:
+**With Tarone–Holm.** Unchanged deterministic cases (min p = 1) leave the family, so a single break is flagged at any suite size. A test covers 5 to 500 cases at 5 and 10 runs. Measured in [docs/metrics.md](../metrics.md), reference scenario:
 
-| | Holm | Tarone–Holm |
-|---|---|---|
-| One broken case detected | 4.1% | 100% |
-| Three cases turning flaky detected | 20.2% | 38.5% |
-| False alarms | 0.7% | 2.3% |
+| | Holm | Tarone–Holm at `alpha` | Tarone–Holm, `alpha` split (shipped) |
+|---|---|---|---|
+| One broken case detected | 4.1% | 100% | **100%** |
+| Three cases turning flaky detected | 20.2% | 38.5% | 21.1% |
+| Every case 10% worse detected | 85.8% | 86.0% | 77.7% |
+| False alarms | 0.7% | 2.3% | **0.9%** |
+| Worst verdict false alarms, calibration grid | — | 6.5% (above `alpha`) | **2.8%** |
+
+**What the split costs, measured** (it was predicted analytically here before the change, and the prediction held):
+- **At 5 runs the demo break is unaffected.** One case going 5/5 → 0/5 (p = 1/252 = 0.0040) is still compared against the whole 0.025 per-case budget, because Tarone drops every unchanged case from the family. Detection stays 100% at 10 and 30 cases. It would take K > 6 competing cases to lose it.
+- **At 100 cases it slips to 99.2%** (from 100%): with 20 flaky cases, some draws put six or more of them within reach of 0.025, so K reaches 7 and the threshold (0.0036) falls below p.
+- **At 3 runs a single break can no longer be flagged** (38.4% → 0.5%, the remainder coming from the suite channel). Its smallest possible p is 1/20, above the 0.025 share. This is the one real loss, and the reason the CLI's `--help` tells users to run 5 or more times.
 
 **Remaining limits, documented and tested:**
-- **At 3 runs per case**, a break has p = 1/20, exactly `alpha`. Any other case whose margins can reach `alpha` pushes K to 2 or more, so detection is 38.4% in the reference mix of flaky cases. Use 5 or more runs.
+- **At 3 runs per case**, a break has p = 1/20, twice the default per-case share, so it can never be flagged. Use 5 or more runs.
 - **A case that only turns flaky** (5/5 → 3/5, p = 56/252) is weak evidence at 5 runs whatever the correction. More runs per case, or several cases moving together, are what catch it.
 - **1 or 2 attempts per case** can never flag a case. The smallest p values there are 1/2 and 1/6.
 
@@ -182,6 +198,7 @@ At 5 runs and 30 cases, Holm never flagged a deterministic break of one case (5/
 - The executor (B1.7) builds one `CaseSummary` per case. `run_case_summaries` maps onto it column for column: `passes`, `attempts`, `pass_rate`, `label`, `mean_score`, `mean_latency_ms` and `total_cost` (as `cost_usd`).
 - All outputs are frozen dataclasses. `dataclasses.asdict` makes them JSON-ready for the compare endpoint (B2.5) and the CLI.
 - `compare_cases()` runs the per-case family on its own. `compare_runs()` uses it, and the family-wise error test calls it directly.
-- `test_family_wise_error.py` adds about 12 s to `pnpm check`. That is the price of a seeded proof across 24 scenarios, which the user asked to be a test rather than only a script.
+- `test_family_wise_error.py` adds about 21 s to `pnpm check` (12 s before it also measured the suite channel and the combined verdict). That is the price of a seeded proof across 24 scenarios, which the user asked to be a test rather than only a script. It drives `compare_runs` once per trial and reads all three rates off the one report, rather than simulating each channel separately.
+- The per-cell bar is the point estimate for the combined verdict and the Wilson upper bound for each channel. At 1,000 trials a Wilson bound on a ~3% rate reaches ~4.8%, so asserting it per cell against `alpha` would make the test a coin flip; a pooled bound over all 20 cells (20,000 trials) supplies the confidence instead.
 - Hypothesis (`hypothesis==6.168.1`) is a workspace dev dependency. `packages/core/tests/stats/conftest.py` loads a derandomized profile with no example database and no deadline, so the property tests are deterministic.
 - `scripts/measure_false_alarms.py` and [docs/metrics.md](../metrics.md) measure the false-alarm rate and the detection power. They are the source for the SPEC.md §15 metric.

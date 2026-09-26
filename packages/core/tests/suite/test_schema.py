@@ -48,6 +48,23 @@ def test_statistics_cli_overrides_are_validated(flags: dict[str, float]) -> None
         StatisticsConfig().override(**flags)
 
 
+def test_overriding_alpha_resplits_the_budget() -> None:
+    # The channel shares are stored as "unset" rather than resolved, so raising alpha with
+    # --alpha widens both halves instead of leaving them at the old alpha's split.
+    config = StatisticsConfig().override(alpha=0.1)
+    assert (config.alpha, config.cases_alpha, config.suite_alpha) == (0.1, 0.05, 0.05)
+    # An explicit share survives an alpha override (as long as it still fits the budget).
+    pinned = StatisticsConfig(alpha=0.1, alpha_cases=0.09, alpha_suite=0.01).override(alpha=0.2)
+    assert (pinned.cases_alpha, pinned.suite_alpha) == (0.09, 0.01)
+
+
+def test_a_statistics_block_without_the_channel_shares_still_parses() -> None:
+    # Run files and suite YAML written before the split carry only `alpha` (ADR 0014).
+    old = StatisticsConfig.model_validate({"alpha": 0.05, "min_drop": 0.05})
+    assert (old.cases_alpha, old.suite_alpha) == (0.025, 0.025)
+    assert StatisticsConfig.model_validate_json(old.model_dump_json()) == old
+
+
 @pytest.mark.parametrize("runs_per_case", [0, 21])
 def test_runs_per_case_bounds(runs_per_case: int) -> None:
     with pytest.raises(ValidationError):

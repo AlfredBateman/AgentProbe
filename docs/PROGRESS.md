@@ -194,7 +194,7 @@ A phase is complete only when every task in it is done.
   - **The per-case family's error rate is proven at or below `alpha`** in two ways:
     - exactly, by enumerating all outcomes for small families (Hypothesis-drawn true rates, up to 3 cases × 4 runs, plus 3 cases × 5 runs);
     - by a seeded simulation test (`test_family_wise_error.py`) over sizes 5/13/30/100 × 20%/50%/100% flaky, a different true rate per case, and all coin flips, plus 3 and 10 runs. Each cell's 97.5% Wilson upper bound must be ≤ `alpha`; the maximum measured is 3.2%.
-  - [docs/metrics.md](metrics.md): the new honest headline is **70.6% → 2.3% false alarms, a 96.7% reduction**, with single-break detection going from 4.1% (Holm) to 100%. Holm and Tarone–Holm are shown side by side in every scenario. A null calibration grid separates the per-case family from the whole verdict. The simulation parameters were unchanged.
+  - [docs/metrics.md](metrics.md): the new honest headline is **70.6% → 2.3% false alarms, a 96.7% reduction** (superseded by the 2026-09-26 `alpha` split below: 70.6% → 0.9%, a 98.7% reduction), with single-break detection going from 4.1% (Holm) to 100%. Holm and Tarone–Holm are shown side by side in every scenario. A null calibration grid separates the per-case family from the whole verdict. The simulation parameters were unchanged.
   - Tests: 80 new or rewritten across stats and judges. `pnpm check` (655 unit tests) and `pnpm verify` are green.
 
 - 2026-09-24 **Regex judge hardening** ([ADR 0015](decisions/0015-regex-judge-hardening.md), supersedes ADR 0013's regex bullet):
@@ -299,11 +299,19 @@ A phase is complete only when every task in it is done.
   - Dead code removed: `McpAgentConfig` (C3/Prompt 14 defines MCP config), the mutable attack registry (now `ATTACKS`, a frozenset), the runner's direct `REGISTRY` use (it calls `judges.evaluate()`, and its `judges` parameter is gone; tests patch the registry), the `load_attempts`/`read_attempts` duplicate query, test-only re-exports in `adapters/__init__.py`, and the unreachable read-back branch in `baselines.py`. Kept by decision: `PythonAgentConfig`, `suite_json_schema()`, `CiReportOut.top_findings`, and `ci.py`'s redundant project-ownership check.
   - Tests: python-adapter run pushed through the CLI's own push code and compared with its own baseline, next to a registered agent's baseline on the same suite and branch; agent identity (neither/both/registered name); each suite keeps its own baseline; the new CHECK and `NULLS NOT DISTINCT` constraints; `--push` payload, exit codes, and checks before running; `obfuscate`/`attack_params` refusal.
 
+- 2026-09-26 **`alpha` split over the two regression channels** (user decision, resolving the open question ADR 0014 §Verdict left; [ADR 0014](decisions/0014-statistics-implementation.md#verdict) and [ADR 0006](decisions/0006-statistics-methodology.md) amended, PLAN.md §2 #9 annotated):
+  - **The bug:** a verdict fires when the per-case family OR the suite test fires, and each ran at the full `alpha`, so the verdict's real false-alarm rate was bounded only by 2·`alpha`. The calibration grid measured **6.5% against a configured 5%** — the number users gate on was not the number they configured.
+  - **The fix:** `alpha` is the verdict's budget, split by Bonferroni into `alpha_cases` and `alpha_suite` (`alpha`/2 each by default, both `StatisticsConfig` fields so a suite can spend it unevenly). Their sum may not exceed `alpha`; the config refuses it, since that is the bound being claimed. `RegressionReport` reports both shares, and the CLI prints them next to `alpha`.
+  - **Measured after the fix** (`scripts/measure_false_alarms.py`, 5,000 trials per cell): worst verdict false alarms over the calibration grid **2.8%** (was 6.5%); reference-scenario false alarms 2.3% → **0.9%**, so the reduction against a naive single-run check improves to **98.7%** (was 96.7%). Each channel stays inside its own 0.025 share (per-case family at most 1.5%, suite test 2.7%).
+  - **The single-case demo is unaffected, as asked:** support-bot v1 vs v2 with one refund case going 5/5 → 0/5 in a 30-case suite is still `regression`, detected on **100.0%** of simulated runs. Its p = 1/252 = 0.0040 is compared against the whole 0.025 per-case budget (Tarone drops the unchanged cases, K = 1); it would take K > 6 to lose it.
+  - **What it costs, measured rather than assumed:** at 3 runs per case a single break falls from 38.4% to **0.5%** (its smallest possible p, 1/20, is above 0.025 — predicted analytically in ADR 0014 before the change); at 100 cases 100% → 99.2%; three cases turning flaky 38.5% → 21.1%; a 10% across-the-board degradation 86.0% → 77.7%. The CLI's `--help` now states the 3-run limit instead of calling it "borderline".
+  - `test_family_wise_error.py` now drives `compare_runs` once per trial and reads all three rates off one report: each channel's bound and **the combined verdict at or below `alpha`**, across sizes 5/13/30/100 × five flakiness levels, plus a pooled bound over all 20 cells. It costs 21 s (was 12 s). Six existing tests changed where the halved budgets moved a boundary; each kept its original purpose (for example the `min_drop` exactness test moved to 24 cases with 6 dropping, so its suite p clears 0.025 while the mean drop is still exactly 0.05).
+
 ## Next
 - **B1.8: golden tests** (the last open B1 task). Fill in `demo-agents/vulnerabilities.json` `suite_case_ids` (the smoke suite covers 5 of the 7 planted flaws; instruction injection and RAG indirect injection need cases with `context`).
 - D2.1 (rest): remote `compare <a> <b>` and `--baseline <branch>` against server baselines.
+- Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, once B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 - C4: failure clustering (`GET /runs/{id}/findings`, populating `top_findings` in `/ci/report`'s response — currently always empty).
-- Decision needed (ADR 0014 §Verdict, docs/metrics.md): the whole verdict (per-case family + suite test) is bounded by 2·`alpha`, not `alpha`. It measures up to 6.5% on heavily flaky suites, while the per-case family stays at or below `alpha`. Option: split `alpha` between the two (for example `alpha`/2 each). At 5 runs a single break would still be flagged; at 3 runs it never could be.
 
 ## Decisions
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -323,13 +331,14 @@ A phase is complete only when every task in it is done.
 - LLM layer: roles spread across models for per-model free-tier quotas, RPD persisted and fail-fast, one retry policy (LiteLLM retries off), USD estimates from dated paid-tier prices, LiteLLM as a lazy opt-in extra; `LLM_MODEL_DEMO_AGENT`/`LLM_MODEL_MUTATOR` renamed to `LLM_MODEL_AGENT`/`LLM_MODEL_ATTACKER` ([ADR 0011](decisions/0011-llm-layer.md)).
 - Judges: `JudgeContext` wraps `case`/`response` rather than duplicating their fields; `json_schema` validates via the `jsonschema` library (now a direct core dependency) instead of a hand-rolled validator; `regex` was guarded by a length cap, not a timeout (superseded by ADR 0015, below); `llm_rubric` neutralizes literal delimiter tags found inside the untrusted output/input before wrapping them, and gained `samples: int` for majority voting; `consistency` reads `ctx.case_outputs`, populated by the executor, rather than having its own interface ([ADR 0013](decisions/0013-judges.md)).
 
+- `alpha` is the whole verdict's false-alarm budget, split over the per-case family and the suite test (`alpha_cases`/`alpha_suite`, `alpha`/2 each by default, sum capped at `alpha`). Before this, each channel spent the full `alpha` and the verdict's measured rate reached 6.5% against a configured 5% ([ADR 0014](decisions/0014-statistics-implementation.md#verdict), user decision 2026-09-26).
 - Statistics implementation ([ADR 0014](decisions/0014-statistics-implementation.md)):
   - The case is the resampling unit (within-case correlation).
   - A Wilson floor for degenerate bootstraps.
   - One-sided Fisher tests; a Tarone–Holm step-down per case (user decision), with worse and better as separate families. Thresholds are reported, not adjusted p-values.
   - Exact sign-flip by dynamic programming (exact beyond ADR 0006's 20 cases when cheap), with a Monte Carlo fallback.
   - Exact rational threshold comparisons.
-  - One flagged case is a regression even when the suite drop is below `min_drop`. Regression wins the verdict. The per-case family is held at `alpha`; the whole verdict at 2·`alpha` (union bound).
+  - One flagged case is a regression even when the suite drop is below `min_drop`. Regression wins the verdict. `alpha` is the verdict's budget, split over the per-case family and the suite test (`alpha_cases`/`alpha_suite`, half each by default), so the verdict's own rate is held at `alpha` (amended 2026-09-26).
   - Only shared cases are compared.
   - Cost deltas are per attempt.
 - Server runner ([ADR 0017](decisions/0017-server-runner-and-queue.md)):
@@ -367,11 +376,11 @@ A phase is complete only when every task in it is done.
 - Attack ids are a constant (`ATTACKS`) until C1; `obfuscate`/`attack_params` are refused like `mutations`; the API's agent config is `http` | `python` until C3 (ADR 0010 and 0016 amendments).
 
 ## Known issues
-- Statistics power (ADR 0014 §Power):
-  - At 3 runs per case, a single break has p = 1/20 = `alpha` and is detected only 38.4% of the time (any other case able to reach `alpha` raises K). Use 5 or more runs.
-  - A case that only turns flaky (5/5 → 3/5) is weak evidence at 5 runs.
-- The whole verdict's false-alarm rate can exceed `alpha` on heavily flaky suites: up to 6.5% measured, 2·`alpha` bound. See Next.
-- `test_family_wise_error.py` adds about 12 s to `pnpm check` (24 seeded cells × 1,000 trials).
+- Statistics power (ADR 0014 §Power), all measured after the `alpha` split:
+  - At 3 runs per case a single broken case can never be flagged: its smallest possible p (1/20) is above the default per-case budget of 0.025, so detection is 0.5%. **Use 5 or more runs**; the CLI's `--help` and [docs/metrics.md](metrics.md) say so.
+  - At 100 cases a single break is missed on 0.8% of runs (7+ flaky cases can come within reach of 0.025 and raise Tarone's K). At 10 and 30 cases it is 100%.
+  - A case that only turns flaky (5/5 → 3/5) is weak evidence at 5 runs: three of them are detected 21.1% of the time (66.9% at 10 runs).
+- `test_family_wise_error.py` adds about 21 s to `pnpm check` (24 seeded cells × 1,000 trials, now through `compare_runs` so it measures both channels and the verdict).
 - The regex judge blocks the event loop for up to 0.25 s per attempt when a pattern times out. A suite that times out everywhere costs that on every attempt. Neither B1.7 nor B2.3 added a run-level time budget; add one (or fail a pattern fast after its first timeout in a run) if it shows.
 - `agentprobe run` with `llm.provider: litellm` outside the repo root fails with exit 3 ("config/llm.yaml not found"): the live LLM config is read from `AGENTPROBE_CONFIG_DIR` (default `config/`). A pip-installed CLI needs the model/pricing config shipped as package data before live judging works outside the repo (F6).
 - The CLI stops at the first infrastructure error (ADR 0016), but that first attempt still spends its full retry budget. On Windows a refused localhost connect takes about 2 s, so a down agent costs about 20 s before exit 4.
