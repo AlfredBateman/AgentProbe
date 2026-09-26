@@ -283,7 +283,8 @@ def test_attack_only_cases_are_refused_until_expansion_is_wired_into_execution()
     write_suite(suite(cases=[case]))
     result = invoke("run", "suite.yaml")
     assert result.exit_code == 3
-    assert "isn't wired into run execution yet" in result.output
+    # Rich wraps the error to the terminal width; match the words, not the line breaks.
+    assert "isn't wired into run execution yet" in " ".join(result.output.split())
 
 
 # --- infrastructure errors: exit 4 ---------------------------------------------------------
