@@ -56,6 +56,11 @@ warn_unused_ignores = true
 module = ["agentprobe_core", "agentprobe_core.*"]
 strict = true
 
+[tool.coverage.run]
+# SQLAlchemy's asyncio layer runs on greenlets. Without this, coverage loses track at the
+# first database `await` and reports most of every endpoint as never run.
+concurrency = ["thread", "greenlet"]
+
 [tool.pytest.ini_options]
 testpaths = ["packages", "apps/api", "demo-agents"]
 pythonpath = ["apps/api/tests", "packages/cli/tests", "packages/core/tests/adapters", "packages/core/tests/judges"]  # helpers: apitest, idor, cli_agents, adapterfakes, judgefakes

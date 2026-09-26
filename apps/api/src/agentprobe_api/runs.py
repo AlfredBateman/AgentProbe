@@ -64,7 +64,8 @@ class RunOut(BaseModel):
     id: uuid.UUID
     suite_id: uuid.UUID
     suite_version: int
-    agent_id: uuid.UUID
+    agent_id: uuid.UUID | None  # None: an unregistered agent, named by agent_name (ADR 0020)
+    agent_name: str | None
     status: str
     model: str | None
     git_sha: str | None

@@ -17,7 +17,8 @@ from adapterfakes import (
     http_response,
     static_resolver,
 )
-from agentprobe_core.adapters import AddressClass, HttpAdapterConfig, TargetPolicy, classify
+from agentprobe_core.adapters import HttpAdapterConfig, TargetPolicy
+from agentprobe_core.adapters.ssrf import AddressClass, classify
 
 BLOCKED_CLASSES = {
     "unspecified": ["0.0.0.0", "0.1.2.3", "::"],  # noqa: S104

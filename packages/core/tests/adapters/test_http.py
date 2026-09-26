@@ -13,19 +13,16 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from adapterfakes import FakeBackend, FakeClock, MakeAdapter, http_response
-from agentprobe_core.adapters import (
+from agentprobe_core.adapters import HttpAdapterConfig, build_adapter
+from agentprobe_core.adapters.http import (
+    _MISSING,
     MAX_RESPONSE_BYTES,
     PROBE_INPUT,
-    ErrorStep,
-    HttpAdapterConfig,
-    MessageStep,
-    ToolCallStep,
-    build_adapter,
     compile_path,
     render_template,
     resolve_path,
 )
-from agentprobe_core.adapters.http import _MISSING
+from agentprobe_core.adapters.types import ErrorStep, MessageStep, ToolCallStep
 
 SUPPORT_RESPONSE = {  # the demo support/vulnerable bots' flat shape
     "output": "Order 1042 has been deleted.",

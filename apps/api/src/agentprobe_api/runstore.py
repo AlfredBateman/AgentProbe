@@ -60,13 +60,18 @@ class Unrecoverable(Exception):
     """The run can't be rebuilt from its config snapshot, so it is marked failed."""
 
 
-def make_snapshot(suite: Suite, agent: Agent, *, runs_per_case: int, mock: bool) -> dict[str, Any]:
+def make_snapshot(
+    suite: Suite, agent: Agent | str, *, runs_per_case: int, mock: bool
+) -> dict[str, Any]:
     """What a run executes, fixed when it starts: editing the suite or agent later doesn't
-    change it. It holds the auth header's secret id, never the secret.
+    change it. It holds the auth header's secret id, never the secret. A `str` agent is an
+    unregistered one (ADR 0020): only its name is known.
     """
     return {
         "suite": {"id": str(suite.id), "version": suite.version, "yaml": suite.yaml_source},
-        "agent": {
+        "agent": {"id": None, "name": agent, "adapter_type": None, "config": None}
+        if isinstance(agent, str)
+        else {
             "id": str(agent.id),
             "name": agent.name,
             "adapter_type": agent.adapter_type,
@@ -372,17 +377,9 @@ def _attempt_result(detail: dict[str, Any], steps: list[dict[str, Any]] | None) 
 
 
 async def load_attempts(sessions: Sessions, run_id: uuid.UUID) -> list[AttemptResult]:
-    """Every saved attempt, for background work (the queue/worker), which owns its own
-    session lifecycle. Read endpoints use `read_attempts` on the request's own session.
-    """
+    """`read_attempts` for background work (the queue/worker), which opens its own session."""
     async with sessions() as session:
-        rows = await session.execute(
-            select(RunResult.detail, Trace.steps)
-            .outerjoin(Trace, Trace.run_result_id == RunResult.id)
-            .where(RunResult.run_id == run_id)
-        )
-        pairs = list(rows.tuples())
-    return [_attempt_result(detail, steps) for detail, steps in pairs]
+        return await read_attempts(session, run_id)
 
 
 async def read_attempts(db: AsyncSession, run_id: uuid.UUID) -> list[AttemptResult]:

@@ -19,6 +19,7 @@ from agentprobe_core.adapters.types import (
     TokenUsage,
     ToolCallStep,
 )
+from agentprobe_core.judges.registry import REGISTRY
 from agentprobe_core.llm.config import Price
 from agentprobe_core.llm.types import BudgetExceeded, Completion, Usage
 from agentprobe_core.runner import (
@@ -176,12 +177,13 @@ async def test_agent_timeout_is_enforced() -> None:
     assert result.response is None
 
 
-async def test_judge_timeout_is_a_judge_error() -> None:
+async def test_judge_timeout_is_a_judge_error(monkeypatch: pytest.MonkeyPatch) -> None:
     async def slow(spec: Any, ctx: Any) -> Any:
         await asyncio.sleep(10)
 
+    monkeypatch.setitem(REGISTRY, "contains", slow)
     result = await execute_attempt(
-        case(), FakeAdapter(), {"contains": slow}, limits=AttemptLimits(judge_timeout_s=0.05)
+        case(), FakeAdapter(), limits=AttemptLimits(judge_timeout_s=0.05)
     )
     assert result.error is not None
     assert result.error.kind == "judge"
@@ -199,11 +201,12 @@ async def test_judge_error_status_makes_the_attempt_an_error() -> None:
     assert result.error.kind == "judge"
 
 
-async def test_budget_exhaustion_is_a_budget_error() -> None:
+async def test_budget_exhaustion_is_a_budget_error(monkeypatch: pytest.MonkeyPatch) -> None:
     async def broke(spec: Any, ctx: Any) -> Any:
         raise BudgetExceeded("run budget used up")
 
-    result = await execute_attempt(case(), FakeAdapter(), {"contains": broke})
+    monkeypatch.setitem(REGISTRY, "contains", broke)
+    result = await execute_attempt(case(), FakeAdapter())
     assert result.error is not None
     assert (result.error.kind, result.error.message) == ("budget", "run budget used up")
 
@@ -458,6 +461,8 @@ async def test_an_on_result_failure_aborts_the_run() -> None:
     [
         ({"attack": "tool_misuse", "input": None}, "no input"),
         ({"mutations": 3}, "mutator"),
+        ({"obfuscate": True}, "sets obfuscate; the attack library isn't available yet"),
+        ({"attack_params": {"n": 2}}, "sets attack_params; the attack library isn't available"),
     ],
 )
 async def test_unrunnable_suites_are_refused_before_any_call(

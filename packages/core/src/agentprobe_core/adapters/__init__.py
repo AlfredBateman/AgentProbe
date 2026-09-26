@@ -1,5 +1,5 @@
-"""Agent adapters (SPEC.md §4.2, ADR 0012): the `AgentAdapter` protocol, the shared trace
-step model, and the HTTP adapter with its SSRF guard.
+"""Agent adapters (SPEC.md §4.2, ADR 0012): the HTTP adapter with its SSRF guard, and
+`build_adapter` for the server. The protocol and trace step model are in `.types`.
 
 The Python adapter (`agentprobe_core.adapters.python`) is CLI-only and deliberately not
 imported here, so the server never loads it.
@@ -10,37 +10,9 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from agentprobe_core.adapters.http import (
-    DEFAULT_TEMPLATE,
-    MAX_REDIRECTS,
-    MAX_RESPONSE_BYTES,
-    PROBE_INPUT,
-    HttpAdapter,
-    HttpAdapterConfig,
-    ResponseMapping,
-    check_header,
-    compile_path,
-    render_template,
-    resolve_path,
-)
-from agentprobe_core.adapters.ssrf import (
-    AddressClass,
-    GuardedBackend,
-    TargetBlocked,
-    TargetPolicy,
-    classify,
-)
-from agentprobe_core.adapters.types import (
-    AdapterNotAllowed,
-    AgentAdapter,
-    AgentResponse,
-    ErrorStep,
-    MessageStep,
-    TokenUsage,
-    ToolCallStep,
-    ToolResultStep,
-    TraceStep,
-)
+from agentprobe_core.adapters.http import HttpAdapter, HttpAdapterConfig, check_header
+from agentprobe_core.adapters.ssrf import TargetPolicy
+from agentprobe_core.adapters.types import AdapterNotAllowed
 
 
 def build_adapter(
@@ -63,30 +35,10 @@ def build_adapter(
 
 
 __all__ = [
-    "DEFAULT_TEMPLATE",
-    "MAX_REDIRECTS",
-    "MAX_RESPONSE_BYTES",
-    "PROBE_INPUT",
     "AdapterNotAllowed",
-    "AddressClass",
-    "AgentAdapter",
-    "AgentResponse",
-    "ErrorStep",
-    "GuardedBackend",
     "HttpAdapter",
     "HttpAdapterConfig",
-    "MessageStep",
-    "ResponseMapping",
-    "TargetBlocked",
     "TargetPolicy",
-    "TokenUsage",
-    "ToolCallStep",
-    "ToolResultStep",
-    "TraceStep",
     "build_adapter",
     "check_header",
-    "classify",
-    "compile_path",
-    "render_template",
-    "resolve_path",
 ]

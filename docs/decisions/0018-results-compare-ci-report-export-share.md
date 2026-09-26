@@ -38,6 +38,10 @@ HTML export (`apps/api/src/agentprobe_api/htmlexport.py`) is one self-contained 
 - The ingest validation moved to core as `agentprobe_core.runner.check_results(suite, runs_per_case, results)` (pure logic belongs in `packages/core`, CLAUDE.md), so the CLI's future `--push` can run the same check before uploading. It is one rule: every result must be a distinct `(case, attempt)` from `plan_attempts`. That rule also closes a gap in the original checks: `attempt` was never range-checked, so a payload could give one case more than `runs_per_case` attempts (skewing its Fisher test) while staying under the total count.
 - The HTML export is served with `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'` and `X-Content-Type-Options: nosniff`. Escaping stays the defence; the CSP is the backstop, because the export is served on the app's own origin through the `/api` rewrite.
 
+### Later changes
+- `/ci/report` is the single ingest endpoint and returns data only, no PR-comment markdown ([ADR 0019](0019-ci-report-is-the-ingest-endpoint.md)).
+- The agent may be an unregistered name (`agent_name`), baselines are keyed per suite and agent, and the payload takes `model` ([ADR 0020](0020-unregistered-agent-runs.md)).
+
 ## Consequences
 - `/ci/report`'s "auto-create the agent/suite" behavior PLAN.md's ADR originally sketched is **not** built; a project must be set up (suite + agent) before its CI can report into it. Revisit if D2.1/F1 (the CLI's `--push` and the GitHub Action) need a lighter setup flow.
 - `GET /runs/{id}/export` and the (authenticated) case/attempt listings are the more complete views; `/shared/{token}` is deliberately smaller. If a future request needs the public view to include the full trace, that's an explicit, reviewable change, not a default.
