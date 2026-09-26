@@ -4,6 +4,7 @@
 
 import functools
 import json
+import re
 import socket
 import sys
 from collections.abc import Callable
@@ -75,14 +76,33 @@ def runs() -> list[Path]:
 # --- help ----------------------------------------------------------------------------------
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def help_text(*args: str) -> str:
+    """`--help` as one line, ANSI stripped and wrapping undone.
+
+    Rich wraps help to the terminal width, so asserting a literal phrase against the raw
+    output passes or fails depending on where the break happens to land: "Small-N limit"
+    survives at 80 columns and splits at 81, which is how a green local run became a red CI
+    run. The phrases below are about content, so the wrapping is normalized away.
+    """
+    result = invoke(*args, "--help")
+    assert result.exit_code == 0, result.output
+    return " ".join(_ANSI.sub("", result.output).split())
+
+
 def test_help_documents_exit_codes() -> None:
-    result = invoke("--help")
-    assert result.exit_code == 0
-    for line in ("0  passed", "1  pass rate below", "2  regression", "3  usage", "4  infra"):
-        assert line in result.output
-    run_help = invoke("run", "--help").output
+    top = help_text()
+    for line in ("0 passed", "1 pass rate below", "2 regression", "3 usage", "4 infra"):
+        assert line in top
+    run_help = help_text("run")
     assert "Exit codes" in run_help
+    # ADR 0006 requires the small-N limit in --help, and ADR 0014's alpha split changed what
+    # it says: 3 runs per case can no longer flag a case at all.
     assert "Small-N limit" in run_help
+    assert "--alpha is the budget for both together" in run_help
+    assert "at 3 runs it can never be flagged" in run_help
 
 
 # --- init ----------------------------------------------------------------------------------
