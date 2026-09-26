@@ -9,6 +9,7 @@ terminal.
 
 import re
 from pathlib import Path
+from typing import Any
 
 from rich import box
 from rich.console import Console
@@ -163,6 +164,22 @@ def _render_regression(console: Console, regression: RegressionReport) -> None:
     ):
         if ids:
             console.print(Text(f"  {title}: ").append(safe(", ".join(ids))))
+
+
+def render_push(console: Console, remote: dict[str, Any]) -> None:
+    """The server's answer to --push. Its strings are shown as text, never markup."""
+    verdict = str(remote.get("verdict", "?"))
+    style = {"regression": "bold red", "improvement": "bold green"}.get(verdict, "bold")
+    console.print(
+        Text.assemble(
+            "\nPushed: server baseline comparison ", safe(verdict.replace("_", " "), style=style)
+        )
+    )
+    comparison = remote.get("comparison") or {}
+    if regressed := comparison.get("regressed"):
+        console.print(Text("  regressed: ").append(safe(", ".join(map(str, regressed)))))
+    link = remote.get("dashboard_url") or f"run {remote.get('run_id', '?')}"
+    console.print(Text("  ").append(safe(str(link))), soft_wrap=True)
 
 
 def render_verdict(console: Console, name: str, code: int, path: Path) -> None:

@@ -2,15 +2,22 @@
 with a branch's baseline.
 """
 
+import sys
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentprobe.push import Target, push
+from agentprobe.push import payload as push_payload
 from agentprobe_api.main import create_app
+from agentprobe_core.adapters.python import PythonAdapter
 from agentprobe_core.adapters.types import AgentResponse, MessageStep
-from agentprobe_core.runner import AttemptResult, JudgeResult
+from agentprobe_core.runner import AttemptResult, JudgeResult, RunSummary, run_suite
+from agentprobe_core.suite import parse_suite_yaml
 from apitest import ClientFactory, SignUp, bind_db, client_for, make_settings, signed_up
 from runtest import SMALL_YAML, make_project
 
@@ -70,6 +77,7 @@ async def test_ingest_persists_a_completed_run_with_no_baseline(
             "agent": "support-v1",
             "results": results,
             "branch": "feature-x",
+            "model": "model-a",
         },
     )
     assert r.status_code == 201, r.text
@@ -81,7 +89,8 @@ async def test_ingest_persists_a_completed_run_with_no_baseline(
 
     run = (await alice.get(f"/runs/{body['run_id']}")).json()
     assert run["status"] == "completed"
-    assert run["branch"] == "feature-x"
+    assert (run["branch"], run["model"]) == ("feature-x", "model-a")
+    assert (run["agent_id"], run["agent_name"]) == (ids["agent_id"], None)
     assert run["pass_rate"] == 1.0
 
 
@@ -182,6 +191,114 @@ async def test_ingest_requires_an_api_key(sign_up: SignUp) -> None:
         },
     )
     assert r.status_code == 403
+
+
+PY_YAML = """
+suite: py
+agent: py-bot
+runs_per_case: 5
+cases:
+  - id: hello
+    input: "hello"
+    expect:
+      - judge: contains
+        value: "ok:"
+"""
+
+
+async def local_python_run(monkeypatch: pytest.MonkeyPatch, target: str) -> RunSummary:
+    """A run of the CLI's python adapter, executed here as `agentprobe run` would."""
+    with monkeypatch.context() as m:
+        # The adapter refuses to load in a process that imported the server (ADR 0012);
+        # this test process has, a real CLI process never does.
+        m.delitem(sys.modules, "agentprobe_api")
+        adapter = PythonAdapter(target)
+    return await run_suite(parse_suite_yaml(PY_YAML), adapter)
+
+
+async def test_a_pushed_python_adapter_run_is_compared_with_its_own_baseline(
+    sign_up: SignUp, clients: ClientFactory, app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, "http://127.0.0.1:9/chat", yaml=PY_YAML)
+    ci = await api_key_for(alice, ids["project_id"], clients)
+    key = ci.headers["authorization"].removeprefix("Bearer ")
+    target = Target("https://api.test", key)
+
+    async def pushed(summary: RunSummary, **fields: Any) -> dict[str, Any]:
+        body = push_payload(summary, registered=False, mock=True, **fields)
+        return await push(target, body, transport=httpx.ASGITransport(app=app))
+
+    async def set_baseline(run_id: str) -> None:
+        r = await alice.post(
+            f"/projects/{ids['project_id']}/baseline", json={"branch": "main", "run_id": run_id}
+        )
+        assert r.status_code == 201, r.text
+
+    # The registered agent's own baseline on the same suite and branch: it must not be the
+    # one the python agent's runs are compared with.
+    registered = await ci.post(
+        "/ci/report",
+        json={
+            "suite": "py",
+            "agent": "support-v1",
+            "results": [attempt("hello", n, passed=False) for n in range(5)],
+            "branch": "main",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    await set_baseline(registered.json()["run_id"])
+
+    base = await pushed(await local_python_run(monkeypatch, "cli_agents:good"), branch="main")
+    assert base["verdict"] == "no_baseline"
+    await set_baseline(base["run_id"])
+
+    baselines = f"/projects/{ids['project_id']}/baselines/main"
+    mine = (await alice.get(baselines, params={"suite": "py", "agent_name": "py-bot"})).json()
+    assert (mine["run_id"], mine["agent_id"], mine["agent_name"]) == (
+        base["run_id"],
+        None,
+        "py-bot",
+    )
+    theirs = (await alice.get(baselines, params={"suite": "py", "agent": "support-v1"})).json()
+    assert (theirs["run_id"], theirs["agent_id"]) == (registered.json()["run_id"], ids["agent_id"])
+
+    candidate = await pushed(
+        await local_python_run(monkeypatch, "cli_agents:bad"),
+        branch="pr-7",
+        baseline_branch="main",
+        model="m-2",
+    )
+    assert candidate["verdict"] == "regression"  # 5/5 -> 0/5 against py-bot's baseline
+    assert candidate["comparison"]["regressed"] == ["hello"]
+    run = (await alice.get(f"/runs/{candidate['run_id']}")).json()
+    assert (run["agent_id"], run["agent_name"], run["model"]) == (None, "py-bot", "m-2")
+
+
+@pytest.mark.parametrize(
+    ("agent_fields", "message"),
+    [
+        ({}, "exactly one of `agent`"),
+        ({"agent": "support-v1", "agent_name": "x"}, "exactly one of `agent`"),
+        ({"agent_name": "support-v1"}, "'support-v1' is a registered agent; send it as `agent`"),
+    ],
+    ids=["neither", "both", "registered-name"],
+)
+async def test_ingest_needs_one_unambiguous_agent_identity(
+    sign_up: SignUp, clients: ClientFactory, agent_fields: dict[str, str], message: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, "http://127.0.0.1:9/chat", yaml=SMALL_YAML)
+    ci = await api_key_for(alice, ids["project_id"], clients)
+    body = {
+        "suite": "small",
+        "results": [attempt("greeting", 0, passed=True)],
+        "branch": "main",
+        **agent_fields,
+    }
+    r = await ci.post("/ci/report", json=body)
+    assert r.status_code == 422
+    assert message in r.text
 
 
 @pytest.mark.parametrize(

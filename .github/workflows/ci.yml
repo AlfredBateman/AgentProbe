@@ -50,9 +50,12 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
-      - run: uv run pytest -m "not live and not redis"
+      - run: uv run pytest -m "not live and not redis" --cov=agentprobe_core --cov=agentprobe_api --cov-report=
       # Separate and verbose, so the log shows every redis test ran (PASSED), none skipped.
-      - run: uv run pytest -m redis -v -rA
+      - run: uv run pytest -m redis -v -rA --cov=agentprobe_core --cov=agentprobe_api --cov-append --cov-report=
+      # B1.9: at least 80% per package, unit + integration + redis combined.
+      - run: uv run coverage report --include="*/agentprobe_core/*" --skip-covered --fail-under=80
+      - run: uv run coverage report --include="*/agentprobe_api/*" --skip-covered --fail-under=80
 
   web:
     runs-on: ubuntu-latest

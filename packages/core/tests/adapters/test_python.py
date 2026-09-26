@@ -11,15 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from agentprobe_core.adapters import (
-    AdapterNotAllowed,
-    ErrorStep,
-    MessageStep,
-    ToolCallStep,
-    ToolResultStep,
-    build_adapter,
-)
+from agentprobe_core.adapters import AdapterNotAllowed, build_adapter
 from agentprobe_core.adapters.python import SERVER_PACKAGE, PythonAdapter
+from agentprobe_core.adapters.types import ErrorStep, MessageStep, ToolCallStep, ToolResultStep
 
 AGENT_SOURCE = textwrap.dedent(
     """

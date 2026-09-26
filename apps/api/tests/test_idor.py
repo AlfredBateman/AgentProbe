@@ -60,7 +60,7 @@ PROBES = [
     Probe("POST", "/runs/{run_id}/share", {}),
     Probe("DELETE", "/runs/{run_id}/share"),
     Probe("POST", "/projects/{project_id}/baseline", {"branch": "main", "run_id": A_RANDOM_UUID}),
-    Probe("GET", "/projects/{project_id}/baselines/main"),
+    Probe("GET", "/projects/{project_id}/baselines/main?suite=demo-suite&agent=demo-bot"),
 ]
 SNAPSHOT = [
     "/projects",

@@ -55,3 +55,13 @@ JSONB but not its shape or how it's validated.
 - When Prompt 12 builds the real attack library, it registers ids via `register_attack` instead
   of this module hardcoding them, and can add `variants`/`mutate` as additional `Case` fields
   without touching the judge or parser modules.
+
+## Amendment (2026-09-26)
+- The attack registry is now a constant, `ATTACKS = frozenset({...})`: nothing registered
+  ids at runtime, so the mutable set, `register_attack` and `registered_attacks` were an
+  unused extension point. Prompt 12 replaces the constant with its generators.
+- `obfuscate` and `attack_params` still parse, but a run of a case that sets either is
+  refused up front, like `mutations` (ADR 0016 amendment), until the attack library exists.
+- The agent config union is `http` | `python`. The `mcp` config was a placeholder with no
+  adapter behind it; the MCP adapter (C3, Prompt 14) defines its own. The `adapter_type`
+  CHECK still allows `mcp`.

@@ -7,9 +7,11 @@
   },
   "scripts": {
     "check": "pnpm run check:py && pnpm run check:web",
-    "check:py": "uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest",
+    "check:py": "pnpm run lint:py && uv run pytest",
+    "lint:py": "uv run ruff check . && uv run ruff format --check . && uv run mypy",
     "check:web": "pnpm --filter web lint && pnpm --filter web typecheck && pnpm --filter web test",
-    "verify": "pnpm run check && uv run --env-file .env pytest -m \"integration and not redis\"",
+    "verify": "pnpm run lint:py && pnpm run check:web && uv run --env-file .env pytest -m \"not redis and not live\" --cov=agentprobe_core --cov=agentprobe_api --cov-report= && pnpm run coverage",
+    "coverage": "uv run coverage report --include=\"*/agentprobe_core/*\" --skip-covered --fail-under=80 && uv run coverage report --include=\"*/agentprobe_api/*\" --skip-covered --fail-under=80",
     "dev:api": "uv run --env-file .env uvicorn agentprobe_api.main:app --reload --port 8000 --loop asyncio:SelectorEventLoop",
     "dev:web": "pnpm --filter web dev",
     "dev:worker": "uv run --env-file .env taskiq worker agentprobe_api.worker:broker",

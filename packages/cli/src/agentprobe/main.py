@@ -26,7 +26,10 @@ from typer._click.exceptions import UsageError  # typer vendors click; not re-ex
 from typer.core import TyperGroup
 
 from agentprobe import report
-from agentprobe.config import CONFIG_FILE, ConfigError, build_adapter, load_config
+from agentprobe.config import CONFIG_FILE, ConfigError, HttpAgent, build_adapter, load_config
+from agentprobe.push import KEY_ENV, URL_ENV, PushError, Target
+from agentprobe.push import payload as push_payload
+from agentprobe.push import push as push_run
 from agentprobe_core.adapters.types import AgentAdapter
 from agentprobe_core.llm import LLMConfig, LLMConfigError, create_client
 from agentprobe_core.runner import (
@@ -249,10 +252,32 @@ def run(
     ] = None,
     permutation_draws: Annotated[int | None, typer.Option(help="Suite-test draws.")] = None,
     bootstrap_resamples: Annotated[int | None, typer.Option(help="CI resamples.")] = None,
+    push: Annotated[
+        bool,
+        typer.Option(
+            "--push",
+            help=f"Upload the run to the server ({URL_ENV}, {KEY_ENV}) and compare it with "
+            "its branch baseline there; a remote regression exits 2.",
+        ),
+    ] = False,
+    branch: Annotated[str | None, typer.Option(help="With --push: this run's branch.")] = None,
+    baseline_branch: Annotated[
+        str | None, typer.Option(help="With --push: the baseline's branch (default: --branch).")
+    ] = None,
+    git_sha: Annotated[str | None, typer.Option(help="With --push: the commit.")] = None,
+    pr: Annotated[int | None, typer.Option(min=1, help="With --push: the PR number.")] = None,
+    model: Annotated[
+        str | None, typer.Option(help="With --push: a label for the agent's model.")
+    ] = None,
 ) -> None:
     """Run a suite against an agent locally and save the result to .agentprobe/runs/."""
     err = Console(stderr=True)
     try:
+        target = None
+        if push:
+            if not branch:
+                raise ConfigError("--push needs --branch")
+            target = Target.from_env(os.environ)
         try:
             suite = parse_suite_yaml(suite_file.read_text("utf-8"))
         except OSError as exc:
@@ -305,11 +330,29 @@ def run(
                 _execute(suite, adapter, llm_config, options, agent=agent, progress=progress)
             )
         regression = _compare(base, summary, statistics) if base else None
-    except (ConfigError, ValueError) as exc:
+    except (ConfigError, ValueError, PushError) as exc:
         raise _fail(err, str(exc)) from None
 
     path = _save(summary)
     code = _exit_code(summary, fail_under, regression)
+    remote = None
+    if target is not None:
+        body = push_payload(
+            summary,
+            registered=isinstance(agent_config, HttpAgent),
+            mock=llm_config is None or llm_config.provider == "mock",
+            branch=str(branch),
+            baseline_branch=baseline_branch,
+            git_sha=git_sha,
+            pr_number=pr,
+            model=model,
+        )
+        try:
+            remote = asyncio.run(push_run(target, body))
+        except PushError as exc:
+            raise _fail(err, str(exc), ExitCode.INFRA if exc.infra else ExitCode.USAGE) from None
+        if remote.get("verdict") == "regression" and code != ExitCode.INFRA:
+            code = ExitCode.REGRESSION
     if json_output:
         payload = {
             "file": str(path),
@@ -318,11 +361,14 @@ def run(
             "regression": TypeAdapter(RegressionReport).dump_python(regression, mode="json")
             if regression
             else None,
+            "push": remote,
         }
         typer.echo(json.dumps(payload, indent=2))
     else:
         out = Console()
         report.render_run(out, summary, fail_under=fail_under, regression=regression)
+        if remote is not None:
+            report.render_push(out, remote)
         report.render_verdict(out, code.name, int(code), path)
     raise typer.Exit(code)
 

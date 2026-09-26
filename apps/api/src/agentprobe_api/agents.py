@@ -8,7 +8,7 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Request
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,13 +31,6 @@ class HttpAgentConfig(HttpAdapterConfig):
     adapter_type: Literal["http"]
 
 
-class McpAgentConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    adapter_type: Literal["mcp"]
-    server_url: AnyHttpUrl
-    tool_timeout_ms: int = Field(default=30_000, gt=0, le=120_000)
-
-
 class PythonAgentConfig(BaseModel):
     """Accepted so it round-trips through ingested CLI runs; rejected at create/update time
     below because the server can't execute it (PLAN.md §2 #14).
@@ -49,12 +42,11 @@ class PythonAgentConfig(BaseModel):
     function: str = Field(min_length=1, max_length=200)
 
 
-AgentConfig = Annotated[
-    HttpAgentConfig | McpAgentConfig | PythonAgentConfig, Field(discriminator="adapter_type")
-]
+# MCP agents come with the MCP adapter (PLAN C3, Prompt 14), which defines their config.
+AgentConfig = Annotated[HttpAgentConfig | PythonAgentConfig, Field(discriminator="adapter_type")]
 
 
-def _reject_python_adapter(config: HttpAgentConfig | McpAgentConfig | PythonAgentConfig) -> None:
+def _reject_python_adapter(config: HttpAgentConfig | PythonAgentConfig) -> None:
     if config.adapter_type == "python":
         raise ApiError(400, "The python adapter is CLI-only; the server can't execute it")
 

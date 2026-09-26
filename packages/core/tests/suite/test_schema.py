@@ -1,7 +1,6 @@
 import pytest
 from pydantic import ValidationError
 
-from agentprobe_core.suite.attacks import register_attack
 from agentprobe_core.suite.schema import Case, StatisticsConfig, Suite
 
 CONTAINS = {"judge": "contains", "value": "ok"}
@@ -83,14 +82,13 @@ def test_case_needs_input_or_attack() -> None:
 
 
 def test_case_with_only_attack_is_valid() -> None:
-    register_attack("test.placeholder")
-    case = Case.model_validate({"id": "c1", "attack": "test.placeholder", "expect": [CONTAINS]})
+    case = Case.model_validate({"id": "c1", "attack": "tool_misuse", "expect": [CONTAINS]})
     assert case.input is None
-    assert case.attack == "test.placeholder"
+    assert case.attack == "tool_misuse"
 
 
-def test_unregistered_attack_rejected() -> None:
-    with pytest.raises(ValidationError, match="unknown attack id"):
+def test_unknown_attack_rejected() -> None:
+    with pytest.raises(ValidationError, match=r"unknown attack id 'no\.such\.attack'; known: "):
         Case.model_validate({"id": "c1", "attack": "no.such.attack", "expect": [CONTAINS]})
 
 

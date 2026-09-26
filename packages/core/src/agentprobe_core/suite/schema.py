@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from agentprobe_core.suite.attacks import is_registered_attack
+from agentprobe_core.suite.attacks import ATTACKS
 from agentprobe_core.suite.judges import JudgeSpec
 
 MAX_CASES = 500
@@ -49,9 +49,9 @@ class Case(BaseModel):
 
     @field_validator("attack")
     @classmethod
-    def _attack_is_registered(cls, value: str | None) -> str | None:
-        if value is not None and not is_registered_attack(value):
-            raise ValueError(f"unknown attack id {value!r}; register it first")
+    def _attack_is_known(cls, value: str | None) -> str | None:
+        if value is not None and value not in ATTACKS:
+            raise ValueError(f"unknown attack id {value!r}; known: {', '.join(sorted(ATTACKS))}")
         return value
 
     @model_validator(mode="after")

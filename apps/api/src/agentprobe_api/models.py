@@ -151,19 +151,26 @@ class TestCase(Base):
     call: Mapped[dict[str, Any] | None]
 
 
+ONE_AGENT = "(agent_id IS NULL) <> (agent_name IS NULL)"
+
+
 class Run(Base):
     __tablename__ = "runs"
     __table_args__ = (
         CheckConstraint(
             "status IN ('queued', 'running', 'completed', 'failed', 'cancelled')", name="status"
         ),
+        CheckConstraint(ONE_AGENT, name="one_agent"),
         Index("ix_runs_suite_id_created_at", "suite_id", "created_at"),
     )
     id: Mapped[uuid.UUID] = _pk()
     # Covered by ix_runs_suite_id_created_at.
     suite_id: Mapped[uuid.UUID] = _fk("suites.id", index=False)
     suite_version: Mapped[int]
-    agent_id: Mapped[uuid.UUID] = _fk("agents.id")
+    # A registered agent, or (runs the server can't execute, e.g. a CLI python-adapter run
+    # pushed through /ci/report) just its name (ADR 0020).
+    agent_id: Mapped[uuid.UUID | None] = _fk("agents.id", nullable=True)
+    agent_name: Mapped[str | None]
     status: Mapped[str] = mapped_column(index=True)  # recovery scans by status
     git_sha: Mapped[str | None]
     branch: Mapped[str | None]
@@ -286,9 +293,26 @@ class Finding(Base):
 
 
 class Baseline(Base):
+    """The run a (suite, branch, agent) is compared against. The key is copied from the run
+    when it is set, so one project can hold a baseline per suite and agent (ADR 0020).
+    """
+
     __tablename__ = "baselines"
-    __table_args__ = (UniqueConstraint("project_id", "branch"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "suite_id",
+            "branch",
+            "agent_id",
+            "agent_name",
+            postgresql_nulls_not_distinct=True,  # agent_id/agent_name: exactly one is NULL
+        ),
+        CheckConstraint(ONE_AGENT, name="one_agent"),
+    )
     id: Mapped[uuid.UUID] = _pk()
     project_id: Mapped[uuid.UUID] = _fk("projects.id", index=False)
+    suite_id: Mapped[uuid.UUID] = _fk("suites.id")
     branch: Mapped[str]
+    agent_id: Mapped[uuid.UUID | None] = _fk("agents.id", nullable=True)
+    agent_name: Mapped[str | None]
     run_id: Mapped[uuid.UUID] = _fk("runs.id")

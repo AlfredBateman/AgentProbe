@@ -101,7 +101,13 @@ async def test_full_graph_round_trips(db: AsyncSession) -> None:
             embedding=embedding,
             member_result_ids=[result.id],
         ),
-        Baseline(project_id=agent.project_id, branch="main", run_id=run.id),
+        Baseline(
+            project_id=agent.project_id,
+            suite_id=run.suite_id,
+            branch="main",
+            agent_id=run.agent_id,
+            run_id=run.id,
+        ),
     ]:
         await add(db, obj)
     db.expunge_all()
@@ -160,6 +166,31 @@ async def test_judgment_status_and_error_kind_are_checked(db: AsyncSession) -> N
                     detail={},
                 ),
             )
+
+
+@pytest.mark.parametrize("identity", ["both", "neither"])
+async def test_a_run_has_exactly_one_agent_identity(db: AsyncSession, identity: str) -> None:
+    run, _, _ = await make_run(db)  # a registered agent: agent_id set, agent_name NULL
+    with pytest.raises(IntegrityError, match="ck_runs_one_agent"):
+        async with db.begin_nested():
+            if identity == "both":
+                run.agent_name = "also-a-name"
+            else:
+                run.agent_id = None
+            await db.flush()
+
+
+async def test_one_baseline_per_suite_branch_and_unregistered_agent(db: AsyncSession) -> None:
+    run, _, _ = await make_run(db)
+    run.agent_id, run.agent_name = None, "py-bot"
+    await db.flush()
+    suite = await db.get_one(Suite, run.suite_id)
+    key = {"project_id": suite.project_id, "suite_id": suite.id, "branch": "main"}
+    await add(db, Baseline(**key, agent_name="py-bot", run_id=run.id))
+    # NULLS NOT DISTINCT: the NULL agent_id doesn't make the second row "different".
+    with pytest.raises(IntegrityError, match="uq_baselines_project_id_suite_id_branch"):
+        async with db.begin_nested():
+            await add(db, Baseline(**key, agent_name="py-bot", run_id=run.id))
 
 
 async def test_share_token_hash_is_unique(db: AsyncSession) -> None:

@@ -2,16 +2,20 @@
 (`cli_agents`), except the one test that needs an unreachable HTTP agent.
 """
 
+import functools
 import json
 import socket
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import yaml
 from typer.testing import CliRunner
 
+from agentprobe import main, push
 from agentprobe.config import load_config
 from agentprobe.main import app
 from agentprobe_core.suite import parse_suite_yaml
@@ -357,6 +361,84 @@ def test_baseline_set_rejects_bad_input(args: list[str]) -> None:
     # --name ../evil would land beside baselines/, in the state dir
     assert not Path("state/evil.json").exists()
     assert not list(Path("state/baselines").glob("*.json"))  # nothing saved at all
+
+
+# --- --push (the server side is covered in apps/api/tests/test_ci_report.py) ---------------
+
+
+def fake_server(
+    monkeypatch: pytest.MonkeyPatch, respond: Callable[[httpx.Request], httpx.Response]
+) -> list[httpx.Request]:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return respond(request)
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(main, "push_run", functools.partial(push.push, transport=transport))
+    monkeypatch.setenv(push.URL_ENV, "https://ap.test/")
+    monkeypatch.setenv(push.KEY_ENV, "ap_fake-key")  # fake credential
+    return seen
+
+
+def unreachable(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("refused", request=request)
+
+
+def test_push_sends_a_python_agent_by_name_and_a_remote_regression_exits_2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reply = {"run_id": "r1", "verdict": "regression", "comparison": {"regressed": ["a"]}}
+    seen = fake_server(monkeypatch, lambda _: httpx.Response(201, json=reply))
+    args = ["--branch", "pr-7", "--baseline-branch", "main", "--pr", "7", "--model", "m-2"]
+    result = invoke("run", "suite.yaml", "--push", *args)
+    assert result.exit_code == 2, result.output  # passed locally, regressed on the server
+    assert "regressed: a" in result.output
+    [request] = seen
+    assert str(request.url) == "https://ap.test/ci/report"
+    assert request.headers["authorization"] == "Bearer ap_fake-key"
+    body = json.loads(request.content)
+    assert "agent" not in body  # a python agent can't be registered on the server
+    assert (body["suite"], body["agent_name"], body["runs_per_case"]) == ("cli", "good", 3)
+    assert (body["branch"], body["baseline_branch"], body["pr_number"]) == ("pr-7", "main", 7)
+    assert (body["model"], body["mock"], len(body["results"])) == ("m-2", True, 6)
+
+
+@pytest.mark.parametrize(
+    ("respond", "code", "message"),
+    [
+        (lambda _: httpx.Response(422, json={"error": {"message": "no suite"}}), 3, "no suite"),
+        (lambda _: httpx.Response(503, text="down"), 4, "HTTP 503"),
+        (unreachable, 4, "can't reach https://ap.test"),
+    ],
+    ids=["refused", "server-error", "unreachable"],
+)
+def test_push_failures_map_to_exit_codes(
+    monkeypatch: pytest.MonkeyPatch,
+    respond: Callable[[httpx.Request], httpx.Response],
+    code: int,
+    message: str,
+) -> None:
+    fake_server(monkeypatch, respond)
+    result = invoke("run", "suite.yaml", "--push", "--branch", "main")
+    assert result.exit_code == code, result.output
+    assert message in result.output
+    assert len(runs()) == 1  # the local run is saved either way
+
+
+@pytest.mark.parametrize("unset", [push.URL_ENV, push.KEY_ENV, "--branch"])
+def test_push_is_checked_before_running(monkeypatch: pytest.MonkeyPatch, unset: str) -> None:
+    seen = fake_server(monkeypatch, lambda _: httpx.Response(500))
+    args = ["run", "suite.yaml", "--push"]
+    if unset == "--branch":
+        result = invoke(*args)
+    else:
+        monkeypatch.delenv(unset)
+        result = invoke(*args, "--branch", "main")
+    assert result.exit_code == 3, result.output
+    assert unset in result.output
+    assert (seen, runs()) == ([], [])  # nothing ran, nothing was sent
 
 
 def test_compare_prints_the_diff_and_exits_2_on_regression() -> None:

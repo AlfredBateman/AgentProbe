@@ -1,5 +1,17 @@
 # Progress
 
+## Status by phase (PLAN.md §1)
+A phase is complete only when every task in it is done.
+
+| Phase | Status |
+|---|---|
+| A: foundation | **Complete** (A1–A5). |
+| B1: core engine | **Not complete.** B1.1–B1.7 and B1.9 (coverage gate, 2026-09-26) are done; **B1.8 (golden tests) is open.** |
+| D1: CLI local run | **Complete** (D1.1). |
+| B2: server runner and results API | **Complete** (B2.1–B2.6). B2.5's ingest is `POST /ci/report`, not the planned `runs:ingest` ([ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md)). |
+| D2: CLI remote features | **In progress.** `run --push` is done ([ADR 0020](decisions/0020-unregistered-agent-runs.md)); remote `compare` and `--baseline <branch>` remain. |
+| C, E, F | Not started. |
+
 ## Done
 - 2026-09-24 **Bootstrap**:
   - PLAN.md, CLAUDE.md, ADR 0001 (packages/core), ADR 0002 (web toolchain versions).
@@ -274,11 +286,22 @@
   - Pure logic outside core: `/ci/report`'s results-vs-plan validation moved to `agentprobe_core.runner.check_results`, which also rejects out-of-range `attempt` values (previously accepted).
   - Weak tests fixed: the LLM-client protocol test (mypy doesn't check tests; it asserted `is not None`), judge-registry dispatch (asserted any status), the manifest's "actually served" routes (checked a hardcoded set), the v1 injection refusal, the baseline-name traversal check (looked in the wrong directory), share-link expiry (never expired a link), results filters (passed vacuously when empty), the judge-steering test (asserted the mock heuristic, not the delimiting; now covers forged tags in the input too) and the migration round trip (no assertions).
 
+- 2026-09-26 **Review follow-up: spec deviations resolved, B1.9 coverage gate, dead code** (user decisions on the review's findings; [ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md), [ADR 0020](decisions/0020-unregistered-agent-runs.md); ADRs 0010, 0016 and 0018 amended; PLAN.md §1, §2 #2/#6/#14, §3 amended):
+  - `/ci/report` is the single ingest endpoint (`runs:ingest` intentionally not built) and returns structured data only; the GitHub Action (F1) formats the PR comment from its JSON (ADR 0019).
+  - CLI python-adapter runs can be ingested (ADR 0020, migration 0004, applied to the Neon test and dev branches):
+    - `runs.agent_id` is nullable, with `runs.agent_name`; exactly one is set (CHECK).
+    - `/ci/report` takes exactly one of `agent` (registered) or `agent_name`, which may not equal a registered agent's name. It also takes an optional `model`, stored on the run.
+    - Baselines are keyed on (project, suite, branch, agent_id or agent_name) with `NULLS NOT DISTINCT`. `GET /projects/{id}/baselines/{branch}` now needs `suite` and one of `agent`/`agent_name`. This also fixes a latent bug: with two suites in a project, the old (project, branch) key compared a run against whichever suite's baseline was set last.
+    - `agentprobe run --push` (the push part of D2.1): uploads the run with `AGENTPROBE_API_URL`/`AGENTPROBE_API_KEY`; a python agent goes as `agent_name`, an http agent as `agent`; a remote regression exits 2, an unreachable server or 5xx exits 4, a refusal exits 3; the push settings are checked before the suite runs.
+  - `obfuscate` and `attack_params` are refused before any call, like `mutations`, until the attack library (C1) exists.
+  - PLAN.md's share path is corrected to `/shared/{token}`.
+  - **B1.9 coverage gate**: `pnpm verify` now runs unit + integration tests in one pytest run with coverage and fails under 80% for `agentprobe_core` and for `agentprobe_api` separately (`pnpm coverage`); CI does the same with the Redis tests included. What it flagged: `apps/api` measured 78%, but that was a measurement bug, not missing tests. SQLAlchemy's async layer runs on greenlets and coverage stopped recording at the first database `await` in every handler; `[tool.coverage.run] concurrency = ["thread", "greenlet"]` fixed it. Measured locally: **core 97%, api 91%** (`worker.py` is 33% locally because its tests need Redis; they run in CI).
+  - Dead code removed: `McpAgentConfig` (C3/Prompt 14 defines MCP config), the mutable attack registry (now `ATTACKS`, a frozenset), the runner's direct `REGISTRY` use (it calls `judges.evaluate()`, and its `judges` parameter is gone; tests patch the registry), the `load_attempts`/`read_attempts` duplicate query, test-only re-exports in `adapters/__init__.py`, and the unreachable read-back branch in `baselines.py`. Kept by decision: `PythonAgentConfig`, `suite_json_schema()`, `CiReportOut.top_findings`, and `ci.py`'s redundant project-ownership check.
+  - Tests: python-adapter run pushed through the CLI's own push code and compared with its own baseline, next to a registered agent's baseline on the same suite and branch; agent identity (neither/both/registered name); each suite keeps its own baseline; the new CHECK and `NULLS NOT DISTINCT` constraints; `--push` payload, exit codes, and checks before running; `obfuscate`/`attack_params` refusal.
+
 ## Next
-- **Awaiting the user's decision (2026-09-26 review, nothing changed yet):**
-  - Deviations with no ADR: `/ci/report` returns no PR-comment markdown (PLAN §2 #2); `POST /projects/{id}/runs:ingest` was folded into `/ci/report`; python-adapter CLI runs can't be ingested (PLAN §2 #14), because python agents can't be created; suite fields `obfuscate`/`attack_params` are accepted and silently ignored; `/share/{token}` became `/shared/{token}`; the B1.9 coverage gate (`--cov-fail-under=80`) isn't enforced.
-  - Speculative/dead code to cut: `McpAgentConfig`/`PythonAgentConfig` in `agents.py`; the mutable attack registry and `registered_attacks()`; `judges.evaluate()`; `suite_json_schema()`; `CiReportOut.top_findings`; the duplicate query in `runstore.load_attempts`/`read_attempts`; test-only re-exports in `adapters/__init__.py`.
-- B1.8: golden tests. Fill in `demo-agents/vulnerabilities.json` `suite_case_ids` (the smoke suite covers 5 of the 7 planted flaws; instruction injection and RAG indirect injection need cases with `context`).
+- **B1.8: golden tests** (the last open B1 task). Fill in `demo-agents/vulnerabilities.json` `suite_case_ids` (the smoke suite covers 5 of the 7 planted flaws; instruction injection and RAG indirect injection need cases with `context`).
+- D2.1 (rest): remote `compare <a> <b>` and `--baseline <branch>` against server baselines.
 - C4: failure clustering (`GET /runs/{id}/findings`, populating `top_findings` in `/ci/report`'s response — currently always empty).
 - Decision needed (ADR 0014 §Verdict, docs/metrics.md): the whole verdict (per-case family + suite test) is bounded by 2·`alpha`, not `alpha`. It measures up to 6.5% on heavily flaky suites, while the per-case family stays at or below `alpha`. Option: split `alpha` between the two (for example `alpha`/2 each). At 5 runs a single break would still be flagged; at 3 runs it never could be.
 
@@ -334,6 +357,14 @@
   - JSON/HTML export recomputes a `RunSummary` via core's `finalize_run` rather than trusting the persisted `run_case_summaries` columns.
   - The public share view is read straight off persisted columns (no recomputation) and is narrower than the authenticated views: no agent config, no raw trace.
   - Request handlers must never call the queue's `Sessions`-based helpers (`save_attempt`, `save_summary`, `claim`, `load_attempts`, `finish`) synchronously; those are for the queue/worker only. Ingest uses its own single-transaction `runstore.insert_results`/`insert_summary` instead.
+  - Amended 2026-09-26: ingest validation is core's `check_results` (rejects out-of-range attempts too); the HTML export has a `default-src 'none'` CSP.
+- `/ci/report` is the single run-ingest endpoint and returns structured data only; the GitHub Action formats the PR comment ([ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md), user decision 2026-09-26).
+- Runs of unregistered agents and per-suite-and-agent baselines ([ADR 0020](decisions/0020-unregistered-agent-runs.md), user decision 2026-09-26):
+  - `runs.agent_id` or `runs.agent_name`, exactly one.
+  - Baselines keyed on (project, suite, branch, agent).
+  - `agentprobe run --push` sends a python agent as `agent_name`, an http agent as `agent`.
+- Coverage gate: 80% per package (`agentprobe_core`, `agentprobe_api`) over unit + integration tests, in `pnpm verify` and CI; coverage traces greenlets (user decision 2026-09-26, PLAN.md B1.9).
+- Attack ids are a constant (`ATTACKS`) until C1; `obfuscate`/`attack_params` are refused like `mutations`; the API's agent config is `http` | `python` until C3 (ADR 0010 and 0016 amendments).
 
 ## Known issues
 - Statistics power (ADR 0014 §Power):
@@ -346,7 +377,7 @@
 - The CLI stops at the first infrastructure error (ADR 0016), but that first attempt still spends its full retry budget. On Windows a refused localhost connect takes about 2 s, so a down agent costs about 20 s before exit 4.
 - The regex judge's compile-time guard relies on the stdlib parser (`re._parser`, private, no stubs) agreeing with `regex` on how repeats nest. The 10,000-element limit leaves 100× headroom for disagreement (ADR 0015).
 - The suite CI under-covers with few cases: 87% at 10 cases vs 94% at 30 (percentile cluster bootstrap, ADR 0014).
-- `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 4.5 min against Neon from here (the run tests add about 2 min): each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
+- `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 17 min against Neon from here (see the coverage note below): each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
 - On native Windows, psycopg async needs `SelectorEventLoop`. Tests use the root conftest hook; `pnpm dev:api` passes `--loop asyncio:SelectorEventLoop`. Production start commands on Windows would need the same flag (Linux doesn't).
 - Deploy (F4) must set `FORWARDED_ALLOW_IPS` to the proxy and keep the API reachable only through it. Otherwise the per-IP auth limit is either global (every user shares the proxy's IP) or spoofable (ADR 0009 §9).
 - `JWT_TTL_MINUTES` now defaults to 15. A local `.env` that still says 60 keeps 60-minute access cookies.
@@ -367,4 +398,8 @@
 - Every attempt save takes a row lock on its run (ordering against cancel/fail and the `attempts_done` counter), which serializes one run's saves: about 6 round trips per attempt, around 25 s for 40 attempts on Neon from here. Batch the saves if it matters.
 - `POST /ci/report` inserts one attempt at a time (`runstore.insert_results`, one flush per attempt for its id), not batched. Fine at the tested scale (tens of attempts); revisit if real CI payloads run to thousands.
 - `GET /runs/{id}/findings` (SPEC.md §8) and `/ci/report`'s `top_findings` are not built yet; the latter always returns `[]` until C4 (failure clustering) exists.
+- `agentprobe run --push` sends an http agent as `agent`, so that agent must be registered on the server first, even if it only runs in the user's CI (e.g. on localhost). Sending unknown http agents as `agent_name` needs a lookup; left for D2.1's remaining work (ADR 0020).
+- The coverage gate covers `agentprobe_core` and `agentprobe_api` only (PLAN.md B1.9), not `packages/cli` or `demo-agents`. Locally `worker.py` shows 33% because its tests need Redis; CI, which runs them, is the authoritative number for it.
+- Migration 0004's downgrade is lossy: it deletes unregistered-agent runs and all but one baseline per (project, branch), which the old schema can't hold.
+- `pnpm verify` runs unit and integration tests in one pytest run with coverage tracing; the integration tests dominate its ~17 minutes.
 - The `/shared/{token}` public view omits per-attempt trace steps (tool-call arguments, message-by-message detail) by design (ADR 0018); revisit if a real use case needs the full trace in a public link.

@@ -41,7 +41,7 @@ Gate: `pnpm check`.
 | B1.6 | Statistics: labels, suite CI, regression tests (§2 #9) + ADR | Property and known-value tests |
 | B1.7 | `execute_attempt` / `finalize_run` / `run_suite`: the single implementation of how a run executes, with a concurrent multi-attempt run loop (asyncio semaphore). This is the **only** place run logic lives — the CLI (D1.1) and the server runner (B2.3) both call it, neither reimplements it. | Unit tests with a fake adapter; D1.1 and B2.3 both import it (checked by an ADR-referencing comment, not a duplicate loop) |
 | B1.8 | Golden tests: vulnerable-bot's planted flaws are all detected in mock mode | Test asserts "X of Y planted flaws detected" |
-| B1.9 | Coverage gate `--cov-fail-under=80` on core + api | `pnpm check` enforces it |
+| B1.9 | Coverage gate: 80% on core and on api, each | `pnpm verify` and CI enforce it (it needs the integration tests, so not `pnpm check`) |
 
 ### Phase D1: CLI local run
 Gate: `pnpm check`.
@@ -59,7 +59,7 @@ Gate: `pnpm verify`, plus CI green.
 | B2.2 | Suites: create and `PUT` with immutable versioned case rows | A version bump keeps old runs readable |
 | B2.3 | Queue: `QUEUE_BACKEND=inline\|redis` (Taskiq, [ADR 0017](decisions/0017-server-runner-and-queue.md)). Worker runs the core executor and persists results, traces and judgments. | Inline in `verify`, redis in CI (`redis`) |
 | B2.4 | Runs API: start, status/summary, results, trace, `GET /runs/{id}/stream` (SSE) | Integration tests |
-| B2.5 | Ingest (`POST /projects/{id}/runs:ingest`), baselines (set and get), compare endpoint | Integration tests |
+| B2.5 | Ingest (`POST /ci/report`, the only ingest endpoint: [ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md)), baselines (set and get), compare endpoint | Integration tests |
 | B2.6 | Export JSON/HTML (escaped), share links | An XSS payload in agent output is rendered inert (test) |
 
 ### Phase D2: CLI remote features
@@ -67,7 +67,7 @@ Gate: `pnpm verify`.
 
 | # | Task | Done when |
 |---|---|---|
-| D2.1 | `--push`, `compare <a> <b>` (local or remote IDs), `--baseline <branch>` | Exit code is non-zero on regression (tested) |
+| D2.1 | `--push`, `compare <a> <b>` (local or remote IDs), `--baseline <branch>` | Exit code is non-zero on regression (tested). `run --push` is done ([ADR 0020](decisions/0020-unregistered-agent-runs.md)); remote `compare` and `--baseline` remain. |
 
 ### Phase C: security and AI features
 Gate: `pnpm check` / `pnpm verify`.
@@ -113,11 +113,11 @@ Legend:
 | # | Issue | Resolution | Status |
 |---|---|---|---|
 | 1 | `PUT /suites/{id}` rewrites `test_cases`, but `run_results.case_id` points at them, so editing a suite corrupts history. | Case rows are immutable per version. Add `test_cases.suite_version` and `runs.suite_version`, unique on (suite_id, suite_version, case_key). Runs compare across versions by `case_key`. | Approved |
-| 2 | `--push` exists but there's no endpoint that accepts a locally executed run. The CLI and Action must execute locally anyway, because the agent is often on localhost in the user's CI. `/ci/report` is undefined. | `POST /projects/{id}/runs:ingest` (API key) upserts the agent and suite by name and stores the results. `GET /projects/{id}/baselines/{branch}`. `POST /ci/report` returns the verdict + PR-comment markdown. The Action posts the comment itself with `GITHUB_TOKEN`, so the API never holds GitHub tokens. | Approved |
+| 2 | `--push` exists but there's no endpoint that accepts a locally executed run. The CLI and Action must execute locally anyway, because the agent is often on localhost in the user's CI. `/ci/report` is undefined. | ~~`POST /projects/{id}/runs:ingest` upserts the agent and suite by name~~. **Amended (2026-09-26):** `POST /ci/report` (API key) is the single run-ingest endpoint; `runs:ingest` is intentionally not built ([ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md)). The suite must exist; the agent is a registered one or, for the CLI's python adapter, just a name ([ADR 0018](decisions/0018-results-compare-ci-report-export-share.md), [ADR 0020](decisions/0020-unregistered-agent-runs.md)). `GET /projects/{id}/baselines/{branch}?suite=&agent=` (or `agent_name=`). `POST /ci/report` returns structured data only (verdict, comparison, links), no PR-comment markdown: the GitHub Action (F1) formats the comment from that JSON and posts it itself with `GITHUB_TOKEN`, so the API never holds GitHub tokens. | Approved |
 | 3 | The auth mechanism is only "JWT/session". Web (Vercel) and API (Render) are cross-site. | Next.js rewrites `/api/*` to FastAPI (same origin). The API sets a short-lived JWT in an httpOnly, Secure, SameSite=Lax cookie. Mutations require a JSON content type (CSRF). CLI/CI use project API keys (`ap_…`, stored as SHA-256) as Bearer tokens. **Refined by [ADR 0009](decisions/0009-session-scheme.md):** a 15-minute access cookie, plus a rotating, hashed refresh cookie with reuse detection. Cookie mutations must also carry `Origin: WEB_ORIGIN`. An SSE stream-token fallback is designed for B2.4. | Approved |
 | 4 | On a public deployment, anyone who registers spends the owner's LLM quota. Settings mentions "provider config", but there's no table for it. | Signup allowlist (`SIGNUP_ALLOWED_EMAILS`). The server key is used only through the budget guard (per-run and per-day USD caps). The public sees the demo via read-only share links. No BYOK in v1; Settings shows model config read-only. | Approved |
 | 5 | The consistency judge is per case, but `judgments.run_result_id` is per attempt. | `run_result_id` becomes nullable. Add `run_id` and `case_id`, with a check constraint that exactly one scope is set. | Approved |
-| 6 | "Shareable read-only link" has no storage. | `runs.share_token_hash`. `POST /runs/{id}/share` returns the token once; `DELETE /runs/{id}/share`; public `GET /share/{token}`. | Approved |
+| 6 | "Shareable read-only link" has no storage. | `runs.share_token_hash`. `POST /runs/{id}/share` returns the token once; `DELETE /runs/{id}/share`; public `GET /shared/{token}`. | Approved |
 | 7 | `agents.secret_ref` doesn't say what it references. | A separate `secrets` table (id, project_id, ciphertext, created_at); `secret_ref` is the id of its row. Fernet encryption, key from `ENCRYPTION_KEY`, write-only, never returned or logged. See [ADR 0003](decisions/0003-secret-storage.md). | Approved |
 | 8 | Two costs are implied: the agent's own tokens/cost, and AgentProbe's judge spend. `runs.model` is also unclear. | Add `runs.judge_cost_usd`. `total_cost`/`total_tokens` are the agent's, as reported through response mapping, and nullable. `runs.model` is a user-supplied label for the agent's model (A/B compare). | Approved |
 | 9 | The statistics behind "statistically meaningful" aren't specified. | See the list after this table. Approved as proposed. Every threshold (α, `min_drop`, bootstrap/permutation iteration counts) is configurable via the suite YAML and CLI flags, not hardcoded, and the small-N limitation is documented prominently in `--help` and the docs. See [ADR 0006](decisions/0006-statistics-methodology.md). | Approved |
@@ -125,7 +125,7 @@ Legend:
 | 11 | Indirect injection needs injected documents, but an HTTP black box can't receive them. | An optional case field `context:` (documents) is exposed to the request template. The demo support bot also has a planted malicious tool output. | Decided |
 | 12 | The HTTP request/response mapping is unspecified, and tool-call judges need to see tool calls. | The request is a JSON template with `{{input}}` / `{{documents}}`. The response uses a JSONPath subset for `output`, `tool_calls` and token usage. Tool judges require the agent to report its calls (`tool_calls_reported`). See [ADR 0012](decisions/0012-http-adapter-and-ssrf-guard.md). | Decided |
 | 13 | An MCP server has no chat "input". | MCP cases use `call: {tool, arguments}`, and judges run on the tool result. Plus an automatic scan of tool descriptions for injected instructions. | Decided |
-| 14 | `adapter_type` includes `python`, but the Python adapter is CLI-only. | Allowed on ingested runs only. The server refuses to execute it. | Decided |
+| 14 | `adapter_type` includes `python`, but the Python adapter is CLI-only. | Allowed on ingested runs only. The server refuses to execute it. **Refined by [ADR 0020](decisions/0020-unregistered-agent-runs.md):** a python agent is never registered; its pushed runs carry `agent_name` instead of `agent_id`. | Decided |
 | 15 | Arq or Celery. | ~~Arq~~ **Superseded by [ADR 0017](decisions/0017-server-runner-and-queue.md):** Arq is maintenance-only and needs `redis<6`, so it's Taskiq + taskiq-redis behind a `QueueBackend` protocol. `QUEUE_BACKEND=inline\|redis`: inline locally, redis in CI and prod. | Decided |
 | 16 | SSE or WebSocket. | SSE: one-way and cookie-friendly. It polls DB state, so inline and arq behave the same. | Decided |
 | 17 | Integration tests "via Docker Compose" aren't possible without local Docker. | Locally: a Neon test branch (`pnpm verify`). CI: service containers. `docker-compose.yml` is shipped for users and verified only in CI. | Decided |
@@ -165,7 +165,11 @@ A1–A3 are done (2026-09-25).
 
 A4–A5 are done (2026-09-25). `refresh_tokens` table and `api_keys.last4 / created_at / revoked_at` added in migration 0002 ([ADR 0009](decisions/0009-session-scheme.md)).
 
-API additions: `POST /projects/{id}/runs:ingest`, `GET /projects/{id}/baselines/{branch}`, `POST|DELETE /runs/{id}/share`, `GET /share/{token}`, `POST /auth/logout`.
+API additions: `GET /projects/{id}/baselines/{branch}`, `POST|DELETE /runs/{id}/share`, `GET /shared/{token}`, `POST /auth/logout`. Run ingest is `POST /ci/report` ([ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md)).
+
+Added in B2.5 follow-up ([ADR 0020](decisions/0020-unregistered-agent-runs.md), migration 0004):
+- `runs`: `agent_id` nullable, plus `agent_name`; exactly one is set.
+- `baselines`: keyed on (project, suite, branch, agent_id or agent_name), not (project, branch).
 
 ## 4. DESIGN.md vs. a dashboard (ADR at E0)
 DESIGN.md describes a marketing site. These are the proposed adaptations:

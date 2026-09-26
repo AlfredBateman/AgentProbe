@@ -19,7 +19,7 @@ import asyncio
 import random
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from statistics import fmean
@@ -28,8 +28,8 @@ from typing import Any, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, JsonValue
 
 from agentprobe_core.adapters.types import AgentAdapter, AgentResponse
-from agentprobe_core.judges.registry import REGISTRY
-from agentprobe_core.judges.types import JudgeContext, JudgeFn, Judgment, Status
+from agentprobe_core.judges.registry import evaluate
+from agentprobe_core.judges.types import JudgeContext, Judgment, Status
 from agentprobe_core.llm.config import Price
 from agentprobe_core.llm.limits import Clock, SystemClock, with_backoff
 from agentprobe_core.llm.types import (
@@ -42,6 +42,7 @@ from agentprobe_core.llm.types import (
     Role,
 )
 from agentprobe_core.stats.summary import CaseSummary, Interval, Label, suite_stats
+from agentprobe_core.suite.judges import JudgeSpec
 from agentprobe_core.suite.schema import Case, StatisticsConfig, Suite
 
 ErrorKind = Literal[
@@ -219,15 +220,13 @@ def _cost(response: AgentResponse, price: Price | None) -> float | None:
     ) / 1_000_000
 
 
-async def _judge(
-    judge: JudgeFn, spec: Any, ctx: JudgeContext, timeout_s: float
-) -> Judgment | AttemptError:
+async def _judge(spec: JudgeSpec, ctx: JudgeContext, timeout_s: float) -> Judgment | AttemptError:
     """A judge's verdict; its failures become `error` verdicts. Budget exhaustion is
     returned as an `AttemptError`: every later LLM call would fail the same way.
     """
     try:
         async with asyncio.timeout(timeout_s):
-            return await judge(spec, ctx)
+            return await evaluate(spec, ctx)
     except TimeoutError:
         return Judgment("error", 0.0, f"judge timed out after {timeout_s:g}s")
     except (BudgetExceeded, QuotaExhausted) as exc:
@@ -239,7 +238,6 @@ async def _judge(
 async def execute_attempt(
     case: Case,
     adapter: AgentAdapter,
-    judges: Mapping[str, JudgeFn] = REGISTRY,
     llm: LLMClient | None = None,
     limits: AttemptLimits = AttemptLimits(),  # noqa: B008 (frozen dataclass)
     *,
@@ -298,7 +296,7 @@ async def execute_attempt(
     for spec in case.expect:
         if spec.judge == CONSISTENCY:
             continue
-        judgment = await _judge(judges[spec.judge], spec, ctx, limits.judge_timeout_s)
+        judgment = await _judge(spec, ctx, limits.judge_timeout_s)
         if isinstance(judgment, AttemptError):
             return result(error=judgment, judgments=verdicts, **accounting)
         verdicts.append(JudgeResult.of(spec.judge, judgment))
@@ -346,7 +344,6 @@ async def finalize_run(
     agent: str | None = None,
     runs_per_case: int | None = None,
     llm: LLMClient | None = None,
-    judges: Mapping[str, JudgeFn] = REGISTRY,
     statistics: StatisticsConfig | None = None,
     limits: AttemptLimits = AttemptLimits(),  # noqa: B008 (frozen dataclass)
     status: Literal["completed", "cancelled"] = "completed",
@@ -387,7 +384,7 @@ async def finalize_run(
             )
             for spec in case.expect:
                 if spec.judge == CONSISTENCY:
-                    judgment = await _judge(judges[spec.judge], spec, ctx, limits.judge_timeout_s)
+                    judgment = await _judge(spec, ctx, limits.judge_timeout_s)
                     if isinstance(judgment, AttemptError):
                         judgment = Judgment("error", 0.0, judgment.message)
                     consistency.append(JudgeResult.of(spec.judge, judgment))
@@ -462,6 +459,11 @@ def plan_attempts(suite: Suite, runs_per_case: int) -> list[tuple[Case, int]]:
             raise ValueError(
                 f"case {case.id!r} asks for mutations; the mutator isn't available yet"
             )
+        if case.obfuscate or case.attack_params:
+            field = "obfuscate" if case.obfuscate else "attack_params"
+            raise ValueError(
+                f"case {case.id!r} sets {field}; the attack library isn't available yet"
+            )
     return [(case, n) for case in suite.cases for n in range(runs_per_case)]
 
 
@@ -489,7 +491,6 @@ def check_results(suite: Suite, runs_per_case: int, results: Sequence[AttemptRes
 async def execute_with_retries(
     case: Case,
     adapter: AgentAdapter,
-    judges: Mapping[str, JudgeFn] = REGISTRY,
     llm: LLMClient | None = None,
     options: RunOptions = RunOptions(),  # noqa: B008 (frozen dataclass)
     *,
@@ -508,7 +509,6 @@ async def execute_with_retries(
         result = await execute_attempt(
             case,
             adapter,
-            judges,
             llm,
             options.limits,
             attempt=attempt,
@@ -536,7 +536,6 @@ async def execute_with_retries(
 async def run_suite(
     suite: Suite,
     adapter: AgentAdapter,
-    judges: Mapping[str, JudgeFn] = REGISTRY,
     llm: LLMClient | None = None,
     options: RunOptions = RunOptions(),  # noqa: B008 (frozen dataclass)
     *,
@@ -564,7 +563,7 @@ async def run_suite(
     results: list[AttemptResult] = list(completed)
 
     async def attempt(case: Case, n: int) -> AttemptResult:
-        return await execute_with_retries(case, adapter, judges, llm, options, attempt=n, rng=rng)
+        return await execute_with_retries(case, adapter, llm, options, attempt=n, rng=rng)
 
     # A finished attempt is always delivered whole: cancelling the run interrupts agent
     # calls, never an on_result that is saving a result.
@@ -611,7 +610,6 @@ async def run_suite(
         agent=agent,
         runs_per_case=runs_per_case,
         llm=llm,
-        judges=judges,
         statistics=options.statistics,
         limits=options.limits,
         status="cancelled" if cancelled else "completed",

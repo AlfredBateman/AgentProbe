@@ -17,7 +17,7 @@ docs/            PLAN.md, PROGRESS.md, decisions/ (ADRs), screenshots/
 | Command | What it does |
 |---|---|
 | `pnpm check` | Offline and fast. ruff, ruff format, mypy, pytest (unit only, mock LLM, no network), ESLint, tsc, Vitest. |
-| `pnpm verify` | `check`, then integration tests against the Neon test database |
+| `pnpm verify` | `check`'s lint and web steps, then unit + integration tests (Neon test database) with the coverage gate: 80% each for `packages/core` and `apps/api` |
 | `pnpm dev:api` / `pnpm dev:web` | Run the API on :8000 / the web app on :3000 |
 | `pnpm db:migrate` | Alembic upgrade to head |
 
@@ -30,7 +30,7 @@ Unmarked tests must be offline and deterministic.
 
 ## Workflow
 - Start each task by reading `docs/PROGRESS.md` and the SPEC.md sections relevant to the task.
-- There are two local verification tiers. `pnpm check` is offline and fast: lint, type-check, unit tests, mock LLM, no network. `pnpm verify` is `check` plus integration tests against the Neon test database.
+- There are two local verification tiers. `pnpm check` is offline and fast: lint, type-check, unit tests, mock LLM, no network. `pnpm verify` is `check` plus integration tests against the Neon test database, with the coverage gate (80% per package, core and api).
 - A task is finished only when all of these hold:
   - its gate passes;
   - `docs/PROGRESS.md` is updated (done / next / decisions / known issues);
