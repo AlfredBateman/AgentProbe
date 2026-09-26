@@ -1,6 +1,6 @@
 # 0015: Regex judge hardening
 
-Status: accepted (2026-09-24). Supersedes the `regex` bullet of [ADR 0013](0013-judges.md).
+Status: accepted (2026-09-24). Supersedes the `regex` bullet of [ADR 0013](0013-judges.md). Amended 2026-09-26 with a fourth guard, a group-nesting bound (see [Nesting](#nesting-amended-2026-09-26)).
 
 ## Context
 Suite YAML is user-supplied, and the hosted worker runs it, so a `regex` judge's pattern is hostile input. ADR 0013 guarded stdlib `re` with a 4,096-character cap on the agent's output. A cap doesn't bound backtracking, though: `^(a|aa)+$` against forty `a`s and a `!` explores about 10^8 paths, far below the cap. Stdlib `re` has no timeout, so a malicious pattern could hang a worker.
@@ -37,6 +37,15 @@ Three guards, all in `judges/rules.py`:
 - It logs parse errors to stderr through glog by default.
 
 All three are behavior users of a Python tool already rely on or would trip over. `regex` keeps Python `re` semantics.
+
+### Nesting (amended 2026-09-26)
+A fourth guard, checked before anything parses the pattern: refuse more than `MAX_REGEX_NESTING = 50` nested groups.
+
+The expansion bound above uses the stdlib parser, which recurses once per group. `"(" * 5000 + "a" + ")" * 5000` therefore raises `RecursionError`, which the judge already caught and turned into an error verdict — the test for it has been there since this ADR. What the test did not cover: the half-built parse tree is itself thousands deep, so **freeing** it can exhaust the stack again, and that second `RecursionError` cannot propagate from a deallocation. CPython reports it through `sys.unraisablehook`, attributed to whatever the process happens to be doing next.
+
+That is how it showed up: a CI run failed in an unrelated test with "multiple unraisable exception warnings", on Linux only, and only once other tests had changed the garbage collector's timing. It had been latent since this ADR.
+
+Counting parentheses first (linear, skipping escapes and character classes) means the deep tree is never built, so the hazard is gone rather than caught. It also matters outside tests: the same pattern in a real suite would have scattered unraisable errors through the API or worker process. Legitimate patterns nest a handful of levels; a test pins that a pattern at exactly the limit still compiles and matches, and that escaped parens and parens inside a class don't count towards the depth.
 
 ## Consequences
 - `packages/core` depends directly on `regex==2026.9.10`. It was already in the lock through tiktoken. `types-regex==2026.9.10.20260911` is a workspace dev dependency for mypy.
