@@ -94,7 +94,7 @@ def test_duplicate_case_ids_rejected() -> None:
 
 
 def test_case_needs_input_or_attack() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="needs `input`, `attack` or `call`"):
         Case.model_validate({"id": "c1", "expect": [CONTAINS]})
 
 
@@ -112,6 +112,19 @@ def test_unknown_attack_rejected() -> None:
 def test_case_requires_at_least_one_expectation() -> None:
     with pytest.raises(ValidationError):
         Case.model_validate({"id": "c1", "input": "hi", "expect": []})
+
+
+def test_case_with_only_call_is_valid() -> None:
+    case = Case.model_validate(
+        {"id": "c1", "call": {"tool": "add", "arguments": {"a": 1}}, "expect": [CONTAINS]}
+    )
+    assert case.input is None
+    assert (case.call.tool, case.call.arguments) == ("add", {"a": 1})
+
+
+def test_call_defaults_arguments_to_empty() -> None:
+    case = Case.model_validate({"id": "c1", "call": {"tool": "ping"}, "expect": [CONTAINS]})
+    assert case.call.arguments == {}
 
 
 def test_input_over_max_length_rejected() -> None:

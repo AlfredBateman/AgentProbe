@@ -10,6 +10,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from agentprobe_core.adapters import HttpAdapter, HttpAdapterConfig, TargetPolicy
+from agentprobe_core.adapters.mcp import McpAdapter, McpAdapterConfig
 from agentprobe_core.adapters.types import AgentAdapter
 from agentprobe_core.llm.config import Price
 
@@ -39,7 +40,27 @@ class PythonAgent(_Strict):
     price: Price | None = None
 
 
-Agent = Annotated[HttpAgent | PythonAgent, Field(discriminator="type")]
+class McpAgent(_Strict):
+    """CLI-only: `config` is the core's own `McpHttpConfig` or `McpStdioConfig` (ADR 0023),
+    nested rather than flattened, since the two transports don't share one field shape.
+    """
+
+    type: Literal["mcp"]
+    config: McpAdapterConfig
+
+
+Agent = Annotated[HttpAgent | PythonAgent | McpAgent, Field(discriminator="type")]
+
+
+def is_registerable(agent: Agent) -> bool:
+    """Whether the server could have this agent registered under its `agentprobe.yaml` name:
+    true for HTTP agents and MCP agents over Streamable HTTP, false for the Python adapter
+    and MCP over stdio, both CLI-only (ADR 0020, ADR 0023). `--push` uses this to decide
+    between `agent` and `agent_name`.
+    """
+    if isinstance(agent, HttpAgent):
+        return True
+    return isinstance(agent, McpAgent) and agent.config.transport == "http"
 
 
 class LlmSettings(_Strict):
@@ -94,6 +115,8 @@ def build_adapter(agent: Agent, config_dir: Path) -> AgentAdapter:
             )
         except ValueError as exc:  # a secret header the adapter won't send; never echoes it
             raise ConfigError(str(exc)) from None
+    if isinstance(agent, McpAgent):
+        return McpAdapter(agent.config, policy=TargetPolicy(allow_private=True))
     from agentprobe_core.adapters.python import PythonAdapter  # CLI-only (ADR 0012)
 
     if str(config_dir) not in sys.path:

@@ -10,6 +10,7 @@ uv run agentprobe run suites/examples/smoke.yaml --fail-under 0.9               
 uv run agentprobe run suites/examples/smoke.yaml --agent vulnerable             # planted flaws: exit 1
 uv run agentprobe baseline set .agentprobe/runs/<v1-run>.json                    # save as "main"
 uv run agentprobe run suites/examples/smoke.yaml --agent support-v2 --baseline main  # exit 2
+uv run agentprobe run suites/examples/mcp-safety.yaml --agent mcp-tools         # MCP adapter, planted flaws
 ```
 
 Every run is saved to `.agentprobe/runs/`. `agentprobe compare <a> <b>` diffs two runs. The exit codes are `0` passed, `1` below `--fail-under` (default 1.0), `2` regression, `3` usage/config error and `4` infrastructure error; `agentprobe --help` lists them. `agentprobe init` scaffolds `agentprobe.yaml` and an example suite for your own agent.

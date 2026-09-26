@@ -33,3 +33,9 @@ agents:
       output: $.result.text
       input_tokens: $.meta.tokens.input
       output_tokens: $.meta.tokens.output
+  mcp-tools:
+    type: mcp
+    config:
+      transport: http
+      url: http://127.0.0.1:9000/mcp-tools/mcp
+      allow_private: true

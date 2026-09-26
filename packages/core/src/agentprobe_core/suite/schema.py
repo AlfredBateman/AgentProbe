@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from agentprobe_core.adapters.types import McpCall
 from agentprobe_core.suite.attacks import ATTACKS
 from agentprobe_core.suite.judges import JudgeSpec
 
@@ -78,6 +79,8 @@ class Case(BaseModel):
     # Documents/tool output for the request template's {{documents}} (PLAN.md §2 #11): plain
     # text or JSON objects, passed through as-is (ADR 0012).
     context: list[str | dict[str, Any]] | None = None
+    # An MCP tool call (PLAN.md §2 #13, ADR 0010/0023), in place of a chat-style `input`.
+    call: McpCall | None = None
     expect: list[JudgeSpec] = Field(min_length=1)
 
     @field_validator("attack")
@@ -88,9 +91,9 @@ class Case(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _input_or_attack(self) -> "Case":
-        if self.input is None and self.attack is None:
-            raise ValueError("a case needs `input`, `attack` (or both)")
+    def _input_or_attack_or_call(self) -> "Case":
+        if self.input is None and self.attack is None and self.call is None:
+            raise ValueError("a case needs `input`, `attack` or `call`")
         return self
 
 

@@ -187,9 +187,9 @@ async def test_a_redelivered_attempt_job_never_calls_the_agent_twice(
         def __init__(self, inner: AgentAdapter) -> None:
             self.inner = inner
 
-        async def invoke(self, input: str, context: Any = ()) -> AgentResponse:
+        async def invoke(self, input: str, context: Any = (), *, call: Any = None) -> AgentResponse:
             calls.append(input)
-            return await self.inner.invoke(input, context)
+            return await self.inner.invoke(input, context, call=call)
 
         async def aclose(self) -> None:
             await runstore.close_adapter(self.inner)

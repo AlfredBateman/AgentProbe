@@ -15,6 +15,7 @@ from pydantic import JsonValue
 from agentprobe_core.adapters.types import (
     AgentResponse,
     ErrorStep,
+    McpCall,
     MessageStep,
     TokenUsage,
     ToolCallStep,
@@ -83,7 +84,9 @@ class FakeAdapter:
     in_flight: int = 0
     max_in_flight: int = 0
 
-    async def invoke(self, input: str, context: Sequence[JsonValue] = ()) -> AgentResponse:
+    async def invoke(
+        self, input: str, context: Sequence[JsonValue] = (), *, call: McpCall | None = None
+    ) -> AgentResponse:
         self.calls.append(input)
         self.in_flight += 1
         self.max_in_flight = max(self.max_in_flight, self.in_flight)

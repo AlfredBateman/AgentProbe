@@ -87,10 +87,28 @@ class AgentResponse(BaseModel):
 
 
 class AdapterNotAllowed(Exception):
-    """This adapter can't run here (the Python adapter outside the CLI, or an unknown type)."""
+    """This adapter can't run here (the Python adapter outside the CLI, an MCP stdio config on
+    the server, or an unknown type).
+    """
+
+
+class McpCall(BaseModel):
+    """A case's `call:` field (SPEC.md §4.2, ADR 0010): which MCP tool to invoke and with what
+    arguments, in place of a chat-style `input`.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tool: str = Field(min_length=1, max_length=200)
+    arguments: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class AgentAdapter(Protocol):
-    async def invoke(self, input: str, context: Sequence[JsonValue] = ()) -> AgentResponse:
-        """Sends one input (plus the case's context documents) to the agent."""
+    async def invoke(
+        self, input: str, context: Sequence[JsonValue] = (), *, call: McpCall | None = None
+    ) -> AgentResponse:
+        """Sends one input (plus the case's context documents) to the agent, or, if `call` is
+        set, invokes that MCP tool instead. An adapter that doesn't support `call` returns an
+        error response rather than raising.
+        """
         ...

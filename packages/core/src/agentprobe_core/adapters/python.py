@@ -25,6 +25,7 @@ from agentprobe_core.adapters.types import (
     AdapterNotAllowed,
     AgentResponse,
     ErrorStep,
+    McpCall,
     MessageStep,
     TraceStep,
 )
@@ -69,7 +70,16 @@ class PythonAdapter:
         self._pass_context = _accepts_context(self._fn)
         self._timeout_s = timeout_s
 
-    async def invoke(self, input: str, context: Sequence[JsonValue] = ()) -> AgentResponse:
+    async def invoke(
+        self, input: str, context: Sequence[JsonValue] = (), *, call: McpCall | None = None
+    ) -> AgentResponse:
+        if call is not None:
+            return AgentResponse(
+                output="",
+                steps=[],
+                latency_ms=0.0,
+                error="the python adapter doesn't support `call`",
+            )
         started, t0 = datetime.now(UTC), time.perf_counter()
         steps: list[TraceStep] = [MessageStep(role="user", content=input, timestamp=started)]
         args = (input, list(context)) if self._pass_context else (input,)

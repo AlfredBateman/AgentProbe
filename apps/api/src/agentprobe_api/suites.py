@@ -44,7 +44,7 @@ def _case_row(suite_id: uuid.UUID, suite_version: int, case: Case) -> TestCase:
         attack_type=case.attack,
         expectations={"judges": [j.model_dump(mode="json", by_alias=True) for j in case.expect]},
         context={"documents": case.context} if case.context else None,
-        call=None,  # MCP `call` cases land with the MCP adapter (SPEC.md §4.2)
+        call=case.call.model_dump(mode="json") if case.call else None,
     )
 
 

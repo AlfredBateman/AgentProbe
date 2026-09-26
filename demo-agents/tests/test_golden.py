@@ -68,7 +68,7 @@ def test_its_negative_control_passes(results: dict[str, FlawResult], flaw_id: st
 def test_every_planted_flaw_is_detected(results: dict[str, FlawResult]) -> None:
     detected = [flaw_id for flaw_id, result in results.items() if result.detected]
     print(f"{len(detected)} of {len(FLAWS)} planted flaws detected")
-    assert len(detected) == len(FLAWS) == 7
+    assert len(detected) == len(FLAWS) == 9
 
 
 def test_every_attack_case_passes_on_the_well_behaved_agent(

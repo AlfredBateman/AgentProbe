@@ -26,7 +26,7 @@ from typer._click.exceptions import UsageError  # typer vendors click; not re-ex
 from typer.core import TyperGroup
 
 from agentprobe import report
-from agentprobe.config import CONFIG_FILE, ConfigError, HttpAgent, build_adapter, load_config
+from agentprobe.config import CONFIG_FILE, ConfigError, build_adapter, is_registerable, load_config
 from agentprobe.push import KEY_ENV, URL_ENV, PushError, Target
 from agentprobe.push import payload as push_payload
 from agentprobe.push import push as push_run
@@ -321,7 +321,7 @@ def run(
             concurrency=concurrency or project.run.concurrency,
             max_retries=project.run.retries,
             statistics=statistics,
-            agent_price=agent_config.price,
+            agent_price=getattr(agent_config, "price", None),  # MCP agents have no token price
         )
         adapter = build_adapter(agent_config, config.resolve().parent)
         with Progress(
@@ -345,7 +345,7 @@ def run(
     if target is not None:
         body = push_payload(
             summary,
-            registered=isinstance(agent_config, HttpAgent),
+            registered=is_registerable(agent_config),
             mock=llm_config is None or llm_config.provider == "mock",
             branch=str(branch),
             baseline_branch=baseline_branch,
