@@ -465,6 +465,27 @@ def plan_attempts(suite: Suite, runs_per_case: int) -> list[tuple[Case, int]]:
     return [(case, n) for case in suite.cases for n in range(runs_per_case)]
 
 
+def check_results(suite: Suite, runs_per_case: int, results: Sequence[AttemptResult]) -> None:
+    """Raises `ValueError` unless every result is a distinct (case, attempt) of the run's
+    plan: attempts executed elsewhere (e.g. uploaded by CI) can't invent cases, repeat an
+    attempt, or give a case more attempts than `runs_per_case`.
+    """
+    planned = {(case.id, n) for case, n in plan_attempts(suite, runs_per_case)}
+    seen: set[tuple[str, int]] = set()
+    for result in results:
+        key = (result.case_id, result.attempt)
+        if key not in planned:
+            raise ValueError(
+                f"case {result.case_id!r} attempt {result.attempt} is not in the run's plan "
+                f"({len(suite.cases)} cases x {runs_per_case} runs, attempts 0-{runs_per_case - 1})"
+            )
+        if key in seen:
+            raise ValueError(
+                f"duplicate result for case {result.case_id!r} attempt {result.attempt}"
+            )
+        seen.add(key)
+
+
 async def execute_with_retries(
     case: Case,
     adapter: AgentAdapter,

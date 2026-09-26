@@ -71,11 +71,22 @@ def _retry_after(exc: Exception) -> float | None:
     return float(match.group(1)) if match else None
 
 
+def _redacted(text: str) -> str:
+    """Provider errors can quote the request (URL, headers). Their text ends up in judge
+    reasons, which are stored, exported, shown on public share links and logged, so any
+    credential from the environment is cut out first.
+    """
+    for name, value in os.environ.items():
+        if len(value) >= 8 and name.endswith(("_API_KEY", "_TOKEN", "_SECRET")):
+            text = text.replace(value, "[REDACTED]")
+    return text
+
+
 def classify(exc: Exception) -> Exception:
     """Maps a provider exception to QuotaExhausted, TransientLLMError or LLMError."""
     name = type(exc).__name__
     status = getattr(exc, "status_code", None)
-    message = str(exc)[:500]
+    message = _redacted(str(exc))[:500]
     if status == 429 or name == "RateLimitError":
         if "PerDay" in message:  # Gemini's daily quota: retrying today can't succeed
             return QuotaExhausted(f"provider daily quota exhausted: {message}")
@@ -134,7 +145,7 @@ class LiteLLMProvider:
                     model=model,
                     finish_reason="content_filter",
                     blocked=True,
-                    block_reason=str(exc)[:500],
+                    block_reason=_redacted(str(exc))[:500],
                     latency_ms=(time.perf_counter() - start) * 1000,
                 )
             raise classify(exc) from exc

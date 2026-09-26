@@ -26,7 +26,7 @@ from agentprobe_api.auth import CurrentApiKey, Db
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Baseline, Run, Suite
 from agentprobe_api.projects import owned_project
-from agentprobe_core.runner import AttemptResult, finalize_run, plan_attempts
+from agentprobe_core.runner import AttemptResult, check_results, finalize_run
 from agentprobe_core.stats import RegressionReport, compare_runs
 from agentprobe_core.suite import SuiteParseError, parse_suite_yaml
 
@@ -84,26 +84,9 @@ async def ci_report(
 
     runs_per_case = body.runs_per_case or parsed.runs_per_case
     try:
-        expected = plan_attempts(parsed, runs_per_case)
+        check_results(parsed, runs_per_case, body.results)
     except ValueError as exc:
         raise ApiError(422, str(exc)) from exc
-    if len(body.results) > len(expected):
-        raise ApiError(
-            422,
-            f"{len(body.results)} results for {len(expected)} expected attempts "
-            f"({len(parsed.cases)} cases x {runs_per_case} runs)",
-        )
-    case_keys = {c.id for c in parsed.cases}
-    seen: set[tuple[str, int]] = set()
-    for result in body.results:
-        if result.case_id not in case_keys:
-            raise ApiError(422, f"unknown case id {result.case_id!r} in results")
-        key = (result.case_id, result.attempt)
-        if key in seen:
-            raise ApiError(
-                422, f"duplicate result for case {result.case_id!r} attempt {result.attempt}"
-            )
-        seen.add(key)
 
     now = datetime.now(UTC)
     run = Run(

@@ -106,6 +106,8 @@ async def test_html_export_escapes_hostile_agent_output(
     r = await alice.get(f"/runs/{run_id}/export", params={"format": "html"})
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
+    csp = r.headers["content-security-policy"]
+    assert "default-src 'none'" in csp and "script-src" not in csp  # no script, ever
     html = r.text
     # The payloads must never appear as live markup: no unescaped '<script' or '<img' tag
     # anywhere, only their escaped text form.

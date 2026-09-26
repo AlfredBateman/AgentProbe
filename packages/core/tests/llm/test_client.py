@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import random
 from collections.abc import Sequence
 from dataclasses import replace
@@ -34,9 +35,11 @@ def client(clock: Any, provider: Any | None = None, **config: Any) -> Client:
     )
 
 
-def test_client_satisfies_the_protocol(clock: Any) -> None:
-    c: LLMClient = client(clock)  # mypy checks the structural match
-    assert c is not None
+@pytest.mark.parametrize("method", ["complete", "embed"])
+def test_client_satisfies_the_protocol(method: str) -> None:
+    # mypy doesn't check tests, so compare the signatures the judges call through.
+    protocol = inspect.signature(getattr(LLMClient, method))
+    assert inspect.signature(getattr(Client, method)) == protocol
 
 
 async def test_default_client_is_the_offline_mock() -> None:

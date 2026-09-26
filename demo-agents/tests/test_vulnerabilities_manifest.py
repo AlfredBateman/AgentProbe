@@ -1,6 +1,10 @@
 import json
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
+from agentprobe_demo_agents.main import create_app
+
 MANIFEST_PATH = Path(__file__).resolve().parents[1] / "vulnerabilities.json"
 REQUIRED_FIELDS = {"id", "route", "category", "description", "trigger", "suite_case_ids"}
 
@@ -19,6 +23,7 @@ def test_manifest_entries_have_required_fields_and_unique_ids() -> None:
 
 def test_every_route_in_the_manifest_is_actually_served() -> None:
     entries = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    served_prefixes = {"/support/v1", "/support/v2", "/rag", "/vulnerable"}
+    client = TestClient(create_app())
     for entry in entries:
-        assert entry["route"] in served_prefixes
+        r = client.post(f"{entry['route']}/chat", json={"input": "hello"})
+        assert r.status_code == 200, entry["id"]
