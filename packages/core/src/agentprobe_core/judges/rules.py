@@ -31,7 +31,8 @@ from agentprobe_core.suite.judges import (
     ToolNotCalledJudge,
 )
 
-# Suite YAML is user-supplied, so a regex pattern is hostile input (ADR 0015). Three guards:
+# Suite YAML is user-supplied, so a regex pattern is hostile input (ADR 0015). Four guards,
+# in the order they run:
 # 1. Matching runs on the `regex` package with a timeout that covers the whole search, so
 #    catastrophic backtracking (e.g. ^(a|aa)+$) ends as status=error instead of a hung worker.
 REGEX_TIMEOUT_SECONDS = 0.25
@@ -42,6 +43,14 @@ REGEX_TIMEOUT_SECONDS = 0.25
 MAX_REGEX_EXPANSION = 10_000
 # 3. Bounds memory and keeps matching proportionate. Not the backtracking guard (1 is).
 MAX_REGEX_INPUT = 100_000
+# 4. Group nesting is bounded before the pattern reaches any parser, and checked first. The
+#    stdlib parser recurses once per group, so ("*5000 + "a" + )"*5000 raises RecursionError.
+#    That is caught below, but the half-built parse tree is then deep enough that *freeing*
+#    it can recurse too, and that second RecursionError arrives as an unraisable exception in
+#    whatever the process runs next (it surfaced as a flaky CI failure blamed on an unrelated
+#    test). Counting parentheses first means the deep tree is never built. Real patterns nest
+#    a few levels; 50 is far past anything legitimate.
+MAX_REGEX_NESTING = 50
 
 _REGEX_FLAGS = {  # suite flag -> (stdlib flag for parsing, regex flag for matching)
     "i": (re.IGNORECASE, regexlib.IGNORECASE),
@@ -121,7 +130,35 @@ def _expansion(items: Iterable[tuple[Any, Any]]) -> int:
     return size
 
 
+def _nesting_depth(pattern: str) -> int:
+    """The deepest run of open groups, counting `(` outside escapes and character classes.
+    Cheap and linear: it only has to be right enough to keep a pathological pattern away
+    from the recursive parser (guard 4 above).
+    """
+    depth = deepest = 0
+    escaped = in_class = False
+    for char in pattern:
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif in_class:
+            in_class = char != "]"
+        elif char == "[":
+            in_class = True
+        elif char == "(":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif char == ")":
+            depth = max(0, depth - 1)
+    return deepest
+
+
 async def regex(spec: RegexJudge, ctx: JudgeContext) -> Judgment:
+    if (depth := _nesting_depth(spec.pattern)) > MAX_REGEX_NESTING:
+        return _regex_error(
+            f"invalid pattern: groups nested too deeply ({depth}, limit {MAX_REGEX_NESTING})"
+        )
     parse_flags = match_flags = 0
     for char in spec.flags:
         if char not in _REGEX_FLAGS:

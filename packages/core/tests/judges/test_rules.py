@@ -216,6 +216,7 @@ async def test_regex_python_syntax_still_supported(pattern: str, flags: str, out
     ("pattern", "reason"),
     [
         ("(" * 5_000 + "a" + ")" * 5_000, "nested too deeply"),
+        ("(" * 51 + "a" + ")" * 51, "nested too deeply"),  # just over MAX_REGEX_NESTING
         (r"a{4294967296}", "too large"),  # above the engine's maximum repeat count
         (r"(?V1)a", "invalid pattern"),  # regex-only syntax: patterns are Python `re` syntax
     ],
@@ -225,6 +226,24 @@ async def test_regex_hostile_or_foreign_patterns_are_errors(pattern: str, reason
     result = await rules.regex(RegexJudge(judge="regex", pattern=pattern), ctx)
     assert result.status == "error"
     assert reason in result.reason
+
+
+async def test_regex_nesting_up_to_the_limit_still_matches() -> None:
+    # The nesting guard must not reject patterns a person would actually write: at the limit
+    # it still compiles and matches, and parentheses in a class or escaped don't count.
+    depth = rules.MAX_REGEX_NESTING
+    at_limit = "(" * depth + "a" + ")" * depth
+    ctx = make_ctx(response=make_response("a"))
+    assert (await rules.regex(RegexJudge(judge="regex", pattern=at_limit), ctx)).status == "pass"
+
+    # Escaped parens and parens inside a character class are literals, so they must not count
+    # towards the depth: this nests one group deep, not five.
+    literal_parens = r"\(+[()]+(b\(c)"
+    assert rules._nesting_depth(literal_parens) == 1
+    matching = make_ctx(response=make_response("(()b(c"))
+    assert (
+        await rules.regex(RegexJudge(judge="regex", pattern=literal_parens), matching)
+    ).status == ("pass")
 
 
 # --- json_schema ------------------------------------------------------------------------------
