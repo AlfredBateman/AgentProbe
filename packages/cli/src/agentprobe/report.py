@@ -133,7 +133,8 @@ def _render_regression(console: Console, regression: RegressionReport) -> None:
         Text.assemble(
             "\nBaseline comparison: ",
             (regression.verdict.replace("_", " "), style[regression.verdict]),
-            f"  (alpha {regression.alpha:g}, min drop {regression.min_drop:g})",
+            f"  (alpha {regression.alpha:g}: cases {regression.alpha_cases:g}, "
+            f"suite {regression.alpha_suite:g}; min drop {regression.min_drop:g})",
         )
     )
     if regression.suite is not None:

@@ -1,10 +1,14 @@
 """Regression detection between a baseline run and a candidate run (SPEC.md §4.6-4.7,
 ADR 0006, ADR 0014).
 
-A drop is flagged only when it is statistically significant at `alpha` AND at least
-`min_drop`: per case (one-sided Fisher exact, Tarone-Holm step-down across the shared
-cases) or for the suite (paired sign-flip permutation test on the shared cases). Rises are
-flagged the same way, as a separate family.
+A drop is flagged only when it is statistically significant AND at least `min_drop`: per
+case (one-sided Fisher exact, Tarone-Holm step-down across the shared cases) or for the
+suite (paired sign-flip permutation test on the shared cases). Rises are flagged the same
+way, as a separate family.
+
+Either channel firing is a regression, so `alpha` is split between them (`alpha_cases` and
+`alpha_suite`, half each by default). Each channel holds its own rate at its share, so the
+verdict's rate is at most their sum, which is `alpha` (ADR 0014 §Verdict).
 """
 
 import math
@@ -78,7 +82,9 @@ class SuiteComparison:
 @dataclass(frozen=True)
 class RegressionReport:
     verdict: Verdict
-    alpha: float
+    alpha: float  # the whole verdict's false-alarm budget, split over the two channels
+    alpha_cases: float  # what the per-case family was held at (`CaseComparison` thresholds)
+    alpha_suite: float  # what the suite test was compared against
     min_drop: float
     suite: SuiteComparison | None  # None when the runs share no case
     cases: list[CaseComparison]  # shared cases, in baseline order
@@ -110,12 +116,13 @@ def compare_runs(
     it's what a CI gate must catch. Otherwise `improvement` if any case or the suite is
     flagged better, else `no_change`.
 
-    The per-case family holds its family-wise false-alarm rate at alpha, and so does the
-    suite test, so the verdict's worst case is 2 * alpha (union bound); the calibration
-    tests and docs/metrics.md measure the actual rates.
+    The per-case family holds its family-wise false-alarm rate at `alpha_cases` and the
+    suite test holds its own at `alpha_suite`. Either one firing is a verdict, so the
+    verdict's rate is at most the sum, and the two default to `alpha`/2 (Bonferroni) so that
+    sum is `alpha`; the calibration tests and docs/metrics.md measure the actual rates.
     """
     config = config if config is not None else StatisticsConfig()
-    alpha = _exact(config.alpha)
+    suite_alpha = _exact(config.suite_alpha)
     min_drop = _exact(config.min_drop)
     shared = [case_id for case_id in baseline if case_id in candidate]
     cases = compare_cases(baseline, candidate, config)
@@ -134,8 +141,8 @@ def compare_runs(
             p_worse=float(test.p_worse),
             p_better=float(test.p_better),
             exact=test.exact,
-            regressed=test.p_worse <= alpha and -mean_delta >= min_drop,
-            improved=test.p_better <= alpha and mean_delta >= min_drop,
+            regressed=test.p_worse <= suite_alpha and -mean_delta >= min_drop,
+            improved=test.p_better <= suite_alpha and mean_delta >= min_drop,
             score=_aggregate(pairs, lambda s: s.mean_score, fmean),
             latency_ms=_aggregate(pairs, lambda s: s.mean_latency_ms, fmean),
             cost_usd=_aggregate(pairs, _cost_per_attempt, math.fsum),
@@ -155,6 +162,8 @@ def compare_runs(
     return RegressionReport(
         verdict=verdict,
         alpha=config.alpha,
+        alpha_cases=config.cases_alpha,
+        alpha_suite=config.suite_alpha,
         min_drop=config.min_drop,
         suite=suite,
         cases=cases,
@@ -177,11 +186,11 @@ def compare_cases(
     config: StatisticsConfig | None = None,
 ) -> list[CaseComparison]:
     """The per-case family on its own: one-sided Fisher exact tests on every shared case,
-    Tarone-Holm step-down at `alpha` (worse and better are separate families), then the
-    `min_drop` filter. In baseline order.
+    Tarone-Holm step-down at `alpha_cases` (worse and better are separate families), then
+    the `min_drop` filter. In baseline order.
     """
     config = config if config is not None else StatisticsConfig()
-    alpha = _exact(config.alpha)
+    alpha = _exact(config.cases_alpha)
     min_drop = _exact(config.min_drop)
     shared = [case_id for case_id in baseline if case_id in candidate]
     fisher = [fisher_exact(baseline[c], candidate[c]) for c in shared]

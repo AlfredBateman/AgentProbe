@@ -6,10 +6,16 @@
 Each trial draws an agent (true per-case pass probabilities), runs it twice (baseline and
 candidate) from the same probabilities, and asks each check whether it sees a regression. Any
 alarm is false. The same checks then run on agents with a planted real regression, so a
-check can't look good by never firing. The statistical check is shown with Tarone-Holm (what
-ships) and with plain Holm (before ADR 0014's amendment). A last grid breaks the statistical
-check's false alarms down into the per-case family and the whole verdict. Methodology and
-assumptions: docs/metrics.md. Deterministic: the same arguments print the same tables.
+check can't look good by never firing.
+
+Three variants of the statistical check are shown: plain Holm per case (before ADR 0014's
+amendment), Tarone-Holm with both channels at the full `alpha` (before the alpha split), and
+what ships now, which splits `alpha` over the per-case family and the suite test. A last
+grid breaks the shipped check's false alarms into those two channels and the combined
+verdict, which is the rate a CI gate actually sees.
+
+Methodology and assumptions: docs/metrics.md. Deterministic: the same arguments print the
+same tables.
 """
 
 import argparse
@@ -28,8 +34,9 @@ from agentprobe_core.stats import (
 )
 from agentprobe_core.suite.schema import StatisticsConfig
 
-CONFIG = StatisticsConfig()  # the shipped defaults: alpha 0.05, min_drop 0.05
+CONFIG = StatisticsConfig()  # the shipped defaults: alpha 0.05 split 0.025/0.025, min_drop 0.05
 ALPHA, MIN_DROP = Fraction(repr(CONFIG.alpha)), Fraction(repr(CONFIG.min_drop))
+CASES_ALPHA, SUITE_ALPHA = Fraction(repr(CONFIG.cases_alpha)), Fraction(repr(CONFIG.suite_alpha))
 FLAKY_PASS_PROBABILITY = (0.5, 0.95)  # uniform range for flaky cases' true pass rate
 
 Outcomes = list[list[bool]]  # [case][attempt]: did the attempt pass?
@@ -111,23 +118,48 @@ def multi_run_effect_only(trial: Trial) -> bool:
     return Fraction(drop, attempts) >= MIN_DROP
 
 
-def statistical_holm(trial: Trial) -> bool:
-    # The same check with plain Holm per case: Tarone-Holm with every minimum p at 0 is
-    # exactly Holm (tested). The suite-level test is unchanged.
+def cases_flagged(trial: Trial, alpha: Fraction, *, tarone: bool) -> bool:
+    """The per-case channel at `alpha`, with or without Tarone's modification. Tarone-Holm
+    with every minimum p at 0 is exactly Holm (tested), so one function covers both.
+    """
     baseline, candidate = trial.summaries
     fisher = [fisher_exact(baseline[c], candidate[c]) for c in baseline]
-    holm = tarone_holm([f.p_worse for f in fisher], [Fraction(0)] * len(fisher), ALPHA)
-    per_case = any(
+    min_p = [f.min_p_worse for f in fisher] if tarone else [Fraction(0)] * len(fisher)
+    decisions = tarone_holm([f.p_worse for f in fisher], min_p, alpha)
+    return any(
         decision.rejected
         and Fraction(b.passes, b.attempts) - Fraction(c.passes, c.attempts) >= MIN_DROP
-        for decision, b, c in zip(holm, baseline.values(), candidate.values(), strict=True)
+        for decision, b, c in zip(decisions, baseline.values(), candidate.values(), strict=True)
     )
-    return per_case or (trial.report.suite is not None and trial.report.suite.regressed)
+
+
+def suite_flagged(trial: Trial, alpha: Fraction) -> bool:
+    """The suite channel at `alpha`. The p-value doesn't depend on `alpha`, so the report's
+    permutation test is reused rather than recomputed: `repr` recovers it exactly, because an
+    exact sign-flip p-value is a dyadic fraction (k / 2**m).
+    """
+    suite = trial.report.suite
+    if suite is None:
+        return False
+    return Fraction(repr(suite.p_worse)) <= alpha and Fraction(repr(-suite.pass_rate_delta)) >= (
+        MIN_DROP
+    )
+
+
+def statistical_holm(trial: Trial) -> bool:
+    # Before ADR 0014: plain Holm per case, and both channels at the full alpha.
+    return cases_flagged(trial, ALPHA, tarone=False) or suite_flagged(trial, ALPHA)
+
+
+def statistical_unsplit(trial: Trial) -> bool:
+    # After ADR 0014, before the alpha split: two alpha-level channels OR'd together, whose
+    # combined false-alarm rate is bounded only by 2 * alpha.
+    return cases_flagged(trial, ALPHA, tarone=True) or suite_flagged(trial, ALPHA)
 
 
 def statistical(trial: Trial) -> bool:
-    # AgentProbe as shipped: Fisher + Tarone-Holm per case, sign-flip permutation for the
-    # suite, and min_drop on both.
+    # AgentProbe as shipped: Fisher + Tarone-Holm per case at alpha_cases, sign-flip
+    # permutation for the suite at alpha_suite, and min_drop on both.
     return trial.report.verdict == "regression"
 
 
@@ -136,9 +168,11 @@ CHECKS: dict[str, tuple[str, Callable[[Trial], bool]]] = {
     "retry": ("Single run, failures retried once", single_run_with_retry),
     "any_drop": ("N runs, no statistics: any case's pass count fell", multi_run_any_drop),
     "effect": ("N runs, effect size only: suite mean fell >= min_drop", multi_run_effect_only),
-    "holm": ("N runs, statistical, Holm per case (before)", statistical_holm),
-    "statistical": ("N runs, statistical, Tarone-Holm per case (shipped)", statistical),
+    "holm": ("N runs, statistical, Holm per case (before ADR 0014)", statistical_holm),
+    "unsplit": ("N runs, statistical, Tarone-Holm, both channels at alpha", statistical_unsplit),
+    "statistical": ("N runs, statistical, Tarone-Holm, alpha split (shipped)", statistical),
 }
+VARIANTS = ("naive", "holm", "unsplit", "statistical")  # compared side by side below
 
 
 def simulate(
@@ -177,10 +211,20 @@ GRID_SCENARIOS: dict[str, Callable[[random.Random, int], list[float]]] = {
 }
 
 
-def calibrate(scenario: str, size: int, trials: int, seed: str) -> tuple[int, int]:
-    """(per-case family alarms, verdict alarms) with nothing changed, at 5 runs per case."""
+@dataclass(frozen=True)
+class Calibration:
+    """Alarm counts on an unchanged agent, per channel and combined."""
+
+    cases: int  # the per-case family, at alpha_cases
+    suite: int  # the sign-flip suite test, at alpha_suite
+    verdict: int  # either channel: what a CI gate sees
+    unsplit: int  # the same verdict with both channels at the full alpha (before the split)
+
+
+def calibrate(scenario: str, size: int, trials: int, seed: str) -> Calibration:
+    """Channel-by-channel false alarms with nothing changed, at 5 runs per case."""
     rng = random.Random(seed)  # noqa: S311 (seeded simulation, not crypto)
-    family = verdict = 0
+    cases = suite = verdict = unsplit = 0
     for _ in range(trials):
         rates = GRID_SCENARIOS[scenario](rng, size)
         runs = [
@@ -191,9 +235,12 @@ def calibrate(scenario: str, size: int, trials: int, seed: str) -> tuple[int, in
             for _ in range(2)
         ]
         report = compare_runs(runs[0], runs[1], CONFIG)
-        family += bool(report.regressed)
+        trial = Trial(baseline=[], candidate=[], summaries=(runs[0], runs[1]), report=report)
+        cases += bool(report.regressed)
+        suite += report.suite is not None and report.suite.regressed
         verdict += report.verdict == "regression"
-    return family, verdict
+        unsplit += statistical_unsplit(trial)
+    return Calibration(cases, suite, verdict, unsplit)
 
 
 def percent(hits: int, trials: int) -> str:
@@ -243,29 +290,26 @@ def main() -> None:
         cells = [percent(power[(REFERENCE.name, r)][key], trials) for r in REGRESSIONS]
         print(f"| {name} | {percent(null[REFERENCE.name][key], trials)} | {' | '.join(cells)} |")
     ref = null[REFERENCE.name]
-    for check in ("statistical", "holm"):
+    for check in ("statistical", "unsplit", "holm"):
         for key in ("naive", "retry"):
             print(
                 f"\nFalse-alarm reduction, {CHECKS[check][0].lower()} vs "
                 f"{CHECKS[key][0].lower()}: {reduction(ref[key], ref[check], trials)}"
             )
 
-    print("\n## With and without Tarone\n")
+    print("\n## The three statistical variants, across scenarios\n")
     print(
-        "| Scenario | Naive FA | Holm FA | Tarone-Holm FA | Reduction vs naive, Holm "
-        "| Reduction vs naive, Tarone-Holm | One case breaks: naive / Holm / Tarone-Holm |"
+        "| Scenario | Naive FA | Holm FA | Tarone-Holm FA | Tarone-Holm + split FA "
+        "| Reduction vs naive (split) | One case breaks: naive / Holm / Tarone-Holm / split |"
     )
     print("|---|---|---|---|---|---|---|")
     single_break = next(iter(REGRESSIONS))
     for s in SENSITIVITY:
         fa, hits = null[s.name], power[(s.name, single_break)]
-        detect = " / ".join(
-            f"{100 * hits[k] / trials:.1f}%" for k in ("naive", "holm", "statistical")
-        )
+        detect = " / ".join(f"{100 * hits[k] / trials:.1f}%" for k in VARIANTS)
         print(
             f"| {label(s)} | {percent(fa['naive'], trials)} | {percent(fa['holm'], trials)} "
-            f"| {percent(fa['statistical'], trials)} "
-            f"| {reduction(fa['naive'], fa['holm'], trials)} "
+            f"| {percent(fa['unsplit'], trials)} | {percent(fa['statistical'], trials)} "
             f"| {reduction(fa['naive'], fa['statistical'], trials)} | {detect} |"
         )
 
@@ -276,33 +320,49 @@ def main() -> None:
         cells = " | ".join(percent(null[s.name][k], trials) for k in CHECKS)
         print(f"| {label(s)} | {cells} |")
 
-    print("\n## Sensitivity: detection of planted regressions (naive / Holm / Tarone-Holm)\n")
+    print(
+        "\n## Sensitivity: detection of planted regressions (naive / Holm / Tarone-Holm / split)\n"
+    )
     print("| Scenario | " + " | ".join(REGRESSIONS) + " |")
     print("|---|" + "---|" * len(REGRESSIONS))
     for s in SENSITIVITY:
         detect = [
-            " / ".join(
-                f"{100 * power[(s.name, r)][k] / trials:.1f}%"
-                for k in ("naive", "holm", "statistical")
-            )
+            " / ".join(f"{100 * power[(s.name, r)][k] / trials:.1f}%" for k in VARIANTS)
             for r in REGRESSIONS
         ]
         print(f"| {label(s)} | {' | '.join(detect)} |")
 
     grid_trials = args.grid_trials
     print(
-        f"\n## Null calibration: per-case family vs whole verdict ({grid_trials} trials per "
-        "cell, 5 runs per case)\n"
+        f"\n## Null calibration: each channel and the combined verdict ({grid_trials} trials "
+        "per cell, 5 runs per case)\n"
     )
-    print("| Scenario | Cases | Per-case family (Tarone-Holm) | Verdict (family + suite test) |")
-    print("|---|---|---|---|")
+    print(
+        f"Budgets: per-case family {float(CASES_ALPHA):g}, suite test {float(SUITE_ALPHA):g}, "
+        f"verdict {float(ALPHA):g}. The last column is the same verdict before the split, "
+        "when both channels used the full alpha.\n"
+    )
+    print(
+        "| Scenario | Cases | Per-case family | Suite test | **Verdict** "
+        "| Verdict, unsplit (before) |"
+    )
+    print("|---|---|---|---|---|---|")
+    worst = worst_unsplit = 0.0
     for name in GRID_SCENARIOS:
         for size in GRID_SIZES:
-            family, verdict = calibrate(name, size, grid_trials, f"{seed}:grid:{name}:{size}")
+            cell = calibrate(name, size, grid_trials, f"{seed}:grid:{name}:{size}")
+            worst = max(worst, cell.verdict / grid_trials)
+            worst_unsplit = max(worst_unsplit, cell.unsplit / grid_trials)
             print(
-                f"| {name} | {size} | {percent(family, grid_trials)} "
-                f"| {percent(verdict, grid_trials)} |"
+                f"| {name} | {size} | {percent(cell.cases, grid_trials)} "
+                f"| {percent(cell.suite, grid_trials)} | {percent(cell.verdict, grid_trials)} "
+                f"| {percent(cell.unsplit, grid_trials)} |"
             )
+    print(
+        f"\nWorst verdict false-alarm rate over the grid: {100 * worst:.1f}% against a "
+        f"configured alpha of {100 * float(ALPHA):.0f}% "
+        f"(before the split: {100 * worst_unsplit:.1f}%)."
+    )
 
 
 if __name__ == "__main__":
