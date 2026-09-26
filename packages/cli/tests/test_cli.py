@@ -354,7 +354,9 @@ def test_baseline_set_rejects_bad_input(args: list[str]) -> None:
     [first] = runs()
     result = invoke(*[str(first) if a == "RUN" else a for a in args])
     assert result.exit_code == 3, result.output
-    assert not Path("evil.json").exists()
+    # --name ../evil would land beside baselines/, in the state dir
+    assert not Path("state/evil.json").exists()
+    assert not list(Path("state/baselines").glob("*.json"))  # nothing saved at all
 
 
 def test_compare_prints_the_diff_and_exits_2_on_regression() -> None:

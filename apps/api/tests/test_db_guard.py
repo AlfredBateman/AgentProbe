@@ -66,3 +66,24 @@ def test_guard_allows_safe_env(run_guarded: Runner) -> None:
     result = run_guarded(TEST_DATABASE_URL=TEST_DB, DATABASE_URL=MAIN_DB, ALLOW_DB_TESTS="1")
     assert result.ret == 0
     result.assert_outcomes(passed=1)
+
+
+def test_unmarked_tests_are_forced_offline_even_with_live_env(
+    pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytester.makeconftest(ROOT_CONFTEST.read_text())
+    pytester.makeini(
+        "[pytest]\nasyncio_default_fixture_loop_scope = function\nmarkers =\n    live: llm\n"
+    )
+    pytester.makepyfile(
+        "import os, pytest\n\n"
+        "def test_offline():\n"
+        "    assert (os.environ['LLM_PROVIDER'], os.environ['AGENT_MODE']) == ('mock', 'mock')\n"
+        "    assert 'RUN_LIVE' not in os.environ\n\n"
+        "@pytest.mark.live\n"
+        "def test_live():\n"
+        "    assert os.environ['LLM_PROVIDER'] == 'litellm'\n"
+    )
+    for name, value in {"LLM_PROVIDER": "litellm", "AGENT_MODE": "llm", "RUN_LIVE": "1"}.items():
+        monkeypatch.setenv(name, value)
+    pytester.runpytest("-p", "no:cacheprovider").assert_outcomes(passed=2)

@@ -50,6 +50,17 @@ async def test_secrets_never_reach_logs(
         "key"
     ]
     secrets.append(key)
+    agent_secret = "agent-auth-value-" + "q" * 16  # the encrypted auth header's plaintext
+    secrets.append(agent_secret)
+    agent = await alice.post(
+        f"/projects/{project['id']}/agents",
+        json={
+            "name": "a",
+            "config": {"adapter_type": "http", "url": "https://agent.example.com/chat"},
+            "auth_header": {"name": "X-Agent-Key", "value": agent_secret},
+        },
+    )
+    assert agent.status_code == 201, agent.text
     keyed = clients(headers={"Authorization": f"Bearer {key}"})
     await keyed.get("/projects")
     await keyed.get(f"/projects?token={secrets[1]}&api_key={key}")  # stream-token style query

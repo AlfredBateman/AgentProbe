@@ -1,12 +1,16 @@
 """POST/DELETE /runs/{id}/share and the public GET /shared/{token} (ADR 0018)."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import func, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentprobe_api.models import Run
 from apitest import ClientFactory, SignUp
 from runtest import SMOKE_YAML, make_project, start_run, wait_for_run
 
@@ -75,16 +79,25 @@ async def test_revoke_invalidates_the_link(
 
 
 async def test_expiry_is_honored(
-    sign_up: SignUp, app: FastAPI, demo_url: str, clients: ClientFactory
+    sign_up: SignUp, app: FastAPI, demo_url: str, clients: ClientFactory, db: AsyncSession
 ) -> None:
     alice, _, done = await a_completed_run(sign_up, app, demo_url)
     r = await alice.post(f"/runs/{done['id']}/share", json={"expires_in_days": 1})
     assert r.status_code == 201
     body = r.json()
-    assert body["expires_at"] is not None
+    expires_at = datetime.fromisoformat(body["expires_at"])
+    assert timedelta(hours=23) < expires_at - datetime.now(UTC) <= timedelta(days=1)
     token = body["token"]
     anonymous = clients()
     assert (await anonymous.get(f"/shared/{token}")).status_code == 200
+
+    # A day later (moved back rather than waiting): the link is dead.
+    await db.execute(
+        update(Run)
+        .where(Run.id == uuid.UUID(done["id"]))
+        .values(share_expires_at=func.now() - timedelta(seconds=1))
+    )
+    assert (await anonymous.get(f"/shared/{token}")).status_code == 404
 
 
 async def test_only_the_owner_can_create_or_revoke_a_share(

@@ -5,7 +5,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentprobe_api.db import CONNECT_ARGS, normalize_url
@@ -14,9 +14,22 @@ from agentprobe_api.models import Base
 pytestmark = pytest.mark.integration
 
 
+def _tables() -> set[str]:
+    engine = create_engine(
+        normalize_url(os.environ["TEST_DATABASE_URL"]), connect_args=CONNECT_ARGS
+    )
+    try:
+        with engine.connect() as conn:
+            return set(inspect(conn).get_table_names())
+    finally:
+        engine.dispose()
+
+
 def test_downgrade_upgrade_round_trip(migrated: None, alembic_config: Config) -> None:
     command.downgrade(alembic_config, "base")
+    assert _tables() <= {"alembic_version"}  # every downgrade drops what its upgrade made
     command.upgrade(alembic_config, "head")
+    assert _tables() == set(Base.metadata.tables) | {"alembic_version"}
 
 
 def test_models_match_migrations(migrated: None) -> None:

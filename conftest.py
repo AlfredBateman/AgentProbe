@@ -38,6 +38,17 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         pytest.exit("Refusing to run live LLM tests: RUN_LIVE=1 is not set.", returncode=2)
 
 
+@pytest.fixture(autouse=True)
+def _offline_llm(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only `live` tests may reach a real LLM, whatever the shell or `.env` (loaded by `pnpm
+    verify`) says: the demo agents and the server read these at request time.
+    """
+    if request.node.get_closest_marker("live") is None:
+        monkeypatch.setenv("LLM_PROVIDER", "mock")
+        monkeypatch.setenv("AGENT_MODE", "mock")
+        monkeypatch.delenv("RUN_LIVE", raising=False)
+
+
 if sys.platform == "win32":
     # psycopg's async mode can't run on Windows' default ProactorEventLoop.
     def pytest_asyncio_loop_factories(

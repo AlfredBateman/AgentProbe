@@ -5,6 +5,7 @@ compared with itself returns `no_change`.
 """
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -106,11 +107,21 @@ async def test_results_are_listed_and_filterable(
     assert {r["case"] for r in by_case.json()} == {"greeting"}
     assert len(by_case.json()) == 5
 
-    by_status = await alice.get(f"/runs/{run_id}/results", params={"status": "passed"})
-    assert all(r["status"] == "passed" for r in by_status.json())
+    # Each filter returns exactly the matching rows of the full listing: never empty by
+    # accident (the smoke suite always has passes), and never more.
+    def ids(listed: list[dict[str, Any]]) -> list[str]:
+        return [r["id"] for r in listed]
 
+    by_status = await alice.get(f"/runs/{run_id}/results", params={"status": "passed"})
+    passed = ids([r for r in rows if r["status"] == "passed"])
+    assert passed and ids(by_status.json()) == passed
+
+    # Which case the seeded flakiness hits depends on attempt order, so compare with the
+    # listing's own labels rather than naming a case.
     flaky = await alice.get(f"/runs/{run_id}/results", params={"label": "flaky"})
-    assert {r["case"] for r in flaky.json()} <= {"order-status"}
+    assert ids(flaky.json()) == ids([r for r in rows if r["label"] == "flaky"])
+    stable = await alice.get(f"/runs/{run_id}/results", params={"label": "stable-pass"})
+    assert {r["case"] for r in stable.json()} >= {"greeting", "refund-outside-window"}
 
     none_such = await alice.get(f"/runs/{run_id}/results", params={"case": "nope"})
     assert none_such.json() == []

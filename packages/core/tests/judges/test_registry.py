@@ -30,7 +30,7 @@ def test_registry_covers_every_judge_name_in_the_schema() -> None:
 
 @pytest.mark.parametrize("name", sorted(_SPECS))
 async def test_evaluate_dispatches_by_judge_name(name: str) -> None:
+    assert REGISTRY[name].__name__ == name  # e.g. "not_contains" isn't wired to `contains`
     spec = _ADAPTER.validate_python(_SPECS[name])
     ctx = make_ctx(response=make_response("x"))
-    result = await evaluate(spec, ctx)  # type: ignore[arg-type]
-    assert result.status in ("pass", "fail", "error")
+    assert await evaluate(spec, ctx) == await REGISTRY[name](spec, ctx)  # type: ignore[arg-type]

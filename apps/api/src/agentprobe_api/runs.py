@@ -41,6 +41,12 @@ from agentprobe_core.suite import SuiteParseError, parse_suite_yaml
 
 router = APIRouter(tags=["runs"])
 HEARTBEAT_S = 15.0  # an SSE comment this often keeps proxies from closing an idle stream
+EXPORT_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+}
 
 
 class RunIn(BaseModel):
@@ -254,7 +260,9 @@ async def export_run(
     run = await owned_run(db, principal, run_id)
     summary = await runstore.read_summary(db, run)
     if format == "html":
-        return HTMLResponse(render_html(run, summary))
+        # Served on the app's origin (the /api rewrite): even a missed escape can't run a
+        # script, load anything or submit anywhere.
+        return HTMLResponse(render_html(run, summary), headers=EXPORT_HEADERS)
     return JSONResponse(
         {
             "run": RunOut.model_validate(run).model_dump(mode="json"),

@@ -110,6 +110,18 @@ def test_5xx_is_transient_and_4xx_is_permanent() -> None:
     assert type(permanent) is LLMError and "BadRequestError" in str(permanent)
 
 
+def test_credentials_are_cut_from_provider_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "AIzaFAKE-not-a-real-key-000"  # fake credential
+    monkeypatch.setenv("GEMINI_API_KEY", key)
+
+    class BadRequestError(Exception):
+        status_code = 400
+
+    for exc in (BadRequestError, RateLimitError):
+        err = classify(exc(f"POST https://generativelanguage.googleapis.com/x?key={key} failed"))
+        assert key not in str(err) and "key=[REDACTED] failed" in str(err)
+
+
 async def test_provider_errors_are_raised_classified() -> None:
     with pytest.raises(TransientLLMError):
         await run(provider(raises=RateLimitError("429")))

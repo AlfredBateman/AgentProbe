@@ -26,6 +26,7 @@ from agentprobe_core.runner import (
     AttemptResult,
     RunOptions,
     RunSummary,
+    check_results,
     execute_attempt,
     execute_with_retries,
     finalize_run,
@@ -475,6 +476,22 @@ async def test_unrunnable_suites_are_refused_before_any_call(
 def test_plan_attempts_lists_every_case_attempt_in_order() -> None:
     plan = plan_attempts(slow_suite(cases=2, runs=1), 2)
     assert [(c.id, n) for c, n in plan] == [("c0", 0), ("c0", 1), ("c1", 0), ("c1", 1)]
+
+
+async def test_check_results_accepts_only_distinct_planned_attempts() -> None:
+    suite = slow_suite(cases=2, runs=2)
+    done = (await run_suite(suite, FakeAdapter())).results
+    check_results(suite, 2, done)  # a whole run
+    check_results(suite, 2, done[:1])  # a partial one
+    [c0] = [r for r in done if (r.case_id, r.attempt) == ("c0", 0)]
+    for bad, message in [
+        (c0.model_copy(update={"case_id": "nope"}), "'nope' attempt 0 is not in the run's plan"),
+        (c0.model_copy(update={"attempt": 2}), "'c0' attempt 2 is not in the run's plan"),
+        (c0.model_copy(update={"attempt": -1}), "'c0' attempt -1 is not in the run's plan"),
+        (c0, "duplicate result for case 'c0' attempt 0"),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            check_results(suite, 2, [*done, bad] if bad is c0 else [bad])
 
 
 async def test_execute_with_retries_retries_only_unreachable() -> None:
