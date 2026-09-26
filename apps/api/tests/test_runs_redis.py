@@ -164,7 +164,7 @@ async def test_an_unreachable_agent_fails_the_run(
     rows = (
         await db.scalars(select(RunResult).where(RunResult.run_id == uuid.UUID(run["id"])))
     ).all()
-    assert 1 <= len(rows) < 40  # jobs that started after the failure saw it and stopped
+    assert 1 <= len(rows) < 45  # jobs that started after the failure saw it and stopped
     assert {(r.error_kind, r.retries) for r in rows} == {("unreachable", 1)}
 
 

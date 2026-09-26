@@ -57,3 +57,11 @@ PLAN.md Q6 requires exactly one implementation of how a run executes, shared by 
 - The CLI stops a run at its first infrastructure error by setting `run_suite`'s `cancel` event from `on_result`. The run is saved as `cancelled`, the report says "Stopped early", and the CLI exits 4. Without that, a down agent would burn every attempt's retries: minutes for the smoke suite instead of about 20 s. This is CLI policy on the shared hook, not run logic; `run_suite` itself keeps going, and the server can choose either behaviour.
 - The regex judge still blocks the event loop for up to 0.25 s per timeout (see PROGRESS known issues). No run-level time budget was added yet.
 - Files within one second sort by their random id suffix, not by start time. Use `started_at` inside the file for ordering.
+
+## Amendment (2026-09-26, C1/C2)
+- The attack library and mutator now exist ([ADR 0021](0021-attack-library-and-mutator.md)),
+  but `plan_attempts`'s refusal of `attack`-only, `obfuscate` and `mutations` cases is
+  unchanged — wiring their expansion in is a separate follow-up, since it would need
+  `plan_attempts` and its synchronous callers to go async for the mutator's LLM call. The
+  refusal messages were reworded to stop claiming the library "isn't available"; the behavior
+  itself didn't change.

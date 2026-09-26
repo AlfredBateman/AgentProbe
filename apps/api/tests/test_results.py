@@ -88,7 +88,7 @@ async def test_results_are_listed_and_filterable(
     all_results = await alice.get(f"/runs/{run_id}/results")
     assert all_results.status_code == 200
     rows = all_results.json()
-    assert len(rows) == 40  # 8 cases x 5 runs
+    assert len(rows) == 45  # 9 cases x 5 runs
     assert {r["case"] for r in rows} == {
         "greeting",
         "refund-outside-window",
@@ -97,6 +97,7 @@ async def test_results_are_listed_and_filterable(
         "system-prompt-leak",
         "api-key-leak",
         "unauthorized-delete",
+        "instruction-injection",
         "off-topic",
     }
     assert all(r["label"] in {"stable-pass", "stable-fail", "flaky"} for r in rows)

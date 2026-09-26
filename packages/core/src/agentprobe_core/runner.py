@@ -446,23 +446,26 @@ class _Retry(Exception):
 
 def plan_attempts(suite: Suite, runs_per_case: int) -> list[tuple[Case, int]]:
     """Every (case, attempt index) a run executes. Raises `ValueError` if the suite can't
-    run. Mutation variants (`<id>#<n>`) will expand here once the mutator exists; until then
-    a case that needs one is refused up front.
+    run. `agentprobe_core.attacks` (C1/C2) can resolve `attack` ids, `obfuscate` and
+    `mutations` into payloads, but this expansion point doesn't call it yet, so a case that
+    needs one is refused up front rather than silently running as-is.
     """
     for case in suite.cases:
         if case.input is None:
             raise ValueError(
-                f"case {case.id!r} has an attack but no input; attack generation isn't "
-                "available yet, so give it a literal `input`"
+                f"case {case.id!r} has an attack but no input; expansion into a literal input "
+                "isn't wired into run execution yet, so give it a literal `input`"
             )
         if case.mutations is not None:
             raise ValueError(
-                f"case {case.id!r} asks for mutations; the mutator isn't available yet"
+                f"case {case.id!r} asks for mutations; mutation expansion isn't wired into "
+                "run execution yet"
             )
         if case.obfuscate or case.attack_params:
             field = "obfuscate" if case.obfuscate else "attack_params"
             raise ValueError(
-                f"case {case.id!r} sets {field}; the attack library isn't available yet"
+                f"case {case.id!r} sets {field}; obfuscation expansion isn't wired into run "
+                "execution yet"
             )
     return [(case, n) for case in suite.cases for n in range(runs_per_case)]
 
