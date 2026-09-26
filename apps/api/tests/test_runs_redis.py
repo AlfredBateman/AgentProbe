@@ -280,6 +280,6 @@ async def test_both_backends_give_identical_results_and_summaries(
     redis_id, inline_id = uuid.UUID(on_redis["id"]), uuid.UUID(inline["id"])
     redis_results = await runstore.load_attempts(sessions, redis_id)
     inline_results = await runstore.load_attempts(sessions, inline_id)
-    assert len(redis_results) == len(inline_results) == 24
+    assert len(redis_results) == len(inline_results) == 27  # 9 smoke cases x 3 runs
     assert normalized(redis_results) == normalized(inline_results)
     assert await summaries(db, redis_id) == await summaries(db, inline_id)
