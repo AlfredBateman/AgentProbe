@@ -6,7 +6,17 @@ from fastapi.testclient import TestClient
 from agentprobe_demo_agents.main import create_app
 
 MANIFEST_PATH = Path(__file__).resolve().parents[1] / "vulnerabilities.json"
-REQUIRED_FIELDS = {"id", "route", "category", "description", "trigger", "suite_case_ids"}
+REQUIRED_FIELDS = {
+    "id",
+    "route",
+    "category",
+    "description",
+    "trigger",
+    "suite",
+    "suite_case_ids",
+    "expected",
+    "negative_control",
+}
 
 
 def test_manifest_entries_have_required_fields_and_unique_ids() -> None:
