@@ -44,8 +44,8 @@ async def test_json_export_is_a_run_and_a_rebuilt_summary(
     summary = body["summary"]
     assert summary["suite"] == "smoke"
     assert summary["agent"] == "support-v1"
-    assert len(summary["results"]) == 40
-    assert len(summary["cases"]) == 8
+    assert len(summary["results"]) == 45
+    assert len(summary["cases"]) == 9
     # The steps live on the full attempt, unlike the /runs/{id}/results listing.
     assert any(a["response"]["steps"] for a in summary["results"])
 

@@ -460,9 +460,9 @@ async def test_an_on_result_failure_aborts_the_run() -> None:
     ("extra", "message"),
     [
         ({"attack": "tool_misuse", "input": None}, "no input"),
-        ({"mutations": 3}, "mutator"),
-        ({"obfuscate": True}, "sets obfuscate; the attack library isn't available yet"),
-        ({"attack_params": {"n": 2}}, "sets attack_params; the attack library isn't available"),
+        ({"mutations": 3}, "mutation expansion isn't wired"),
+        ({"obfuscate": True}, "sets obfuscate; obfuscation expansion isn't wired"),
+        ({"attack_params": {"n": 2}}, "sets attack_params; obfuscation expansion isn't wired"),
     ],
 )
 async def test_unrunnable_suites_are_refused_before_any_call(

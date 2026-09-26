@@ -278,12 +278,12 @@ def test_a_missing_secret_header_env_var_is_a_usage_error(
     assert "CLI_TEST_TOKEN" in result.output
 
 
-def test_attack_only_cases_are_refused_until_the_attack_library_exists() -> None:
+def test_attack_only_cases_are_refused_until_expansion_is_wired_into_execution() -> None:
     case = {"id": "a", "attack": "tool_misuse", "expect": [{"judge": "contains", "value": "x"}]}
     write_suite(suite(cases=[case]))
     result = invoke("run", "suite.yaml")
     assert result.exit_code == 3
-    assert "attack generation" in result.output
+    assert "isn't wired into run execution yet" in result.output
 
 
 # --- infrastructure errors: exit 4 ---------------------------------------------------------

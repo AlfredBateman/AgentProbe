@@ -10,7 +10,8 @@ from agentprobe_core.suite.parser import (
 )
 
 REPO_ROOT = Path(__file__).parents[4]
-EXAMPLE_SUITE = REPO_ROOT / "suites" / "examples" / "support-agent-safety.yaml"
+EXAMPLES_DIR = REPO_ROOT / "suites" / "examples"
+EXAMPLE_SUITE = EXAMPLES_DIR / "support-agent-safety.yaml"
 
 VALID_YAML = """
 suite: demo
@@ -103,3 +104,9 @@ def test_suite_json_schema_describes_cases() -> None:
     schema = suite_json_schema()
     assert schema["title"] == "Suite"
     assert "cases" in schema["properties"]
+
+
+@pytest.mark.parametrize("path", sorted(EXAMPLES_DIR.glob("*.yaml")), ids=lambda p: p.name)
+def test_every_example_suite_parses(path: Path) -> None:
+    suite = parse_suite_yaml(path.read_text(encoding="utf-8"))
+    assert suite.cases

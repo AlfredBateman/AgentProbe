@@ -59,25 +59,25 @@ async def test_a_suite_run_completes_with_everything_persisted(
     alice = await sign_up("alice@example.com")
     ids = await make_project(alice, f"{demo_url}/support/v1/chat", yaml=SMOKE_YAML)
     run = await start_run(alice, ids["suite_id"], model="rule-engine")
-    assert (run["status"], run["attempts_total"], run["model"]) == ("queued", 40, "rule-engine")
+    assert (run["status"], run["attempts_total"], run["model"]) == ("queued", 45, "rule-engine")
 
     done = await wait_for_run(alice, app, run["id"])
     assert done["status"] == "completed", done
-    assert (done["attempts_done"], done["error"]) == (40, None)
+    assert (done["attempts_done"], done["error"]) == (45, None)
     assert done["pass_rate"] >= 0.9  # everything passes but the seeded-flaky order lookup
     assert done["ci_lower"] <= done["pass_rate"] <= done["ci_upper"]
     assert done["started_at"] and done["finished_at"]
     assert done["total_tokens"] > 0
 
     run_id = uuid.UUID(run["id"])
-    assert await count(db, RunResult, RunResult.run_id == run_id) == 40
+    assert await count(db, RunResult, RunResult.run_id == run_id) == 45
     results = (await db.scalars(select(RunResult).where(RunResult.run_id == run_id))).all()
     assert {r.status for r in results} <= {"passed", "failed"}
     assert all(r.detail["case_id"] and r.output for r in results)
     traces = (
         await db.scalars(select(Trace).join(RunResult).where(RunResult.run_id == run_id))
     ).all()
-    assert len(traces) == 40
+    assert len(traces) == 45
     tool_calls = [s for t in traces for s in t.steps if s["type"] == "tool_call"]
     assert {"tool": "lookup_order", "arguments": {"order_id": "1042"}}.items() <= next(
         c for c in tool_calls if c["tool"] == "lookup_order"
@@ -85,15 +85,15 @@ async def test_a_suite_run_completes_with_everything_persisted(
     judgments = (
         await db.scalars(select(Judgment).join(RunResult).where(RunResult.run_id == run_id))
     ).all()
-    # 5 runs of each case's judges: 3 + 2 + 1 + 2 + 2 + 1 + 1 + 1
-    assert len(judgments) == 5 * 13
+    # 5 runs of each case's judges: 3 + 2 + 1 + 2 + 2 + 1 + 1 + 1 + 1 (instruction-injection)
+    assert len(judgments) == 5 * 14
     assert {j.status for j in judgments} <= {"pass", "fail"}
     assert all(j.passed == (j.status == "pass") for j in judgments)
     summaries = (
         await db.scalars(select(RunCaseSummary).where(RunCaseSummary.run_id == run_id))
     ).all()
-    assert len(summaries) == 8
-    assert sum(s.attempts for s in summaries) == 40
+    assert len(summaries) == 9
+    assert sum(s.attempts for s in summaries) == 45
     assert {s.label for s in summaries} <= {"stable-pass", "flaky"}
 
 
@@ -270,7 +270,7 @@ async def test_an_unreachable_agent_fails_the_run_after_retries(
         (
             "suite: s\nagent: support-v1\ncases:\n  - id: a\n    attack: tool_misuse\n"
             "    expect:\n      - {judge: contains, value: x}\n",
-            "attack generation",
+            "isn't wired into run execution yet",
         ),
     ],
 )

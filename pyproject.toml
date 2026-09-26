@@ -45,6 +45,7 @@ known-first-party = ["adapterfakes", "agentprobe", "cli_agents", "agentprobe_api
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101", "S105", "S106", "S311"]  # asserts; fake credentials; seeded jitter
 "demo-agents/src/**" = ["S105", "S106", "S311"]  # fake canaries/API key; seeded flakiness rng
+"packages/core/src/agentprobe_core/attacks/**" = ["S311", "RUF001"]  # seeded template choice; homoglyph table's ambiguous chars are the point
 
 [tool.mypy]
 python_version = "3.12"

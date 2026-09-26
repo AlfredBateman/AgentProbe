@@ -46,8 +46,8 @@ async def test_share_link_gives_a_sanitized_read_only_view(
     assert view["suite"] == "smoke"
     assert view["agent"] == "support-v1"
     assert view["status"] == "completed"
-    assert len(view["cases"]) == 8
-    assert len(view["results"]) == 40
+    assert len(view["cases"]) == 9
+    assert len(view["results"]) == 45
     assert all("output" in r for r in view["results"])
     # Sanitized: no agent config, secrets or internal ids anywhere in the payload.
     dumped = str(view)

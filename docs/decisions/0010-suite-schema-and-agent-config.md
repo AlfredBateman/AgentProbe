@@ -62,6 +62,13 @@ JSONB but not its shape or how it's validated.
   unused extension point. Prompt 12 replaces the constant with its generators.
 - `obfuscate` and `attack_params` still parse, but a run of a case that sets either is
   refused up front, like `mutations` (ADR 0016 amendment), until the attack library exists.
+
+## Amendment (2026-09-26, C1/C2)
+- The real attack library replaced the placeholder constant: see
+  [ADR 0021](0021-attack-library-and-mutator.md). `ATTACKS` now re-exports
+  `agentprobe_core.attacks.registry.ATTACK_IDS` (15 ids). `obfuscate`/`attack_params`/
+  `mutations` are still refused at run time — the library exists, but wiring its output into
+  `plan_attempts` is a separate, not-yet-done follow-up (ADR 0021's own "not wired in" section).
 - The agent config union is `http` | `python`. The `mcp` config was a placeholder with no
   adapter behind it; the MCP adapter (C3, Prompt 14) defines its own. The `adapter_type`
   CHECK still allows `mcp`.
