@@ -1,6 +1,18 @@
 # AgentProbe build plan
 
-Source of truth for scope: [SPEC.md](../SPEC.md). UI: [DESIGN.md](../DESIGN.md). Rules: [CLAUDE.md](../CLAUDE.md). Status: [PROGRESS.md](PROGRESS.md).
+Source of truth for scope: [SPEC.md](../SPEC.md). UI: [DESIGN.md](../DESIGN.md). Rules: [CLAUDE.md](../CLAUDE.md). Status: [PROGRESS.md](PROGRESS.md). Positioning: [POSITIONING.md](POSITIONING.md).
+
+## 0. The pitch this plan serves
+
+**Amended 2026-09-26 (user decision, [POSITIONING.md](POSITIONING.md)).** SPEC.md §1 pitches "automated testing, red-teaming and regression detection" — a combined eval, red-team and dashboard platform. The differentiated core is narrower:
+
+> **AgentProbe is statistically-corrected, flakiness-aware regression detection for LLM agents, wired into a real CI-gate workflow, and judged on traces and tool calls rather than just final text.** It runs every case many times and fails a pull request only when a drop is statistically meaningful — not when a flaky case happened to fail this time.
+
+Consequences for this plan, both marked ✂ in the tables below:
+- **C4 (failure clustering) is the first thing to cut** if time runs short. It presents failures that have already been detected and judged; nothing in the pitch needs it.
+- **C1's obfuscation variety is the second.** The attack *categories* the golden tests and planted flaws rely on stay; a tenth obfuscation variant doesn't.
+
+The MCP adapter (C3) is one adapter type for breadth, not an MCP-security product — see POSITIONING.md §4.
 
 ## 1. Build order
 
@@ -74,10 +86,10 @@ Gate: `pnpm check` / `pnpm verify`.
 
 | # | Task | Done when |
 |---|---|---|
-| C1 | Attack library: 8 categories from SPEC §4.4, parameterized templates, default expectations | Unit tests; golden tests extended |
+| C1 | Attack library: 8 categories from SPEC §4.4, parameterized templates, default expectations. ✂ **Obfuscation variety is cut first** (base64/leetspeak/split-word and the Hinglish packs); the categories the golden tests need stay (§0). | Unit tests; golden tests extended |
 | C2 | LLM mutator (seeded, budget-guarded) | Mock-mode determinism test |
-| C3 | MCP adapter: list tools, `call:` cases, tool-description injection scan | Test against a bundled demo MCP server |
-| C4 | Failure clustering: embeddings (768-d), clustering, LLM cluster summaries, `findings` API | Mock-mode test clusters planted failure groups |
+| C3 | MCP adapter: list tools, `call:` cases, tool-description injection scan. One adapter type for breadth, not an MCP-security product ([POSITIONING.md](POSITIONING.md) §4). | Test against a bundled demo MCP server |
+| C4 | Failure clustering: embeddings (768-d), clustering, LLM cluster summaries, `findings` API. ✂ **First cut if time runs short** (§0): it presents already-detected failures. Dropping it also drops `top_findings` and E6's Findings page. | Mock-mode test clusters planted failure groups |
 
 ### Phase E: dashboard (Next.js)
 Gate: `pnpm check` + Playwright screenshots at 1440/810/390, compared against DESIGN.md.
@@ -90,7 +102,7 @@ Gate: `pnpm check` + Playwright screenshots at 1440/810/390, compared against DE
 | E3 | Agents (add/edit, test connection), Suites (YAML editor with validation, case list) |
 | E4 | Run detail (live SSE progress, per-case table, flaky badges, filters) |
 | E5 | Trace viewer (CSS timeline, inline verdicts, side-by-side attempts) |
-| E6 | Compare runs, Findings, Settings (API keys, read-only model config) |
+| E6 | Compare runs, Findings, Settings (API keys, read-only model config). Compare runs is core to the pitch; Findings goes with C4 if that is cut (§0). |
 | E7 | Playwright e2e: register → add agent → run suite → view trace → compare runs |
 
 ### Phase F: ship
