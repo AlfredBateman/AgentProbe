@@ -22,11 +22,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentprobe_core.adapters import HttpAdapter, HttpAdapterConfig, TargetPolicy
+from agentprobe_core.adapters.mcp import McpAdapter, McpHttpConfig
 from agentprobe_core.llm.types import LLMClient
 from agentprobe_core.runner import AttemptResult, CaseResult, RunOptions, RunSummary, run_suite
 from agentprobe_core.stats import compare_runs
 from agentprobe_core.suite import parse_suite_yaml
 from agentprobe_core.suite.schema import Suite
+from agentprobe_demo_agents.mcp_server import MCP_ROUTE
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MANIFEST_PATH = REPO_ROOT / "demo-agents" / "vulnerabilities.json"
@@ -107,8 +109,14 @@ def load_suite(path: str) -> Suite:
     return parse_suite_yaml((REPO_ROOT / path).read_text(encoding="utf-8"))
 
 
-def adapter_for(base_url: str, route: str, *, timeout_ms: int = 30_000) -> HttpAdapter:
-    config = HttpAdapterConfig.model_validate(
+def adapter_for(base_url: str, route: str, *, timeout_ms: int = 30_000) -> HttpAdapter | McpAdapter:
+    policy = TargetPolicy(allow_private=True)
+    if route == MCP_ROUTE:
+        mcp_config = McpHttpConfig.model_validate(
+            {"url": f"{base_url}{route}/mcp", "allow_private": True, "timeout_ms": timeout_ms}
+        )
+        return McpAdapter(mcp_config, policy=policy)
+    http_config = HttpAdapterConfig.model_validate(
         {
             "url": f"{base_url}{route}/chat",
             "allow_private": True,  # the demo agents run on loopback
@@ -116,7 +124,7 @@ def adapter_for(base_url: str, route: str, *, timeout_ms: int = 30_000) -> HttpA
             "timeout_ms": timeout_ms,
         }
     )
-    return HttpAdapter(config, policy=TargetPolicy(allow_private=True))
+    return HttpAdapter(http_config, policy=policy)
 
 
 async def run_one(

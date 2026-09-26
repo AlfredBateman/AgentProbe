@@ -40,6 +40,7 @@ from agentprobe_core.adapters.ssrf import (
 from agentprobe_core.adapters.types import (
     AgentResponse,
     ErrorStep,
+    McpCall,
     MessageStep,
     TokenUsage,
     ToolCallStep,
@@ -334,7 +335,13 @@ class HttpAdapter:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def invoke(self, input: str, context: Sequence[JsonValue] = ()) -> AgentResponse:
+    async def invoke(
+        self, input: str, context: Sequence[JsonValue] = (), *, call: McpCall | None = None
+    ) -> AgentResponse:
+        if call is not None:
+            return AgentResponse(
+                output="", steps=[], latency_ms=0.0, error="the HTTP adapter doesn't support `call`"
+            )
         return await self._call(input, context, max_retries=self._config.max_retries)
 
     async def test_connection(self) -> AgentResponse:

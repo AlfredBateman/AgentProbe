@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentprobe_api.models import Secret
 from agentprobe_core.adapters import HttpAdapterConfig
+from agentprobe_core.adapters.mcp import McpHttpConfig
 from apitest import SignUp
 
 pytestmark = pytest.mark.integration
@@ -96,6 +97,46 @@ async def test_http_config_is_the_adapters_config(sign_up: SignUp) -> None:
     assert stored["response"]["output"] == "$.result.text"
     assert stored["allow_private"] is True
     HttpAdapterConfig.model_validate(stored)  # what's stored is what the adapter runs
+
+
+async def test_create_and_get_mcp_agent_over_http(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    r = await alice.post(
+        f"/projects/{project['id']}/agents",
+        json={
+            "name": "mcp-tools",
+            "config": {"adapter_type": "mcp", "url": "https://mcp.example.com/mcp"},
+        },
+    )
+    assert r.status_code == 201, r.text
+    agent = r.json()
+    assert agent["adapter_type"] == "mcp"
+    assert agent["config"]["transport"] == "http"
+    stored = agent["config"]
+    McpHttpConfig.model_validate(stored)  # what's stored is what the adapter runs
+
+
+async def test_mcp_agent_over_stdio_is_rejected(sign_up: SignUp) -> None:
+    """SPEC.md §4.2, ADR 0023: stdio means launching an arbitrary local command, so the
+    server only ever accepts MCP agents over Streamable HTTP. `McpAgentConfig` has no stdio
+    fields at all, so this is a plain 422, not a runtime check.
+    """
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    r = await alice.post(
+        f"/projects/{project['id']}/agents",
+        json={
+            "name": "mcp-stdio",
+            "config": {
+                "adapter_type": "mcp",
+                "transport": "stdio",
+                "command": "python",
+                "args": ["-m", "some_mcp_server"],
+            },
+        },
+    )
+    assert r.status_code == 422, r.text
 
 
 @pytest.mark.parametrize(

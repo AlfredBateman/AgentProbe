@@ -72,3 +72,8 @@ JSONB but not its shape or how it's validated.
 - The agent config union is `http` | `python`. The `mcp` config was a placeholder with no
   adapter behind it; the MCP adapter (C3, Prompt 14) defines its own. The `adapter_type`
   CHECK still allows `mcp`.
+
+## Amendment (2026-09-27, C3)
+- The MCP adapter now exists: see [ADR 0023](0023-mcp-adapter.md). The agent config union is
+  `http` | `python` | `mcp`, with `McpAgentConfig` restricted to Streamable HTTP (stdio is
+  CLI-only). `Case` gained `call: {tool, arguments}` alongside `input`/`attack`.

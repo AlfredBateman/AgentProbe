@@ -167,4 +167,4 @@ def test_build_adapter_refuses_python() -> None:
     with pytest.raises(AdapterNotAllowed, match="CLI-only"):
         build_adapter("python", {"module": "os", "function": "system"})
     with pytest.raises(AdapterNotAllowed, match="not supported"):
-        build_adapter("mcp", {"server_url": "https://mcp.example.com"})
+        build_adapter("carrier-pigeon", {})

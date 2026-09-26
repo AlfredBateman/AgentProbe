@@ -247,7 +247,12 @@ async def execute_attempt(
     """Runs one attempt of `case`. Pure and DB-free; never raises except on cancellation."""
     started, t0 = _now(), time.perf_counter()
     metered = _Metered(llm) if llm is not None else None
-    input = case.input or ""
+    if case.input is not None:
+        input = case.input
+    elif case.call is not None:
+        input = f"{case.call.tool}({case.call.arguments})"  # for readability in reports
+    else:
+        input = ""
 
     def result(**fields: Any) -> AttemptResult:
         if (error := fields.get("error")) is not None:
@@ -265,15 +270,19 @@ async def execute_attempt(
             **fields,
         )
 
-    if case.input is None:
+    if case.input is None and case.call is None:
         return result(
             error=AttemptError(
-                kind="internal", message="the case has no input (attack generation isn't built)"
+                kind="internal",
+                message=(
+                    "the case has no input and no call; expansion into a literal input isn't "
+                    "wired into run execution yet"
+                ),
             )
         )
     try:
         async with asyncio.timeout(limits.agent_timeout_s):
-            response = await adapter.invoke(case.input, case.context or ())
+            response = await adapter.invoke(input, case.context or (), call=case.call)
     except TimeoutError:
         message = f"no response within {limits.agent_timeout_s:g}s"
         return result(error=AttemptError(kind="timeout", message=message))
@@ -451,7 +460,7 @@ def plan_attempts(suite: Suite, runs_per_case: int) -> list[tuple[Case, int]]:
     needs one is refused up front rather than silently running as-is.
     """
     for case in suite.cases:
-        if case.input is None:
+        if case.input is None and case.call is None:
             raise ValueError(
                 f"case {case.id!r} has an attack but no input; expansion into a literal input "
                 "isn't wired into run execution yet, so give it a literal `input`"

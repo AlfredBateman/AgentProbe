@@ -145,19 +145,31 @@ async def system_resolver(host: str, port: int) -> list[str]:
 
 
 async def resolve_target(
-    host: str, port: int, *, policy: TargetPolicy, agent_allows_private: bool, resolver: Resolver
+    host: str,
+    port: int,
+    *,
+    policy: TargetPolicy,
+    agent_allows_private: bool,
+    resolver: Resolver,
+    connect_error: Callable[[str], Exception] = httpcore.ConnectError,
 ) -> list[str]:
-    """Resolves `host` and returns its addresses if every one of them is allowed."""
+    """Resolves `host` and returns its addresses if every one of them is allowed.
+
+    `connect_error` builds the "could not resolve" exception: httpcore's `ConnectError` by
+    default, so the HTTP adapter's guard needs nothing extra; the MCP adapter's httpcore2-based
+    guard passes `httpcore2.ConnectError` instead. The classification logic (`classify`,
+    `TargetPolicy`) is the same either way.
+    """
     try:
         addresses: list[IPAddress] = [ipaddress.ip_address(host)]
     except ValueError:
         try:
             answers = await resolver(host, port)
         except (OSError, UnicodeError) as exc:  # UnicodeError: a name IDNA can't encode
-            raise httpcore.ConnectError(f"could not resolve {host}") from exc
+            raise connect_error(f"could not resolve {host}") from exc
         addresses = [ipaddress.ip_address(a) for a in dict.fromkeys(answers)]
     if not addresses:
-        raise httpcore.ConnectError(f"could not resolve {host}")
+        raise connect_error(f"could not resolve {host}")
     for ip in addresses:
         verdict = classify(ip)
         if verdict is AddressClass.PUBLIC or (

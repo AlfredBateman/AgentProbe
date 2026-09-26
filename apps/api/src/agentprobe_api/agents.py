@@ -19,6 +19,7 @@ from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Project, Secret
 from agentprobe_api.projects import owned_project
 from agentprobe_core.adapters import HttpAdapterConfig, check_header
+from agentprobe_core.adapters.mcp import McpHttpConfig
 
 router = APIRouter(tags=["agents"])
 
@@ -42,11 +43,21 @@ class PythonAgentConfig(BaseModel):
     function: str = Field(min_length=1, max_length=200)
 
 
-# MCP agents come with the MCP adapter (PLAN C3, Prompt 14), which defines their config.
-AgentConfig = Annotated[HttpAgentConfig | PythonAgentConfig, Field(discriminator="adapter_type")]
+class McpAgentConfig(McpHttpConfig):
+    """The MCP adapter's own HTTP-transport config (ADR 0023), so what's stored is what the
+    adapter runs. `transport` is fixed to `"http"`: `McpHttpConfig` has no stdio fields at
+    all, so a stored `transport: "stdio"` config is a plain 422, not a runtime check.
+    """
+
+    adapter_type: Literal["mcp"]
 
 
-def _reject_python_adapter(config: HttpAgentConfig | PythonAgentConfig) -> None:
+AgentConfig = Annotated[
+    HttpAgentConfig | PythonAgentConfig | McpAgentConfig, Field(discriminator="adapter_type")
+]
+
+
+def _reject_python_adapter(config: HttpAgentConfig | PythonAgentConfig | McpAgentConfig) -> None:
     if config.adapter_type == "python":
         raise ApiError(400, "The python adapter is CLI-only; the server can't execute it")
 

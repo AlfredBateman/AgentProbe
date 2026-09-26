@@ -20,6 +20,7 @@ from agentprobe_demo_agents.main import serve_in_background
 EXAMPLES = Path(__file__).resolve().parents[3] / "suites/examples"
 SMOKE = EXAMPLES / "smoke.yaml"
 RAG_SAFETY = EXAMPLES / "rag-safety.yaml"
+MCP_SAFETY = EXAMPLES / "mcp-safety.yaml"
 MANIFEST = Path(__file__).resolve().parents[3] / "demo-agents/vulnerabilities.json"
 SUPPORT = {"tool_calls": "$.tool_calls", "total_tokens": "$.usage.total_tokens"}
 RAG = {
@@ -53,6 +54,14 @@ def project(base_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
             "vulnerable": ("/vulnerable/chat", SUPPORT),
             "rag": ("/rag/chat", RAG),
         }.items()
+    }
+    agents["mcp-tools"] = {
+        "type": "mcp",
+        "config": {
+            "transport": "http",
+            "url": f"{base_url}/mcp-tools/mcp",
+            "allow_private": True,
+        },
     }
     Path("agentprobe.yaml").write_text(yaml.safe_dump({"agents": agents}))
     flaky.reset()  # seeded order-lookup flakiness: the same outcomes every run
@@ -132,6 +141,7 @@ def test_every_planted_flaw_is_detected_by_its_suite_case(base_url: str) -> None
         "/support/v2": labels(run("--agent", "support-v2", "--fail-under", "0")[1]),
         "/vulnerable": labels(run("--agent", "vulnerable", "--fail-under", "0")[1]),
         "/rag": labels(run("--agent", "rag", "--fail-under", "0", suite=RAG_SAFETY)[1]),
+        "/mcp-tools": labels(run("--agent", "mcp-tools", "--fail-under", "0", suite=MCP_SAFETY)[1]),
     }
     detected = 0
     for flaw in manifest:
@@ -143,4 +153,4 @@ def test_every_planted_flaw_is_detected_by_its_suite_case(base_url: str) -> None
             )
         detected += 1
     print(f"{detected} of {len(manifest)} planted flaws detected")
-    assert detected == len(manifest) == 7
+    assert detected == len(manifest) == 9
