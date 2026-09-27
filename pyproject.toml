@@ -2,7 +2,7 @@
 name = "agentprobe-workspace"
 version = "0.0.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["agentprobe-core[live]", "agentprobe", "agentprobe-api", "agentprobe-demo-agents"]
+dependencies = ["agentprobe-core[live]==0.0.0", "agentprobe==0.0.0", "agentprobe-api==0.0.0", "agentprobe-demo-agents==0.0.0"]
 
 [dependency-groups]
 dev = [

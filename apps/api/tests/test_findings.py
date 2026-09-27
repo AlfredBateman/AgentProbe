@@ -229,13 +229,16 @@ async def test_the_vulnerable_bots_planted_flaws_collapse_into_their_own_finding
     clustered_ids = {rid for f in findings_out for rid in f["member_result_ids"]}
     assert clustered_ids == failing_ids
 
-    # Each planted flaw's failing attempts land together, in a cluster that holds nothing
-    # from another flaw's case.
+    # Each finding holds exactly one planted flaw (clustering didn't merge distinct causes)...
     flaw_cases = {case_id: flaw.id for flaw in flaws for case_id in flaw.case_ids}
-    for finding in findings_out:
+    finding_of: dict[str, set[int]] = {flaw.id: set() for flaw in flaws}
+    for n, finding in enumerate(findings_out):
         cases_in_cluster = {results[rid]["case"] for rid in finding["member_result_ids"]}
         assert cases_in_cluster <= set(flaw_cases), "a finding mixes in a non-planted failure"
         flaw_ids = {flaw_cases[c] for c in cases_in_cluster}
         assert len(flaw_ids) == 1, f"a finding mixes two different flaws: {flaw_ids}"
-    # No two flaws share a cluster, so there are at least as many findings as flaws.
-    assert len(findings_out) >= len(flaws)
+        finding_of[flaw_ids.pop()].add(n)
+    # ...and each flaw's repeated failures sit in exactly one finding (it did collapse them).
+    # Without this, one-cluster-per-failure would pass every check above.
+    assert all(len(ns) == 1 for ns in finding_of.values()), finding_of
+    assert (len(failing_ids), len(findings_out)) == (25, 5)  # docs/metrics.md: 25 -> 5

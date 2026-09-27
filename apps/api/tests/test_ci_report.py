@@ -451,5 +451,6 @@ async def test_fetch_404s_for_an_unknown_run(
     target = Target("https://api.test", key)
     transport = httpx.ASGITransport(app=app)
 
-    with pytest.raises(PushError, match="404"):
+    with pytest.raises(PushError, match="404") as refused:
         await fetch_run(target, str(uuid.uuid4()), transport=transport)
+    assert not refused.value.infra  # a usage error (exit 3), not an unreachable server (4)

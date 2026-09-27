@@ -23,13 +23,18 @@ async def test_variants_are_distinct_from_each_other_and_the_base() -> None:
     assert base.text not in texts
 
 
+def template_texts(attack_id: str, n: int, seed: int) -> set[str]:
+    """The attack's own template variants beyond its base payload: where fallback draws from."""
+    return {p.text for p in generate(attack_id, {"count": n + 1}, seed)[1:]}
+
+
 async def test_blocked_provider_falls_back_to_templates_without_failing() -> None:
     blocked = ScriptedLLM(
         completions=[Completion(text="", model="m", blocked=True) for _ in range(10)]
     )
     variants = await mutate("scope_drift.off_topic", 3, seed=7, llm=blocked)
     assert len(variants) == 3
-    assert all(v.text for v in variants)
+    assert {v.text for v in variants} <= template_texts("scope_drift.off_topic", 3, seed=7)
 
 
 async def test_a_raising_provider_falls_back_to_templates_without_failing() -> None:
@@ -42,6 +47,7 @@ async def test_a_raising_provider_falls_back_to_templates_without_failing() -> N
 
     variants = await mutate("scope_drift.off_topic", 2, seed=7, llm=Raises())
     assert len(variants) == 2
+    assert {v.text for v in variants} <= template_texts("scope_drift.off_topic", 2, seed=7)
 
 
 async def test_near_duplicate_paraphrases_are_deduped_and_backfilled() -> None:

@@ -60,5 +60,8 @@ def test_repo_config_prices_every_configured_model() -> None:
     config = LLMConfig.from_env(
         {"LLM_PROVIDER": "litellm", "AGENTPROBE_CONFIG_DIR": str(REPO_CONFIG)}
     )
+    assert set(config.models) == {"agent", "judge", "attacker", "summarizer", "embedding"}
     for model in config.models.values():
-        config.price(model)  # raises if config/pricing.yaml lags config/llm.yaml
+        price = config.price(model)  # raises if config/pricing.yaml lags config/llm.yaml
+        # A $0 input price would make the USD budget guard blind to that model's calls.
+        assert price.input_per_mtok > 0, model
