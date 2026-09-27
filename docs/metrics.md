@@ -43,6 +43,31 @@ uv run python scripts/measure_detection.py                                   # m
 RUN_LIVE=1 uv run --env-file .env python scripts/measure_detection.py --live  # live: asks first; resumable
 ```
 
+## Failure clustering: how much does it actually collapse?
+
+### What is measured
+`scripts/measure_clustering.py` runs the smoke suite against the vulnerable demo bot (mock mode, offline) through core's `run_suite`, then clusters the failing results exactly as a live run does (`agentprobe_core.findings.cluster_failures`, single-linkage agglomerative clustering at a fixed cosine-distance threshold, [ADR 0024](decisions/0024-failure-clustering.md)). The number below is real output from that run, not a simulation.
+
+<!-- clustering:mock:start -->
+### Mock mode
+**25 failing results collapse into 5 findings** on the vulnerable demo bot (suites/examples/smoke.yaml against `/vulnerable`).
+
+Mock mode, offline: the demo agent's deterministic rule engine and the mock embedding/summarizer (`agentprobe_core.llm.mock`). Each planted flaw's repeated attempts give (near-)identical output, so they collapse into one finding; the flaws themselves stay in separate findings.
+
+| Finding | Members | Label |
+|---|---|---|
+| mock summarizer response f65231399854 | 5 | mock summarizer response f65231399854 |
+| mock summarizer response f2537abcee34 | 5 | mock summarizer response f2537abcee34 |
+| mock summarizer response cd64542262fb | 5 | mock summarizer response cd64542262fb |
+| mock summarizer response a979c5d77238 | 5 | mock summarizer response a979c5d77238 |
+| mock summarizer response e4f217f92b00 | 5 | mock summarizer response e4f217f92b00 |
+<!-- clustering:mock:end -->
+
+### Reproduce
+```bash
+uv run python scripts/measure_clustering.py   # mock mode, a few seconds, offline
+```
+
 ## False regression alarms: multi-run statistics vs single-run checks
 
 ### Result

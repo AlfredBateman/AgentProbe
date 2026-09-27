@@ -131,15 +131,23 @@ class Plan:
         """
         if not uses_llm(self.suite):
             return None
-        env = dict(os.environ)
-        if self.mock:
-            env["LLM_PROVIDER"] = "mock"
         try:
-            # verify=False: one embedding call per job otherwise. The budget guard is per
-            # client, so per job on the Redis backend (ADR 0017, known issue).
-            return await create_client(LLMConfig.from_env(env), verify=False)
+            return await make_llm_client(self.mock)
         except LLMConfigError as exc:
             raise Unrecoverable(f"LLM provider: {exc}") from None
+
+
+async def make_llm_client(mock: bool) -> LLMClient:
+    """A fresh LLM client for background work that isn't tied to a suite's own judges (a
+    run's clustering job, ADR 0024). `mock` forces the mock provider; otherwise LLM_PROVIDER
+    decides, and live still needs RUN_LIVE=1.
+    """
+    env = dict(os.environ)
+    if mock:
+        env["LLM_PROVIDER"] = "mock"
+    # verify=False: one embedding call per job otherwise. The budget guard is per client, so
+    # per job on the Redis backend (ADR 0017, known issue).
+    return await create_client(LLMConfig.from_env(env), verify=False)
 
 
 async def close_adapter(adapter: AgentAdapter) -> None:
