@@ -229,15 +229,6 @@ async def test_consistency_is_not_judged_per_attempt() -> None:
     assert (result.status, result.judgments) == ("passed", [])
 
 
-async def test_a_case_without_input_is_an_error_result() -> None:
-    no_input = Case.model_validate(
-        {"id": "a", "attack": "tool_misuse", "expect": [{"judge": "contains", "value": "x"}]}
-    )
-    result = await execute_attempt(no_input, FakeAdapter())
-    assert result.error is not None
-    assert result.error.kind == "internal"
-
-
 # --- finalize_run ------------------------------------------------------------------------
 
 
@@ -457,25 +448,6 @@ async def test_an_on_result_failure_aborts_the_run() -> None:
         await run_suite(slow_suite(cases=5, runs=2), adapter, on_result=on_result)
     await asyncio.sleep(0.05)
     assert adapter.in_flight == 0
-
-
-@pytest.mark.parametrize(
-    ("extra", "message"),
-    [
-        ({"attack": "tool_misuse", "input": None}, "no input"),
-        ({"mutations": 3}, "mutation expansion isn't wired"),
-        ({"obfuscate": True}, "sets obfuscate; obfuscation expansion isn't wired"),
-        ({"attack_params": {"n": 2}}, "sets attack_params; obfuscation expansion isn't wired"),
-    ],
-)
-async def test_unrunnable_suites_are_refused_before_any_call(
-    extra: dict[str, Any], message: str
-) -> None:
-    spec = {"id": "a", "input": "x", "expect": [{"judge": "contains", "value": "ok"}], **extra}
-    adapter = FakeAdapter()
-    with pytest.raises(ValueError, match=message):
-        await run_suite(make_suite([spec]), adapter)
-    assert adapter.calls == []
 
 
 # --- the pieces the server reuses ----------------------------------------------------------

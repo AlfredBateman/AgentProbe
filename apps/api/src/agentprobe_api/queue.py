@@ -127,7 +127,9 @@ async def cluster_findings(deps: Deps, plan: Plan) -> None:
     """
     try:
         llm = await runstore.make_llm_client(plan.mock)
-        await findings.cluster_and_save(deps.sessions, plan.run_id, llm)
+        async with deps.sessions() as session:
+            await findings.cluster_run(session, plan.run_id, llm)
+            await session.commit()
     except Exception:
         log.exception("clustering failed", extra={"run_id": str(plan.run_id)})
 

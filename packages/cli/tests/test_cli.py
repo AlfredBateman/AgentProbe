@@ -279,13 +279,14 @@ def test_a_missing_secret_header_env_var_is_a_usage_error(
     assert "CLI_TEST_TOKEN" in result.output
 
 
-def test_attack_only_cases_are_refused_until_expansion_is_wired_into_execution() -> None:
+def test_an_attack_id_without_an_input_is_a_suite_error() -> None:
     case = {"id": "a", "attack": "tool_misuse", "expect": [{"judge": "contains", "value": "x"}]}
     write_suite(suite(cases=[case]))
     result = invoke("run", "suite.yaml")
     assert result.exit_code == 3
     # Rich wraps the error to the terminal width; match the words, not the line breaks.
-    assert "isn't wired into run execution yet" in " ".join(result.output.split())
+    assert "a case needs `input` or `call`" in " ".join(result.output.split())
+    assert runs() == []
 
 
 # --- infrastructure errors: exit 4 ---------------------------------------------------------
@@ -462,6 +463,25 @@ def test_push_is_checked_before_running(monkeypatch: pytest.MonkeyPatch, unset: 
     assert result.exit_code == 3, result.output
     assert unset in result.output
     assert (seen, runs()) == ([], [])  # nothing ran, nothing was sent
+
+
+def test_push_with_an_unresolvable_baseline_explains_both_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = fake_server(monkeypatch, lambda _: httpx.Response(500))
+    result = invoke("run", "suite.yaml", "--push", "--branch", "pr-7", "--baseline", "main")
+    assert result.exit_code == 3, result.output
+    out = " ".join(result.output.split())  # Rich wraps at the terminal width
+    assert "--baseline compares locally" in out
+    assert "--baseline-branch compares on the server" in out
+    assert "pass --baseline-branch main instead" in out
+    assert (seen, runs()) == ([], [])
+    # without --push, or with --baseline-branch given, it's the plain not-found error
+    for args in ([], ["--push", "--branch", "pr-7", "--baseline-branch", "main"]):
+        plain = invoke("run", "suite.yaml", "--baseline", "main", *args)
+        assert plain.exit_code == 3, plain.output
+        assert "no such run file or baseline name" in plain.output
+        assert "--baseline-branch compares" not in " ".join(plain.output.split())
 
 
 def test_compare_prints_the_diff_and_exits_2_on_regression() -> None:

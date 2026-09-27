@@ -20,7 +20,8 @@ stops (daily quota, budget, an error) resumes where it left off when started aga
 another day if need be; delete the file to start over. Attempts are checkpointed instead of
 replayed from the LLM response cache on purpose: the cache keys on the prompt, so every
 repeat of a case would get attempt 1's answer back, erasing the variance that running each
-case several times exists to measure.
+case several times exists to measure. So this script sets LLM_CACHE=0 for its own process,
+overriding the LLM_CACHE=1 that .env.example recommends for other live/dev runs.
 
 Numbers come only from these runs. Nothing here tunes an agent or a judge.
 """
@@ -385,4 +386,7 @@ if __name__ == "__main__":
     # Read per request by the demo agents and per client by the LLM layer: set before either.
     os.environ["AGENT_MODE"] = "llm" if arguments.live else "mock"
     os.environ["LLM_PROVIDER"] = "litellm" if arguments.live else "mock"
+    # Whatever .env says (LLM_CACHE=1 is the dev default): a replayed answer would make every
+    # repeat of a case identical and erase the variance this measures (docstring, ADR 0022).
+    os.environ["LLM_CACHE"] = "0"
     sys.exit(asyncio.run(main(arguments)))

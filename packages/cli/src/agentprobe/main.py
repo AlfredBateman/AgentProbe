@@ -124,6 +124,10 @@ def _is_run_id(ref: str) -> bool:
     return True
 
 
+class _NoSuchRun(ConfigError):
+    """`ref` is neither a run file nor a saved baseline name (nor a server run id)."""
+
+
 def _load_run(ref: str) -> RunSummary:
     """A run file path, the name of a saved baseline, or a server run id (a UUID, fetched
     from AGENTPROBE_API_URL/AGENTPROBE_API_KEY via `GET /runs/{id}/export`).
@@ -135,7 +139,7 @@ def _load_run(ref: str) -> RunSummary:
     if not path.is_file() and _NAME.fullmatch(ref):
         path = _state_dir() / "baselines" / f"{ref}.json"
     if not path.is_file():
-        raise ConfigError(f"{ref}: no such run file or baseline name")
+        raise _NoSuchRun(f"{ref}: no such run file or baseline name")
     try:
         return RunSummary.model_validate_json(path.read_bytes())
     except ValidationError as exc:
@@ -260,8 +264,9 @@ def run(
     baseline: Annotated[
         str | None,
         typer.Option(
-            help="Baseline: a run file, a name saved with `agentprobe baseline set`, or a "
-            "server run id."
+            help="Compare locally with a baseline: a run file, a name saved with `agentprobe "
+            "baseline set`, or a server run id. For a server branch baseline, see "
+            "--baseline-branch."
         ),
     ] = None,
     concurrency: Annotated[
@@ -286,7 +291,11 @@ def run(
     ] = False,
     branch: Annotated[str | None, typer.Option(help="With --push: this run's branch.")] = None,
     baseline_branch: Annotated[
-        str | None, typer.Option(help="With --push: the baseline's branch (default: --branch).")
+        str | None,
+        typer.Option(
+            help="With --push: compare on the server with this branch's baseline "
+            "(default: --branch)."
+        ),
     ] = None,
     git_sha: Annotated[str | None, typer.Option(help="With --push: the commit.")] = None,
     pr: Annotated[int | None, typer.Option(min=1, help="With --push: the PR number.")] = None,
@@ -315,7 +324,23 @@ def run(
             permutation_draws=permutation_draws,
             bootstrap_resamples=bootstrap_resamples,
         )
-        base = _load_run(baseline) if baseline else None
+        try:
+            base = _load_run(baseline) if baseline else None
+        except _NoSuchRun:
+            if not push or baseline_branch is not None:
+                raise
+            # ADR 0025: two flags on purpose. The likely mistake here is a server branch name
+            # passed as --baseline, so say what each flag does rather than "no such file".
+            raise ConfigError(
+                f"--baseline {baseline!r} is not a run file, a saved baseline name or a server "
+                "run id.\n"
+                "--baseline compares locally, before the upload: a run file, a name saved with "
+                "`agentprobe baseline set`, or a server run id.\n"
+                "--baseline-branch compares on the server, against that branch's baseline "
+                "(default: --branch).\n"
+                f"To compare with the server's {baseline!r} branch baseline, pass "
+                f"--baseline-branch {baseline} instead."
+            ) from None
         if base is not None and base.suite != suite.suite:
             raise ConfigError(f"the baseline is a run of suite {base.suite!r}, not {suite.suite!r}")
         project = load_config(config)

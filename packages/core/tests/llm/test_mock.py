@@ -28,7 +28,7 @@ async def test_same_input_same_output_across_instances() -> None:
 
 async def test_output_depends_on_role() -> None:
     assert await complete(MockProvider(), "hi", "agent") != await complete(
-        MockProvider(), "hi", "attacker"
+        MockProvider(), "hi", "judge"
     )
 
 
@@ -65,7 +65,7 @@ async def test_non_judge_role_with_schema_gets_a_minimal_instance() -> None:
         },
         "required": ["variants", "kind", "n"],
     }
-    text = await complete(MockProvider(), "mutate this", "attacker", json_schema=schema)
+    text = await complete(MockProvider(), "summarize this", "summarizer", json_schema=schema)
     assert json.loads(text) == {"variants": [], "kind": "a", "n": 2}
 
 
@@ -78,7 +78,7 @@ async def test_fixtures_script_responses_by_substring_and_role() -> None:
         ]
     )
     assert await complete(provider, "can I get a refund?") == "Refunds within 30 days."
-    assert await complete(provider, "can I get a refund?", "attacker") != "Refunds within 30 days."
+    assert await complete(provider, "can I get a refund?", "judge") != "Refunds within 30 days."
     result = await provider.complete(
         "mock/x", user("forbidden"), role="agent", json_schema=None, temperature=0, max_tokens=1
     )

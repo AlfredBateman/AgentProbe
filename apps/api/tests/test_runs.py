@@ -263,25 +263,13 @@ async def test_an_unreachable_agent_fails_the_run_after_retries(
     assert done["pass_rate"] == 0.0  # summarized over what was saved
 
 
-@pytest.mark.parametrize(
-    ("yaml", "message"),
-    [
-        (SMOKE_YAML.replace("agent: support-v1", "agent: nobody"), "isn't in this project"),
-        (
-            "suite: s\nagent: support-v1\ncases:\n  - id: a\n    attack: tool_misuse\n"
-            "    expect:\n      - {judge: contains, value: x}\n",
-            "isn't wired into run execution yet",
-        ),
-    ],
-)
-async def test_unrunnable_suites_are_422(
-    sign_up: SignUp, app: FastAPI, demo_url: str, yaml: str, message: str
-) -> None:
+async def test_unrunnable_suites_are_422(sign_up: SignUp, app: FastAPI, demo_url: str) -> None:
     alice = await sign_up("alice@example.com")
+    yaml = SMOKE_YAML.replace("agent: support-v1", "agent: nobody")
     ids = await make_project(alice, f"{demo_url}/support/v1/chat", yaml=yaml)
     r = await alice.post(f"/suites/{ids['suite_id']}/runs", json={})
     assert r.status_code == 422
-    assert message in r.json()["error"]["message"]
+    assert "isn't in this project" in r.json()["error"]["message"]
     bad = await alice.post(f"/suites/{ids['suite_id']}/runs", json={"runs_per_case": 0})
     assert bad.status_code == 422
 

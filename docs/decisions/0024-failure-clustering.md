@@ -96,9 +96,12 @@ storing background-job failures on the row they concern, only for logging them.
 ### `apps/api/findings.py` layout
 One file, mirroring `baselines.py`/`share.py`/`ci.py`: the `GET /runs/{id}/findings` router,
 the read query (`_read_failed_outputs`), the single-transaction orchestration (`cluster_run`,
-taking a plain `AsyncSession` so `/ci/report` can share its own transaction) and the
-queue-facing wrapper (`cluster_and_save`, taking `runstore.Sessions` and committing its own).
-The clustering algorithm and the summarizer call themselves live in `agentprobe_core.findings`
+taking a plain `AsyncSession` so `/ci/report` can share its own transaction). ~~The
+queue-facing wrapper (`cluster_and_save`, taking `runstore.Sessions` and committing its own).~~
+**Amended 2026-09-27:** the wrapper was three lines with one caller, so it was inlined into
+`queue.cluster_findings`, which opens the session and commits. In core, `FailingOutput` is
+now a `(result_id, text)` tuple rather than a model, and `ClusterFinding.embedding` is a
+required `list[float]`, since every cluster has a centroid. The clustering algorithm and the summarizer call themselves live in `agentprobe_core.findings`
 (pure, DB-free, same `packages/core` boundary as everything else) as `agglomerative_cluster`
 and `cluster_failures`; `apps/api` never reimplements them.
 

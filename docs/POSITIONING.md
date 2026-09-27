@@ -80,12 +80,14 @@ kind of gap a competitor closes in one release. **Before any of this goes into t
 resume, or anything else public, re-check each claim against current documentation.** A specific
 claim about a named product that has gone stale is worse than no comparison at all.
 
-## 7. Open: SPEC.md still carries the old framing
+## 7. SPEC.md's framing (resolved 2026-09-27)
 
-[SPEC.md](../SPEC.md) §1 still opens with "Automated testing, red-teaming and regression detection
-for LLM agents" and "pytest + Playwright + a security scanner", and §16's first resume bullet says
-"a full-stack testing and red-teaming platform". That is the framing §2 moves away from.
+[SPEC.md](../SPEC.md) used to open with "Automated testing, red-teaming and regression detection
+for LLM agents" and "pytest + Playwright + a security scanner", and §16's first resume bullet
+said "a full-stack testing and red-teaming platform". That is the framing §2 moves away from.
 
-SPEC.md is the approved source of truth for scope (CLAUDE.md), so its headline and resume bullets
-are left unchanged pending an explicit decision rather than edited to match. [PLAN.md](PLAN.md) §0
-carries the new pitch in the meantime.
+User decision: SPEC.md's tagline and §16's resume bullets now use §1's pitch. The rest of SPEC.md
+stays as the original scope statement. Where scope was later cut to fit the positioning, an ADR
+records it (for example [ADR 0026](decisions/0026-no-mcp-tool-description-scan.md) and
+[ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)). §6's caution still
+applies before any of this goes public.
