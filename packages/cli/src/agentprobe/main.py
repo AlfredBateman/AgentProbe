@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import uuid
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -28,6 +29,7 @@ from typer.core import TyperGroup
 from agentprobe import report
 from agentprobe.config import CONFIG_FILE, ConfigError, build_adapter, is_registerable, load_config
 from agentprobe.push import KEY_ENV, URL_ENV, PushError, Target
+from agentprobe.push import fetch as fetch_run
 from agentprobe.push import payload as push_payload
 from agentprobe.push import push as push_run
 from agentprobe_core.adapters.types import AgentAdapter
@@ -114,8 +116,21 @@ def _fail(console: Console, message: str, code: ExitCode = ExitCode.USAGE) -> ty
     return typer.Exit(code)
 
 
+def _is_run_id(ref: str) -> bool:
+    try:
+        uuid.UUID(ref)
+    except ValueError:
+        return False
+    return True
+
+
 def _load_run(ref: str) -> RunSummary:
-    """A run file path, or the name of a saved baseline."""
+    """A run file path, the name of a saved baseline, or a server run id (a UUID, fetched
+    from AGENTPROBE_API_URL/AGENTPROBE_API_KEY via `GET /runs/{id}/export`).
+    """
+    if _is_run_id(ref):
+        target = Target.from_env(os.environ)
+        return asyncio.run(fetch_run(target, ref))
     path = Path(ref)
     if not path.is_file() and _NAME.fullmatch(ref):
         path = _state_dir() / "baselines" / f"{ref}.json"
@@ -244,7 +259,10 @@ def run(
     ] = 1.0,
     baseline: Annotated[
         str | None,
-        typer.Option(help="Baseline run file, or a name saved with `agentprobe baseline set`."),
+        typer.Option(
+            help="Baseline: a run file, a name saved with `agentprobe baseline set`, or a "
+            "server run id."
+        ),
     ] = None,
     concurrency: Annotated[
         int | None, typer.Option(min=1, max=64, help="Attempts in flight at once.")
@@ -336,8 +354,10 @@ def run(
                 _execute(suite, adapter, llm_config, options, agent=agent, progress=progress)
             )
         regression = _compare(base, summary, statistics) if base else None
-    except (ConfigError, ValueError, PushError) as exc:
+    except (ConfigError, ValueError) as exc:
         raise _fail(err, str(exc)) from None
+    except PushError as exc:
+        raise _fail(err, str(exc), ExitCode.INFRA if exc.infra else ExitCode.USAGE) from None
 
     path = _save(summary)
     code = _exit_code(summary, fail_under, regression)
@@ -379,17 +399,27 @@ def run(
     raise typer.Exit(code)
 
 
-@app.command(epilog=f"{SMALL_N}\n\nExits 2 on a regression, 3 on a usage error, else 0.")
+@app.command(
+    epilog=f"{SMALL_N}\n\nExits 2 on a regression, 4 if a server run id can't be fetched, "
+    "3 on any other usage error, else 0."
+)
 def compare(
-    baseline: Annotated[str, typer.Argument(help="Baseline run file or baseline name.")],
-    candidate: Annotated[str, typer.Argument(help="Candidate run file or baseline name.")],
+    baseline: Annotated[
+        str, typer.Argument(help="Baseline: a run file, a baseline name, or a server run id.")
+    ],
+    candidate: Annotated[
+        str, typer.Argument(help="Candidate: a run file, a baseline name, or a server run id.")
+    ],
     alpha: Annotated[
         float | None, typer.Option(help="False-alarm budget for the whole verdict.")
     ] = None,
     min_drop: Annotated[float | None, typer.Option(help="Smallest drop that counts.")] = None,
     permutation_draws: Annotated[int | None, typer.Option(help="Suite-test draws.")] = None,
 ) -> None:
-    """Regression diff between two runs of the same suite."""
+    """Regression diff between two runs of the same suite. A run may be given as a local run
+    file, a name saved with `agentprobe baseline set`, or a server run id (a UUID; needs
+    AGENTPROBE_API_URL/AGENTPROBE_API_KEY, like `--push`).
+    """
     err = Console(stderr=True)
     try:
         base, cand = _load_run(baseline), _load_run(candidate)
@@ -399,6 +429,8 @@ def compare(
         regression = _compare(base, cand, config)
     except ConfigError as exc:
         raise _fail(err, str(exc)) from None
+    except PushError as exc:
+        raise _fail(err, str(exc), ExitCode.INFRA if exc.infra else ExitCode.USAGE) from None
     report.render_comparison(Console(), base, cand, regression)
     raise typer.Exit(ExitCode.REGRESSION if regression.verdict == "regression" else ExitCode.OK)
 

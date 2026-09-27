@@ -3,6 +3,7 @@ with a branch's baseline.
 """
 
 import sys
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,12 +12,14 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentprobe.push import Target, push
+from agentprobe.push import PushError, Target, push
+from agentprobe.push import fetch as fetch_run
 from agentprobe.push import payload as push_payload
 from agentprobe_api.main import create_app
 from agentprobe_core.adapters.python import PythonAdapter
 from agentprobe_core.adapters.types import AgentResponse, MessageStep
 from agentprobe_core.runner import AttemptResult, JudgeResult, RunSummary, run_suite
+from agentprobe_core.stats import compare_runs
 from agentprobe_core.suite import parse_suite_yaml
 from apitest import ClientFactory, SignUp, bind_db, client_for, make_settings, signed_up
 from runtest import SMALL_YAML, make_project
@@ -368,3 +371,85 @@ async def test_ingest_rejects_unknown_case_ids_duplicates_and_oversized_payloads
         json={"suite": "small", "agent": "support-v1", "results": [], "branch": "main"},
     )
     assert empty.status_code == 422
+
+
+async def test_fetch_downloads_a_run_for_remote_compare_against_the_real_api(
+    sign_up: SignUp, clients: ClientFactory, app: FastAPI
+) -> None:
+    """`agentprobe compare <server-run-id> ...` / `--baseline <server-run-id>` resolve a run
+    with `agentprobe.push.fetch` (`GET /runs/{id}/export`). Proved against the real API
+    (inline backend, Neon test DB), not a mock transport, and cross-checked against the
+    server's own regression verdict for the same pair.
+    """
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, "http://127.0.0.1:9/chat", yaml=SMALL_YAML)
+    ci = await api_key_for(alice, ids["project_id"], clients)
+    key = ci.headers["authorization"].removeprefix("Bearer ")
+    target = Target("https://api.test", key)
+    transport = httpx.ASGITransport(app=app)
+
+    baseline_results = [attempt("greeting", n, passed=True) for n in range(5)] + [
+        attempt("refund-outside-window", n, passed=True) for n in range(5)
+    ]
+    baseline_report = await ci.post(
+        "/ci/report",
+        json={
+            "suite": "small",
+            "agent": "support-v1",
+            "results": baseline_results,
+            "runs_per_case": 5,
+            "branch": "main",
+        },
+    )
+    assert baseline_report.status_code == 201, baseline_report.text
+    baseline_id = baseline_report.json()["run_id"]
+    set_baseline = await alice.post(
+        f"/projects/{ids['project_id']}/baseline", json={"branch": "main", "run_id": baseline_id}
+    )
+    assert set_baseline.status_code == 201, set_baseline.text
+
+    candidate_results = [attempt("greeting", n, passed=True) for n in range(5)] + [
+        attempt("refund-outside-window", n, passed=False) for n in range(5)
+    ]
+    candidate_report = await ci.post(
+        "/ci/report",
+        json={
+            "suite": "small",
+            "agent": "support-v1",
+            "results": candidate_results,
+            "runs_per_case": 5,
+            "branch": "pr-1",
+            "baseline_branch": "main",
+        },
+    )
+    assert candidate_report.status_code == 201, candidate_report.text
+    candidate_body = candidate_report.json()
+    assert candidate_body["verdict"] == "regression"
+    candidate_id = candidate_body["run_id"]
+
+    fetched_baseline = await fetch_run(target, baseline_id, transport=transport)
+    fetched_candidate = await fetch_run(target, candidate_id, transport=transport)
+    assert (fetched_baseline.suite, fetched_candidate.suite) == ("small", "small")
+    assert fetched_baseline.pass_rate == 1.0
+
+    report = compare_runs(
+        fetched_baseline.case_summaries(),
+        fetched_candidate.case_summaries(),
+        fetched_candidate.statistics,
+    )
+    assert report.verdict == "regression"  # matches the server's own verdict above
+    assert "refund-outside-window" in report.regressed
+
+
+async def test_fetch_404s_for_an_unknown_run(
+    sign_up: SignUp, clients: ClientFactory, app: FastAPI
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, "http://127.0.0.1:9/chat", yaml=SMALL_YAML)
+    ci = await api_key_for(alice, ids["project_id"], clients)
+    key = ci.headers["authorization"].removeprefix("Bearer ")
+    target = Target("https://api.test", key)
+    transport = httpx.ASGITransport(app=app)
+
+    with pytest.raises(PushError, match="404"):
+        await fetch_run(target, str(uuid.uuid4()), transport=transport)
