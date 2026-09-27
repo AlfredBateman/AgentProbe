@@ -41,9 +41,10 @@ _REPAIR_PROMPT = (
 _TAG_RE = re.compile(rf"</?({AGENT_OUTPUT_TAG}|{_INPUT_TAG})>", re.IGNORECASE)
 
 
-def _neutralize(text: str) -> str:
+def neutralize(text: str) -> str:
     """Strips any literal `<agent_output>`/`<agent_input>` markers out of untrusted text so
-    it can't forge or close the real delimiters it's about to be wrapped in.
+    it can't forge or close the real delimiters it's about to be wrapped in. Shared with the
+    failure-cluster summarizer (`agentprobe_core.findings`), which wraps outputs the same way.
     """
     return _TAG_RE.sub(lambda m: m.group(0).translate({ord("<"): "&lt;", ord(">"): "&gt;"}), text)
 
@@ -51,8 +52,8 @@ def _neutralize(text: str) -> str:
 def build_messages(spec: LlmRubricJudge, ctx: JudgeContext) -> list[Message]:
     user = (
         f"Rubric: {spec.rubric}\n\n"
-        f"<{_INPUT_TAG}>\n{_neutralize(ctx.input)}\n</{_INPUT_TAG}>\n\n"
-        f"<{AGENT_OUTPUT_TAG}>\n{_neutralize(ctx.output)}\n</{AGENT_OUTPUT_TAG}>"
+        f"<{_INPUT_TAG}>\n{neutralize(ctx.input)}\n</{_INPUT_TAG}>\n\n"
+        f"<{AGENT_OUTPUT_TAG}>\n{neutralize(ctx.output)}\n</{AGENT_OUTPUT_TAG}>"
     )
     return [
         {"role": "system", "content": _SYSTEM_PROMPT},

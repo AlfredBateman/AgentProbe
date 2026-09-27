@@ -24,8 +24,8 @@ def test_every_attack_generates_valid_non_empty_payloads(attack_id: str) -> None
     for payload in payloads:
         assert isinstance(payload, Payload)
         assert payload.text.strip()
-        assert payload.attack_id
-        assert payload.category
+        assert payload.attack_id.startswith(attack_id)  # the umbrella id resolves to a child
+        assert payload.category == ATTACKS[attack_id].category
         assert payload.technique
 
 

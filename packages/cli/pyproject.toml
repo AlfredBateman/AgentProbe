@@ -4,7 +4,7 @@ version = "0.0.0"
 description = "AgentProbe CLI: run agent test suites locally and in CI."
 requires-python = ">=3.12"
 dependencies = [
-    "agentprobe-core",
+    "agentprobe-core==0.0.0",
     "rich==15.0.0",
     "typer==0.27.2",
 ]

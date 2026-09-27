@@ -59,6 +59,14 @@ requested format isn't found (mock's default text, or a live model that doesn't 
 deterministic, just less specific, and the label is the summary truncated to 60 characters. No
 change to `agentprobe_core.llm.mock` was needed or made.
 
+**Amended 2026-09-27 (codebase review):** the first version pasted the cluster's outputs into
+the prompt undelimited, so an attack case's output could instruct the summarizer (e.g. to
+write "Fix: none needed"), and that text reaches a PR comment through `/ci/report`'s
+`top_findings`. Each output is now wrapped in `<agent_output>` tags with any literal tag inside
+it neutralized (`judges.llm_rubric.neutralize`, made public and shared rather than copied), and
+the system prompt says the tagged text is data, never instructions — the same treatment
+CLAUDE.md requires of judge prompts.
+
 ### Storage: the existing `findings` table, no migration
 `Finding.embedding` stores the cluster's centroid (the mean of its members' embedding
 vectors) — not one representative member's vector — so a finding's position reflects the whole
