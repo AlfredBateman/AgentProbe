@@ -6,6 +6,7 @@ installs -- so "uv build produces a wheel that installs into a fresh venv, where
     uv run python scripts/verify_wheel.py
 """
 
+import re
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WINDOWS = sys.platform == "win32"
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 MOCK_AGENT = "def run(text: str) -> str:\n    return f'ok: {text}'\n"
 MOCK_SUITE = """\
@@ -31,7 +33,10 @@ MOCK_CONFIG = "agents:\n  local:\n    type: python\n    target: myagent:run\n"
 
 def run(*args: str, cwd: Path | None = None, expect: str | None = None) -> str:
     """Runs a command, failing loudly (with its full output) on a non-zero exit or, if
-    `expect` is given, when its stdout doesn't contain that substring.
+    `expect` is given, when its stdout doesn't contain that substring once Rich's ANSI
+    codes and column-width wrapping are normalized away (the same normalization
+    `packages/cli/tests/test_cli.py`'s `--help` tests use, for the same reason: a literal
+    phrase can straddle a wrap point that only some terminal widths hit).
     """
     result = subprocess.run(args, capture_output=True, text=True, cwd=cwd)  # noqa: S603 (uv/agentprobe, our own fixed argv)
     cmd = " ".join(args)
@@ -39,7 +44,8 @@ def run(*args: str, cwd: Path | None = None, expect: str | None = None) -> str:
         raise SystemExit(
             f"{cmd} failed (exit {result.returncode}):\n{result.stdout}{result.stderr}"
         )
-    if expect is not None and expect not in result.stdout:
+    normalized = " ".join(_ANSI.sub("", result.stdout).split())
+    if expect is not None and expect not in normalized:
         raise SystemExit(f"{cmd}: expected {expect!r} in stdout:\n{result.stdout}")
     return result.stdout
 
