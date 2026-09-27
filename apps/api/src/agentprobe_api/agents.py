@@ -8,7 +8,7 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,17 +32,6 @@ class HttpAgentConfig(HttpAdapterConfig):
     adapter_type: Literal["http"]
 
 
-class PythonAgentConfig(BaseModel):
-    """Accepted so it round-trips through ingested CLI runs; rejected at create/update time
-    below because the server can't execute it (PLAN.md §2 #14).
-    """
-
-    model_config = ConfigDict(extra="forbid")
-    adapter_type: Literal["python"]
-    module: str = Field(min_length=1, max_length=500)
-    function: str = Field(min_length=1, max_length=200)
-
-
 class McpAgentConfig(McpHttpConfig):
     """The MCP adapter's own HTTP-transport config (ADR 0023), so what's stored is what the
     adapter runs. `transport` is fixed to `"http"`: `McpHttpConfig` has no stdio fields at
@@ -52,14 +41,18 @@ class McpAgentConfig(McpHttpConfig):
     adapter_type: Literal["mcp"]
 
 
+def _server_adapters_only(value: Any) -> Any:
+    """A python agent never registers (PLAN.md §2 #14, ADR 0020): say so, not "bad tag"."""
+    if isinstance(value, dict) and value.get("adapter_type") == "python":
+        raise ValueError("python adapters are CLI-only; the server only accepts http and mcp")
+    return value
+
+
 AgentConfig = Annotated[
-    HttpAgentConfig | PythonAgentConfig | McpAgentConfig, Field(discriminator="adapter_type")
+    HttpAgentConfig | McpAgentConfig,
+    Field(discriminator="adapter_type"),
+    BeforeValidator(_server_adapters_only),
 ]
-
-
-def _reject_python_adapter(config: HttpAgentConfig | PythonAgentConfig | McpAgentConfig) -> None:
-    if config.adapter_type == "python":
-        raise ApiError(400, "The python adapter is CLI-only; the server can't execute it")
 
 
 # --- request/response models ------------------------------------------------------------
@@ -148,7 +141,6 @@ async def create_agent(
     project_id: uuid.UUID, body: AgentIn, principal: CurrentPrincipal, db: Db, request: Request
 ) -> AgentOut:
     project = await owned_project(db, principal, project_id)
-    _reject_python_adapter(body.config)
     secret_ref = None
     if body.auth_header is not None:
         secret_ref = await _store_secret(db, _secret_box(request), project.id, body.auth_header)
@@ -191,7 +183,6 @@ async def update_agent(
 ) -> AgentOut:
     agent = await owned_agent(db, principal, agent_id)
     if body.config is not None:
-        _reject_python_adapter(body.config)
         agent.adapter_type = body.config.adapter_type
         agent.config = body.config.model_dump(mode="json", exclude={"adapter_type"})
     if body.name is not None:

@@ -58,6 +58,10 @@ document, on the same agent.
   the agent and judge models, suite and route, and are passed to `run_suite(completed=...)` on
   the next start. The first attempt with an error stops the run unsaved (so it's retried on
   resume) and the script says whether the daily quota is the cause.
+  **Amended 2026-09-27 (user decision):** `LLM_CACHE=1` is now the recommended setting for
+  live/dev runs (`.env.example`, docs/metrics.md), so the script sets `LLM_CACHE=0` for its own
+  process rather than trusting `.env` to leave the cache off. The root conftest also clears
+  `LLM_CACHE` for every non-`live` test.
 - One call at a time (`concurrency=1`) with a 120 s adapter timeout, since a call can wait out a
   whole RPM window in the LLM limiter before it's sent.
 - `--runs-per-case` defaults to 3, as asked.

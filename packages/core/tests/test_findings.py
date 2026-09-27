@@ -5,7 +5,6 @@ response.
 
 from agentprobe_core.findings import (
     ClusterFinding,
-    FailingOutput,
     agglomerative_cluster,
     cluster_failures,
     cosine_distance,
@@ -75,7 +74,7 @@ async def test_cluster_failures_of_one_item_is_one_finding() -> None:
         embedding_vectors=[[1.0, 0.0]],
         completions=[Completion(text="Summary: leaks a secret\nFix: redact it", model="mock")],
     )
-    findings = await cluster_failures([FailingOutput(result_id="r1", text="the secret is X")], llm)
+    findings = await cluster_failures([("r1", "the secret is X")], llm)
     assert findings == [
         ClusterFinding(
             label="leaks a secret",
@@ -94,7 +93,7 @@ async def test_cluster_failures_groups_identical_outputs_into_one_cluster() -> N
             Completion(text="Summary: same failure every time\nFix: fix it", model="mock")
         ],
     )
-    items = [FailingOutput(result_id=f"r{i}", text="identical output") for i in range(3)]
+    items = [(f"r{i}", "identical output") for i in range(3)]
     findings = await cluster_failures(items, llm)
     assert len(findings) == 1
     assert findings[0].member_result_ids == ["r0", "r1", "r2"]
@@ -110,8 +109,8 @@ async def test_cluster_failures_keeps_unrelated_failures_in_separate_clusters() 
         ],
     )
     items = [
-        FailingOutput(result_id="r1", text="leaks the API key"),
-        FailingOutput(result_id="r2", text="writes a poem instead of answering"),
+        ("r1", "leaks the API key"),
+        ("r2", "writes a poem instead of answering"),
     ]
     findings = await cluster_failures(items, llm)
     assert len(findings) == 2
@@ -124,7 +123,7 @@ async def test_cluster_failures_falls_back_when_the_summary_has_no_format() -> N
         embedding_vectors=[[1.0, 0.0]],
         completions=[Completion(text="mock summarizer response abc123", model="mock")],
     )
-    findings = await cluster_failures([FailingOutput(result_id="r1", text="whatever")], llm)
+    findings = await cluster_failures([("r1", "whatever")], llm)
     assert findings[0].summary == "mock summarizer response abc123"
     assert findings[0].suggested_fix == (
         "Review the shared failure pattern above and adjust the agent accordingly."
@@ -138,7 +137,7 @@ async def test_cluster_failures_truncates_a_long_label() -> None:
         embedding_vectors=[[1.0, 0.0]],
         completions=[Completion(text=f"Summary: {long_summary}\nFix: shorten it", model="mock")],
     )
-    findings = await cluster_failures([FailingOutput(result_id="r1", text="x")], llm)
+    findings = await cluster_failures([("r1", "x")], llm)
     assert len(findings[0].label) == 60
     assert findings[0].label.endswith("…")
     assert findings[0].summary == long_summary.strip()
@@ -150,8 +149,8 @@ async def test_cluster_failures_sends_the_summarizer_role_and_grouped_text() -> 
         completions=[Completion(text="Summary: s\nFix: f", model="mock")],
     )
     items = [
-        FailingOutput(result_id="r1", text="alpha output"),
-        FailingOutput(result_id="r2", text="alpha output"),
+        ("r1", "alpha output"),
+        ("r2", "alpha output"),
     ]
     await cluster_failures(items, llm)
     assert len(llm.embed_calls) == 1
@@ -173,8 +172,8 @@ async def test_summarizer_prompt_delimits_outputs_as_data_and_neutralizes_forged
         completions=[Completion(text="Summary: s\nFix: f", model="mock")],
     )
     items = [
-        FailingOutput(result_id="r1", text=hostile),
-        FailingOutput(result_id="r2", text="plain failure"),
+        ("r1", hostile),
+        ("r2", "plain failure"),
     ]
     await cluster_failures(items, llm)
     [system, user] = llm.complete_calls[0]

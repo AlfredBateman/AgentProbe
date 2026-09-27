@@ -26,10 +26,38 @@ API-key-gated before because nothing but a browser called it; the CLI reaches it
 `CurrentPrincipal`, the same dependency `/ci/report` doesn't use precisely because `/ci/report`
 needs `require_api_key`, and export needs neither).
 
-`--push`'s own baseline resolution is unchanged and unrelated: the server already resolves
-`baseline_branch` internally and returns `verdict`/`comparison` in the `/ci/report` response
-(ADR 0018). This decision is only about `compare`/`run --baseline` being given a raw server run
-id directly, for comparing two arbitrary remote runs without going through `--push` at all.
+### Two baseline flags instead of one overloaded `--baseline <branch>`
+*(Amended 2026-09-27. The first version of this ADR described `--push`'s branch baseline as
+"unchanged and unrelated" to what D2.1 asked for. It isn't unrelated: D2.1 asked for
+`--baseline <branch>` against server baselines, and this is a deliberate different design for
+that same need.)*
+
+`run` keeps two flags:
+- `--baseline REF` compares **locally**, before any upload. `REF` is a run file, a name saved
+  with `agentprobe baseline set`, or a server run id.
+- `--baseline-branch BRANCH` (with `--push`) compares **on the server**, against the baseline
+  the server holds for (project, suite, branch, agent) (ADR 0020). The server resolves it at
+  ingest and returns `verdict`/`comparison` in the `/ci/report` response (ADR 0018).
+
+One flag that also took a branch name was rejected for these reasons:
+- **The values are ambiguous.** A saved baseline name and a branch name are both short
+  free-form identifiers, and `main` is the natural choice for both. An overloaded flag would
+  need a resolution order, and that order would silently pick which of two different
+  comparisons runs. A UUID stays unambiguous, which is why server run ids share `--baseline`.
+- **The comparisons happen in different places with different inputs.** The local one uses
+  the CLI's statistics flags and a run the user has on disk. The server one uses the server's
+  current baseline pointer, which someone may have moved since the user last looked. One flag
+  would hide which of the two produced the exit code.
+- **They combine.** A CI job can compare against a pinned local run and against the branch
+  baseline in the same invocation. One flag can't express both.
+- **A branch is only meaningful with `--push`.** A local baseline works with no server at all.
+  A separate flag lets `--push` validation own the branch.
+
+The cost is a mistake the overloaded flag wouldn't allow: `run --push --baseline main`, where
+`main` was meant as a server branch. When `--push` is set, `--baseline-branch` isn't, and
+`--baseline` doesn't resolve locally, the CLI does not fail with a bare "no such run file"
+(exit 3). It explains what each flag does and says to pass `--baseline-branch main` instead.
+The exit code is still 3.
 
 **Exit codes.** `PushError.infra` still decides 4 vs 3, exactly as `--push` already did; `run`
 and `compare`'s exception handling both split `PushError` out of the generic

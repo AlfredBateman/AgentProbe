@@ -7,7 +7,7 @@ const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "AgentProbe",
-  description: "Testing, red-teaming and regression detection for LLM agents.",
+  description: "Statistically-corrected regression detection for LLM agents, gated in CI.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

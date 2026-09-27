@@ -1,8 +1,8 @@
 # AgentProbe
 
-**Automated testing, red-teaming and regression detection for LLM agents.**
+**Statistically-corrected, flakiness-aware regression detection for LLM agents, wired into a real CI gate and judged on traces and tool calls rather than just final text.**
 
-Think "pytest + Playwright + a security scanner", but for AI agents and MCP servers. You point it at an agent, it runs a suite of behavioral tests and adversarial attacks, judges the results, stores full traces, and blocks a pull request in CI when the agent's behavior gets worse.
+You point it at an agent (over HTTP or MCP, or a Python callable from the CLI). It runs a YAML suite of behavioral cases and author-written attack cases many times each, judges every attempt's trace and tool calls, and fails a pull request only when a drop is statistically meaningful, not when a flaky case happened to fail this time. ([docs/POSITIONING.md](docs/POSITIONING.md) records this framing and what it rules out.)
 
 ---
 
@@ -355,9 +355,9 @@ Measure real numbers and put them in the README:
 
 ## 16. Resume Bullets (edit with your real numbers)
 
-- Built **AgentProbe**, a full-stack testing and red-teaming platform for LLM agents (Next.js, FastAPI, PostgreSQL/pgvector, Redis), with a CLI and GitHub Action that block PRs on behavioral regressions.
-- Designed a statistical multi-run evaluation engine with LLM-as-judge and rule-based judges, cutting false regression alerts by **X%** versus single-run checks.
-- Implemented an adversarial attack library (prompt injection, tool misuse, PII leakage) that detected **X/Y** planted vulnerabilities in demo agents.
+- Built **AgentProbe**, statistically-corrected, flakiness-aware regression detection for LLM agents (Next.js, FastAPI, PostgreSQL/pgvector, Redis). Its CLI and GitHub Action run every case many times and block a PR only on a statistically significant drop.
+- Designed the regression statistics: a one-sided Fisher exact test per case with a Tarone–Holm step-down, and a paired sign-flip permutation test for the suite, with α budgeted across both so the verdict's false-alarm rate is the one configured. This cut false regression alerts by **X%** versus single-run checks.
+- Judged agents on their traces and tool calls, not just final text (tool-call and argument judges, plus LLM-as-judge rubrics that treat agent output as delimited data). Category-labelled attack cases (prompt injection, tool misuse, PII leakage) caught **X/Y** planted vulnerabilities in demo agents.
 - Set up CI/CD with Docker and GitHub Actions, achieving **80%+** coverage with unit, integration and Playwright end-to-end tests.
 
 ## 17. Role Mapping

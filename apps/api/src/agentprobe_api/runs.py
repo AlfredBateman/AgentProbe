@@ -126,10 +126,7 @@ async def start_run(
     if agent.adapter_type != "http":
         raise ApiError(422, f"{agent.adapter_type} agents can't run on the server yet")
     runs_per_case = body.runs_per_case or parsed.runs_per_case
-    try:
-        attempts = plan_attempts(parsed, runs_per_case)
-    except ValueError as exc:
-        raise ApiError(422, str(exc)) from exc
+    attempts = plan_attempts(parsed, runs_per_case)
     run = Run(
         suite_id=suite.id,
         suite_version=suite.version,

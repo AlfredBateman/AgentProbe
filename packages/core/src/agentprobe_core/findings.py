@@ -96,14 +96,9 @@ def agglomerative_cluster(
     return clusters
 
 
-class FailingOutput(BaseModel):
-    """One failing attempt's output, ready to embed and cluster. `result_id` is opaque to
-    core -- the caller's own id (a database row id, in `apps/api`).
-    """
-
-    model_config = ConfigDict(frozen=True)
-    result_id: str
-    text: str
+# One failing attempt: (result_id, output text). `result_id` is opaque to core -- the caller's
+# own id (a database row id, in `apps/api`).
+FailingOutput = tuple[str, str]
 
 
 class ClusterFinding(BaseModel):
@@ -112,7 +107,7 @@ class ClusterFinding(BaseModel):
     summary: str
     suggested_fix: str
     member_result_ids: list[str]
-    embedding: list[float] | None  # the cluster's centroid, for the `findings` table
+    embedding: list[float]  # the cluster's centroid, for the `findings` table
 
 
 def _label(summary: str) -> str:
@@ -172,17 +167,17 @@ async def cluster_failures(
     """
     if not items:
         return []
-    vectors = (await llm.embed([item.text for item in items])).vectors
+    vectors = (await llm.embed([text for _, text in items])).vectors
     findings: list[ClusterFinding] = []
     for member_idx in agglomerative_cluster(vectors, threshold=distance_threshold):
         members = [items[i] for i in member_idx]
-        label, summary, fix = await _summarize(llm, [m.text for m in members])
+        label, summary, fix = await _summarize(llm, [text for _, text in members])
         findings.append(
             ClusterFinding(
                 label=label,
                 summary=summary,
                 suggested_fix=fix,
-                member_result_ids=[m.result_id for m in members],
+                member_result_ids=[result_id for result_id, _ in members],
                 embedding=_centroid([vectors[i] for i in member_idx]),
             )
         )

@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
+from agentprobe_core.suite.attacks import ATTACKS
 from agentprobe_core.suite.schema import Case, StatisticsConfig, Suite
 
 CONTAINS = {"judge": "contains", "value": "ok"}
@@ -93,15 +94,37 @@ def test_duplicate_case_ids_rejected() -> None:
         )
 
 
-def test_case_needs_input_or_attack() -> None:
-    with pytest.raises(ValidationError, match="needs `input`, `attack` or `call`"):
-        Case.model_validate({"id": "c1", "expect": [CONTAINS]})
+@pytest.mark.parametrize("extra", [{}, {"attack": "tool_misuse"}])
+def test_case_needs_input_or_call(extra: dict[str, str]) -> None:
+    # an attack id labels a case; it never stands in for the input (ADR 0027)
+    with pytest.raises(ValidationError, match="needs `input` or `call`"):
+        Case.model_validate({"id": "c1", "expect": [CONTAINS], **extra})
 
 
-def test_case_with_only_attack_is_valid() -> None:
-    case = Case.model_validate({"id": "c1", "attack": "tool_misuse", "expect": [CONTAINS]})
-    assert case.input is None
-    assert case.attack == "tool_misuse"
+def test_attack_labels_a_literal_case() -> None:
+    case = Case.model_validate(
+        {"id": "c1", "attack": "tool_misuse", "input": "delete it", "expect": [CONTAINS]}
+    )
+    assert (case.attack, case.input) == ("tool_misuse", "delete it")
+    assert ATTACKS[case.attack] == "tool_misuse"
+
+
+# SPEC.md §4.4's categories, all represented; every id sits under its own category.
+@pytest.mark.parametrize(
+    "category",
+    ["prompt_injection", "jailbreak", "extraction", "leakage", "tool_misuse", "scope_drift"],
+)
+def test_every_spec_category_has_attack_ids(category: str) -> None:
+    ids = [attack_id for attack_id, cat in ATTACKS.items() if cat == category]
+    assert ids
+    assert all(attack_id.split(".")[0] == category for attack_id in ids)
+
+
+@pytest.mark.parametrize("field", ["mutations", "obfuscate", "attack_params"])
+def test_removed_generation_fields_are_rejected(field: str) -> None:
+    # ADR 0027: no payload generation, so these fields don't exist rather than being refused
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        Case.model_validate({"id": "c1", "input": "hi", field: 1, "expect": [CONTAINS]})
 
 
 def test_unknown_attack_rejected() -> None:
@@ -148,13 +171,3 @@ def test_context_fixtures_round_trip() -> None:
         }
     )
     assert case.context == [{"name": "policy.txt", "content": "refunds within 30 days"}, "plain"]
-
-
-def test_mutations_field() -> None:
-    case = Case.model_validate({"id": "c1", "input": "hi", "mutations": 3, "expect": [CONTAINS]})
-    assert case.mutations == 3
-
-
-def test_obfuscate_defaults_false() -> None:
-    case = Case.model_validate({"id": "c1", "input": "hi", "expect": [CONTAINS]})
-    assert case.obfuscate is False

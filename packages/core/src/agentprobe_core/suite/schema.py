@@ -72,10 +72,8 @@ class Case(BaseModel):
 
     id: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_.-]+$")
     input: str | None = Field(default=None, max_length=MAX_INPUT_LENGTH)
+    # A category label for an author-written case; it never generates the input (ADR 0027).
     attack: str | None = None
-    attack_params: dict[str, Any] = Field(default_factory=dict)
-    obfuscate: bool = False
-    mutations: int | None = Field(default=None, ge=1, le=50)
     # Documents/tool output for the request template's {{documents}} (PLAN.md §2 #11): plain
     # text or JSON objects, passed through as-is (ADR 0012).
     context: list[str | dict[str, Any]] | None = None
@@ -91,9 +89,9 @@ class Case(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _input_or_attack_or_call(self) -> "Case":
-        if self.input is None and self.attack is None and self.call is None:
-            raise ValueError("a case needs `input`, `attack` or `call`")
+    def _input_or_call(self) -> "Case":
+        if self.input is None and self.call is None:
+            raise ValueError("a case needs `input` or `call` (`attack` only labels it)")
         return self
 
 

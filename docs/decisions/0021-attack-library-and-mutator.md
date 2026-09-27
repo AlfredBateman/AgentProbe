@@ -1,6 +1,6 @@
 # 0021: Attack library and LLM mutator
 
-Status: accepted (2026-09-26). Implements PLAN.md C1 and C2.
+Status: superseded by [ADR 0027](0027-attack-ids-label-author-written-cases.md) (2026-09-27): the generators, obfuscation and mutator were removed; only the id/category registry remains. Originally accepted 2026-09-26, implementing PLAN.md C1 and C2.
 
 ## Context
 `packages/core/suite/attacks.py` (ADR 0010) has been a 2-id placeholder frozenset since B1.1:

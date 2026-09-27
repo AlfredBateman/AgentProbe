@@ -1,9 +1,24 @@
-"""The attack ids a suite may name in `Case.attack` (SPEC.md §4.4). The real generators live
-in `agentprobe_core.attacks` (C1); this module only re-exports the id set so the schema's
-validator can check against it without a dependency cycle (`suite` -> `attacks` is fine,
-`attacks` never imports `suite`).
+"""The attack ids a suite may name in `Case.attack`, with their SPEC.md §4.4 category.
+
+An attack id classifies an author-written case (its literal `input` or `call`); nothing generates
+payloads from it (ADR 0027). The schema validates `Case.attack` against these keys, and the suite
+editor can offer them for autocomplete.
 """
 
-from agentprobe_core.attacks.registry import ATTACK_IDS as ATTACKS
-
-__all__ = ["ATTACKS"]
+ATTACKS: dict[str, str] = {
+    "prompt_injection.direct": "prompt_injection",
+    "prompt_injection.indirect": "prompt_injection",
+    "jailbreak.roleplay": "jailbreak",
+    "jailbreak.hypothetical": "jailbreak",
+    "jailbreak.developer_mode": "jailbreak",
+    "extraction.repeat": "extraction",
+    "extraction.translate": "extraction",
+    "extraction.summarize": "extraction",
+    "leakage.secrets": "leakage",
+    "leakage.pii": "leakage",
+    "tool_misuse": "tool_misuse",
+    "tool_misuse.unauthorized_call": "tool_misuse",
+    "tool_misuse.argument_tampering": "tool_misuse",
+    "tool_misuse.excessive_agency": "tool_misuse",
+    "scope_drift.off_topic": "scope_drift",
+}

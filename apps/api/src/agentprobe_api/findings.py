@@ -4,9 +4,9 @@ each with an LLM-written label, summary and suggested fix. The clustering itself
 (`agentprobe_core.findings`) is pure and DB-free; this module is the persistence around it
 and the read endpoint.
 
-Clustering never fails the run it follows: `cluster_and_save` is called after a queued or
-inline run completes (`queue.cluster_findings`, ADR 0017) and from `/ci/report`'s own
-transaction (ADR 0018); both catch and log instead of letting a clustering bug fail the run.
+Clustering never fails the run it follows: `cluster_run` is called after a queued or inline
+run completes (`queue.cluster_findings`, ADR 0017) and from `/ci/report`'s own transaction
+(ADR 0018); both catch and log instead of letting a clustering bug fail the run.
 """
 
 import uuid
@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentprobe_api.auth import CurrentPrincipal, Db
 from agentprobe_api.models import Finding, RunResult, TestCase
 from agentprobe_api.runs import owned_run
-from agentprobe_api.runstore import Sessions
 from agentprobe_core.findings import FailingOutput, cluster_failures
 from agentprobe_core.llm.types import LLMClient
 
@@ -64,11 +63,7 @@ async def _read_failed_outputs(db: AsyncSession, run_id: uuid.UUID) -> list[Fail
         )
         .order_by(TestCase.case_key, RunResult.attempt)
     )
-    return [
-        FailingOutput(result_id=str(result_id), text=output)
-        for result_id, output in rows.tuples()
-        if output is not None
-    ]
+    return [(str(result_id), output) for result_id, output in rows.tuples() if output is not None]
 
 
 async def cluster_run(db: AsyncSession, run_id: uuid.UUID, llm: LLMClient) -> list[Finding]:
@@ -93,13 +88,3 @@ async def cluster_run(db: AsyncSession, run_id: uuid.UUID, llm: LLMClient) -> li
     db.add_all(rows)
     await db.flush()
     return rows
-
-
-async def cluster_and_save(sessions: Sessions, run_id: uuid.UUID, llm: LLMClient) -> None:
-    """The queue-facing wrapper (ADR 0017): opens and commits its own session, for a live
-    run's post-run job. Raises on failure -- the caller (`queue.cluster_findings`) is what
-    logs and swallows it, so a clustering bug is never mistaken for a successful empty result.
-    """
-    async with sessions() as session:
-        await cluster_run(session, run_id, llm)
-        await session.commit()

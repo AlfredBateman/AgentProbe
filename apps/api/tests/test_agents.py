@@ -62,6 +62,14 @@ async def test_auth_header_is_encrypted_and_never_returned(
     assert b"super-secret" not in secret.ciphertext
 
 
+def assert_python_refused(r: httpx.Response) -> None:
+    [detail] = r.json()["error"]["details"]
+    assert detail["loc"][-1] == "config"
+    assert detail["msg"].endswith(
+        "python adapters are CLI-only; the server only accepts http and mcp"
+    )
+
+
 async def test_python_adapter_rejected(sign_up: SignUp) -> None:
     alice = await sign_up("alice@example.com")
     project = await new_project(alice)
@@ -72,7 +80,8 @@ async def test_python_adapter_rejected(sign_up: SignUp) -> None:
             "config": {"adapter_type": "python", "module": "demo", "function": "run"},
         },
     )
-    assert r.status_code == 400, r.text
+    assert r.status_code == 422, r.text
+    assert_python_refused(r)
 
 
 async def test_invalid_http_config_rejected(sign_up: SignUp) -> None:
@@ -236,7 +245,10 @@ async def test_update_rejects_python_adapter(sign_up: SignUp) -> None:
         f"/agents/{created['id']}",
         json={"config": {"adapter_type": "python", "module": "m", "function": "f"}},
     )
-    assert r.status_code == 400
+    assert r.status_code == 422, r.text
+    assert_python_refused(r)
+    agent = (await alice.get(f"/agents/{created['id']}")).json()
+    assert agent["adapter_type"] == "http"  # unchanged
 
 
 async def test_delete_agent(sign_up: SignUp) -> None:

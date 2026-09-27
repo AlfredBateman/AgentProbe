@@ -4,13 +4,13 @@ Source of truth for scope: [SPEC.md](../SPEC.md). UI: [DESIGN.md](../DESIGN.md).
 
 ## 0. The pitch this plan serves
 
-**Amended 2026-09-26 (user decision, [POSITIONING.md](POSITIONING.md)).** SPEC.md §1 pitches "automated testing, red-teaming and regression detection" — a combined eval, red-team and dashboard platform. The differentiated core is narrower:
+**Amended 2026-09-26 (user decision, [POSITIONING.md](POSITIONING.md)).** SPEC.md §1 originally pitched "automated testing, red-teaming and regression detection": a combined eval, red-team and dashboard platform. The differentiated core is narrower (SPEC.md's tagline and resume bullets were reworded to match on 2026-09-27):
 
 > **AgentProbe is statistically-corrected, flakiness-aware regression detection for LLM agents, wired into a real CI-gate workflow, and judged on traces and tool calls rather than just final text.** It runs every case many times and fails a pull request only when a drop is statistically meaningful — not when a flaky case happened to fail this time.
 
 Consequences for this plan, both marked ✂ in the tables below:
 - **C4 (failure clustering) is the first thing to cut** if time runs short. It presents failures that have already been detected and judged; nothing in the pitch needs it.
-- **C1's obfuscation variety is the second.** The attack *categories* the golden tests and planted flaws rely on stay; a tenth obfuscation variant doesn't.
+- **C1's obfuscation variety is the second.** The attack *categories* the golden tests and planted flaws rely on stay; a tenth obfuscation variant doesn't. **Done 2026-09-27:** all generated payload variety (generators, obfuscation, the C2 mutator) was cut; attack ids now only classify author-written cases ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)).
 
 The MCP adapter (C3) is one adapter type for breadth, not an MCP-security product — see POSITIONING.md §4.
 
@@ -86,9 +86,9 @@ Gate: `pnpm check` / `pnpm verify`.
 
 | # | Task | Done when |
 |---|---|---|
-| C1 | Attack library: 8 categories from SPEC §4.4, parameterized templates, default expectations. ✂ **Obfuscation variety is cut first** (base64/leetspeak/split-word and the Hinglish packs); the categories the golden tests need stay (§0). | Unit tests; golden tests extended |
-| C2 | LLM mutator (seeded, budget-guarded) | Mock-mode determinism test |
-| C3 | MCP adapter: list tools, `call:` cases. One adapter type for breadth, not an MCP-security product ([POSITIONING.md](POSITIONING.md) §4). Done 2026-09-27 ([ADR 0023](decisions/0023-mcp-adapter.md)); the tool-description injection scan wasn't built this pass (PROGRESS.md Next). | Test against a bundled demo MCP server |
+| C1 | Attack library: 8 categories from SPEC §4.4, parameterized templates, default expectations. ✂ **Obfuscation variety is cut first** (base64/leetspeak/split-word and the Hinglish packs); the categories the golden tests need stay (§0). **Amended 2026-09-27:** the generators and obfuscation were removed. Only the id/category registry used for schema validation stays ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)). | Unit tests; golden tests extended |
+| C2 | LLM mutator (seeded, budget-guarded). **Cut 2026-09-27** with C1's generators: out of scope ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)). | — |
+| C3 | MCP adapter: list tools, `call:` cases. One adapter type for breadth, not an MCP-security product ([POSITIONING.md](POSITIONING.md) §4). Done 2026-09-27 ([ADR 0023](decisions/0023-mcp-adapter.md)). The tool-description injection scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). | Test against a bundled demo MCP server |
 | C4 | Failure clustering: embeddings (768-d), clustering, LLM cluster summaries, `findings` API. Done 2026-09-27 ([ADR 0024](decisions/0024-failure-clustering.md)). | Mock-mode test clusters planted failure groups |
 
 ### Phase E: dashboard (Next.js)
@@ -133,10 +133,10 @@ Legend:
 | 7 | `agents.secret_ref` doesn't say what it references. | A separate `secrets` table (id, project_id, ciphertext, created_at); `secret_ref` is the id of its row. Fernet encryption, key from `ENCRYPTION_KEY`, write-only, never returned or logged. See [ADR 0003](decisions/0003-secret-storage.md). | Approved |
 | 8 | Two costs are implied: the agent's own tokens/cost, and AgentProbe's judge spend. `runs.model` is also unclear. | Add `runs.judge_cost_usd`. `total_cost`/`total_tokens` are the agent's, as reported through response mapping, and nullable. `runs.model` is a user-supplied label for the agent's model (A/B compare). | Approved |
 | 9 | The statistics behind "statistically meaningful" aren't specified. | See the list after this table. Approved as proposed. Every threshold (α, `min_drop`, bootstrap/permutation iteration counts) is configurable via the suite YAML and CLI flags, not hardcoded, and the small-N limitation is documented prominently in `--help` and the docs. See [ADR 0006](decisions/0006-statistics-methodology.md). | Approved |
-| 10 | `attack:` in the example is only a label, but §4.4 promises parameterized generators. | `attack` + `input` is a labelled literal case. `attack` without `input` expands library templates: `variants: N`, `mutate: true` for LLM variants, deterministic ids `<id>#<n>`, per-category default expectations that `expect` can override. | Decided |
+| 10 | `attack:` in the example is only a label, but §4.4 promises parameterized generators. | `attack` + `input` is a labelled literal case. ~~`attack` without `input` expands library templates: `variants: N`, `mutate: true` for LLM variants, deterministic ids `<id>#<n>`, per-category default expectations that `expect` can override.~~ **Amended (2026-09-27, user decision):** `attack` is only ever a category label. A case needs `input` or `call`, and generated payload variety (templates, obfuscation, mutation) is out of scope ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)). | Decided |
 | 11 | Indirect injection needs injected documents, but an HTTP black box can't receive them. | An optional case field `context:` (documents) is exposed to the request template. The demo support bot also has a planted malicious tool output. | Decided |
 | 12 | The HTTP request/response mapping is unspecified, and tool-call judges need to see tool calls. | The request is a JSON template with `{{input}}` / `{{documents}}`. The response uses a JSONPath subset for `output`, `tool_calls` and token usage. Tool judges require the agent to report its calls (`tool_calls_reported`). See [ADR 0012](decisions/0012-http-adapter-and-ssrf-guard.md). | Decided |
-| 13 | An MCP server has no chat "input". | MCP cases use `call: {tool, arguments}`, and judges run on the tool result. Plus an automatic scan of tool descriptions for injected instructions. | Decided |
+| 13 | An MCP server has no chat "input". | MCP cases use `call: {tool, arguments}`, and judges run on the tool result. ~~Plus an automatic scan of tool descriptions for injected instructions.~~ **Amended (2026-09-27):** the tool-description scan is out of scope. MCP is one adapter type for breadth, not a security scanner ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). | Decided |
 | 14 | `adapter_type` includes `python`, but the Python adapter is CLI-only. | Allowed on ingested runs only. The server refuses to execute it. **Refined by [ADR 0020](decisions/0020-unregistered-agent-runs.md):** a python agent is never registered; its pushed runs carry `agent_name` instead of `agent_id`. | Decided |
 | 15 | Arq or Celery. | ~~Arq~~ **Superseded by [ADR 0017](decisions/0017-server-runner-and-queue.md):** Arq is maintenance-only and needs `redis<6`, so it's Taskiq + taskiq-redis behind a `QueueBackend` protocol. `QUEUE_BACKEND=inline\|redis`: inline locally, redis in CI and prod. | Decided |
 | 16 | SSE or WebSocket. | SSE: one-way and cookie-friendly. It polls DB state, so inline and arq behave the same. | Decided |

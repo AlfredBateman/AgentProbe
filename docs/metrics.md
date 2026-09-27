@@ -43,6 +43,8 @@ uv run python scripts/measure_detection.py                                   # m
 RUN_LIVE=1 uv run --env-file .env python scripts/measure_detection.py --live  # live: asks first; resumable
 ```
 
+**LLM cache.** For every other live or dev run, such as iterating on a suite with `agentprobe run` against a live judge, or the API server with `LLM_PROVIDER=litellm`, set `LLM_CACHE=1`. This is `.env.example`'s default. Identical calls then replay from `.agentprobe/llm-cache/` without spending quota or budget. The detection script is the exception and forces `LLM_CACHE=0` for itself. The cache keys on the prompt, so a replay would give every repeat of a case attempt 1's answer, and a flaky case would measure as stable. It resumes from its own checkpoint of finished attempts instead ([ADR 0022](decisions/0022-golden-tests-and-detection-measurement.md)). The smoke script and the live test turn the cache off for themselves too, since they exist to reach the provider.
+
 ## Failure clustering: how much does it actually collapse?
 
 ### What is measured

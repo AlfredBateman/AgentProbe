@@ -68,7 +68,7 @@ agents:
 
 - `--agent NAME` — override the suite's own agent.
 - `--fail-under FLOAT` — minimum pass rate (default `1.0`: every case must pass).
-- `--baseline REF` — compare against a run file, a saved baseline name, or a server run id; a regression exits `2`.
+- `--baseline REF` — compare **locally** against a run file, a saved baseline name, or a server run id; a regression exits `2`. To compare against a server branch's baseline, use `--push --baseline-branch BRANCH` instead (below). The two are separate on purpose and can be combined.
 - `--runs-per-case N`, `--concurrency N` — override the suite's own settings.
 - `--mock` — force the mock LLM provider for judges (no live model calls).
 - `--json` — print the full result as JSON on stdout, instead of the Rich report.

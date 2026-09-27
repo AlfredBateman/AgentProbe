@@ -41,12 +41,14 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 @pytest.fixture(autouse=True)
 def _offline_llm(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     """Only `live` tests may reach a real LLM, whatever the shell or `.env` (loaded by `pnpm
-    verify`) says: the demo agents and the server read these at request time.
+    verify`) says: the demo agents and the server read these at request time. The dev disk
+    cache is off too, so no test replays a response another run left behind.
     """
     if request.node.get_closest_marker("live") is None:
         monkeypatch.setenv("LLM_PROVIDER", "mock")
         monkeypatch.setenv("AGENT_MODE", "mock")
         monkeypatch.delenv("RUN_LIVE", raising=False)
+        monkeypatch.delenv("LLM_CACHE", raising=False)
 
 
 if sys.platform == "win32":
