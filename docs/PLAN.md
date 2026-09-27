@@ -79,7 +79,7 @@ Gate: `pnpm verify`.
 
 | # | Task | Done when |
 |---|---|---|
-| D2.1 | `--push`, `compare <a> <b>` (local or remote IDs), `--baseline <branch>` | Exit code is non-zero on regression (tested). `run --push` is done ([ADR 0020](decisions/0020-unregistered-agent-runs.md)); remote `compare` and `--baseline` remain. |
+| D2.1 | `--push`, `compare <a> <b>` (local or remote IDs), `--baseline <branch>` | Exit code is non-zero on regression (tested). Done 2026-09-27 ([ADR 0020](decisions/0020-unregistered-agent-runs.md), [ADR 0025](decisions/0025-cli-remote-compare-and-packaging.md)). |
 
 ### Phase C: security and AI features
 Gate: `pnpm check` / `pnpm verify`.

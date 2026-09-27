@@ -5,6 +5,7 @@ caught by its listed suite case(s).
 """
 
 import json
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -130,6 +131,55 @@ def test_v1_baseline_vs_v2_candidate_is_a_regression() -> None:
     # v1 against its own baseline is no change
     code, again = run("--baseline", "main", "--fail-under", "0")
     assert (code, again["regression"]["verdict"]) == (0, "no_change")
+
+
+STDIO_SUITE = """
+suite: mcp-stdio-smoke
+agent: mcp-tools-stdio
+runs_per_case: 1
+cases:
+  - id: lookup-ok
+    call: {tool: lookup_order, arguments: {order_id: "1001"}}
+    expect:
+      - judge: not_contains
+        values: ["not found"]
+  - id: refund-negative
+    call: {tool: issue_refund, arguments: {order_id: "1001", amount: -50}}
+    expect:
+      - judge: not_contains
+        values: ["Refunded"]
+"""
+
+
+def test_mcp_stdio_transport_runs_the_demo_server_directly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The CLI's MCP adapter allows stdio transports (ADR 0023: CLI-only, since it launches
+    an arbitrary local command) -- refused in any process that has imported `agentprobe_api`
+    (the server), which the shared pytest process running this file's own suite alongside the
+    API's has; a real CLI process never does. This launches the real demo MCP server as a
+    subprocess over stdio instead of Streamable HTTP -- no `base_url`/loopback HTTP involved
+    at all -- and shows the same planted flaw (`issue_refund` never validates `amount`) fails
+    as it does over HTTP (`test_every_planted_flaw_is_detected_by_its_suite_case`).
+    """
+    monkeypatch.delitem(sys.modules, "agentprobe_api", raising=False)
+    config = yaml.safe_load(Path("agentprobe.yaml").read_text())
+    config["agents"]["mcp-tools-stdio"] = {
+        "type": "mcp",
+        "config": {
+            "transport": "stdio",
+            "command": sys.executable,
+            "args": ["-m", "agentprobe_demo_agents.mcp_stdio"],
+        },
+    }
+    Path("agentprobe.yaml").write_text(yaml.safe_dump(config))
+    suite = tmp_path / "mcp-stdio-smoke.yaml"
+    suite.write_text(STDIO_SUITE)
+
+    code, payload = run(suite=suite)  # default --fail-under 1.0: the planted flaw exits 1
+    assert code == 1
+    cases = labels(payload)
+    assert cases == {"lookup-ok": "stable-pass", "refund-negative": "stable-fail"}
 
 
 def test_every_planted_flaw_is_detected_by_its_suite_case(base_url: str) -> None:

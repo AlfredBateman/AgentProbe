@@ -1,5 +1,7 @@
-"""`agentprobe run --push`: upload a finished local run to the server's `POST /ci/report`
-(ADRs 0019, 0020), which stores it and compares it with the branch's baseline.
+"""Talking to the AgentProbe server: `agentprobe run --push` uploads a finished local run to
+`POST /ci/report` (ADRs 0019, 0020), which stores it and compares it with the branch's
+baseline; `fetch` downloads a run by id from `GET /runs/{id}/export`, for `compare`/
+`--baseline` given a server run id instead of a local file.
 
 The server's URL and project API key come from the environment (AGENTPROBE_API_URL,
 AGENTPROBE_API_KEY), never from agentprobe.yaml, so the key stays out of the repo.
@@ -70,6 +72,14 @@ def payload(
     return {name: value for name, value in body.items() if value is not None}
 
 
+def _error_message(response: httpx.Response) -> str:
+    try:
+        message: str = response.json()["error"]["message"]
+    except (ValueError, KeyError, TypeError):
+        message = response.reason_phrase
+    return message
+
+
 async def push(
     target: Target, body: dict[str, Any], *, transport: httpx.AsyncBaseTransport | None = None
 ) -> dict[str, Any]:
@@ -84,13 +94,30 @@ async def push(
     except httpx.HTTPError as exc:
         raise PushError(f"can't reach {target.url}: {type(exc).__name__}", infra=True) from None
     if response.status_code != 201:
-        try:
-            message = response.json()["error"]["message"]
-        except (ValueError, KeyError, TypeError):
-            message = response.reason_phrase
         raise PushError(
-            f"the server refused the run (HTTP {response.status_code}): {message}",
+            f"the server refused the run (HTTP {response.status_code}): {_error_message(response)}",
             infra=response.status_code >= 500,
         )
     result: dict[str, Any] = response.json()
     return result
+
+
+async def fetch(
+    target: Target, run_id: str, *, transport: httpx.AsyncBaseTransport | None = None
+) -> RunSummary:
+    """GETs a run's export from the server (`compare`/`--baseline` with a server run id)."""
+    try:
+        async with httpx.AsyncClient(transport=transport, timeout=TIMEOUT_S) as client:
+            response = await client.get(
+                f"{target.url}/runs/{run_id}/export",
+                params={"format": "json"},
+                headers={"Authorization": f"Bearer {target.api_key}"},
+            )
+    except httpx.HTTPError as exc:
+        raise PushError(f"can't reach {target.url}: {type(exc).__name__}", infra=True) from None
+    if response.status_code != 200:
+        raise PushError(
+            f"can't fetch run {run_id} (HTTP {response.status_code}): {_error_message(response)}",
+            infra=response.status_code >= 500,
+        )
+    return RunSummary.model_validate(response.json()["summary"])

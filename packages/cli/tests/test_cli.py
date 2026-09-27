@@ -7,6 +7,7 @@ import json
 import re
 import socket
 import sys
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -398,6 +399,7 @@ def fake_server(
 
     transport = httpx.MockTransport(handler)
     monkeypatch.setattr(main, "push_run", functools.partial(push.push, transport=transport))
+    monkeypatch.setattr(main, "fetch_run", functools.partial(push.fetch, transport=transport))
     monkeypatch.setenv(push.URL_ENV, "https://ap.test/")
     monkeypatch.setenv(push.KEY_ENV, "ap_fake-key")  # fake credential
     return seen
@@ -476,3 +478,52 @@ def test_compare_prints_the_diff_and_exits_2_on_regression() -> None:
     assert invoke("compare", str(good), str(good)).exit_code == 0
     assert invoke("compare", str(good), "nope.json").exit_code == 3
     assert invoke("compare", str(good), str(bad), "--alpha", "0").exit_code == 3
+
+
+def test_compare_and_baseline_accept_a_server_run_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    write_suite(suite(runs_per_case=5))
+    good = json.loads(invoke("run", "suite.yaml", "--json").stdout)["run"]
+    bad_path = json.loads(invoke("run", "suite.yaml", "--agent", "bad", "--json").stdout)["file"]
+    run_id = str(uuid.uuid4())
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == f"/runs/{run_id}/export"
+        assert dict(request.url.params) == {"format": "json"}
+        assert request.headers["authorization"] == "Bearer ap_fake-key"
+        return httpx.Response(200, json={"run": {}, "summary": good})
+
+    seen = fake_server(monkeypatch, respond)
+    result = invoke("compare", run_id, bad_path)
+    assert result.exit_code == 2, result.output
+    assert "newly failing: a" in result.output
+    assert len(seen) == 1  # only the server-id side is fetched
+
+    via_baseline = invoke("run", "suite.yaml", "--agent", "bad", "--baseline", run_id)
+    assert via_baseline.exit_code == 2, via_baseline.output
+
+
+@pytest.mark.parametrize(
+    ("respond", "code", "message"),
+    [
+        (lambda _: httpx.Response(422, json={"error": {"message": "no such run"}}), 3, "no such"),
+        (lambda _: httpx.Response(503, text="down"), 4, "HTTP 503"),
+        (unreachable, 4, "can't reach https://ap.test"),
+    ],
+    ids=["refused", "server-error", "unreachable"],
+)
+def test_compare_fetch_failures_map_to_exit_codes(
+    monkeypatch: pytest.MonkeyPatch,
+    respond: Callable[[httpx.Request], httpx.Response],
+    code: int,
+    message: str,
+) -> None:
+    fake_server(monkeypatch, respond)
+    result = invoke("compare", str(uuid.uuid4()), "suite.yaml")  # never reaches the 2nd load
+    assert result.exit_code == code, result.output
+    assert message in result.output
+
+
+def test_a_server_run_id_needs_the_push_env_vars() -> None:
+    result = invoke("compare", str(uuid.uuid4()), "suite.yaml")
+    assert result.exit_code == 3, result.output
+    assert push.URL_ENV in result.output
