@@ -76,6 +76,14 @@ async def test_login_succeeds_and_session_works(sign_up: SignUp, clients: Client
     assert (await client.get("/projects")).status_code == 200
 
 
+async def test_me_returns_the_session_user(sign_up: SignUp, clients: ClientFactory) -> None:
+    alice = await sign_up("Alice@example.com")
+    r = await alice.get("/auth/me")
+    assert r.status_code == 200
+    assert r.json()["email"] == "alice@example.com"
+    assert (await clients().get("/auth/me")).status_code == 401  # no cookie
+
+
 @pytest.mark.parametrize(
     ("email", "password"),
     [("alice@example.com", "wrong password!!"), ("nobody@example.com", PASSWORD)],

@@ -11,7 +11,8 @@ A phase is complete only when every task in it is done.
 | B2: server runner and results API | **Complete** (B2.1–B2.6). B2.5's ingest is `POST /ci/report`, not the planned `runs:ingest` ([ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md)). |
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
-| E, F | Not started. |
+| E: dashboard | E0 **complete**; E1 plumbing done (rewrite, client, refresh, route protection), its pages remain. |
+| F | Not started. |
 
 ## Done
 - 2026-09-24 **Bootstrap**:
@@ -390,7 +391,63 @@ A phase is complete only when every task in it is done.
   - **Framing**: SPEC.md's tagline and §16's resume bullets, and the web app's placeholder tagline and meta description, now use POSITIONING.md's pitch. POSITIONING.md §7 is resolved.
   - Tests: new CLI test for the `--push --baseline` guidance, including both plain-error paths; new schema tests (attack-only case refused, removed fields rejected, every SPEC category has ids under its own prefix); the python-agent tests now assert status and message; refusal tests for removed behavior deleted or converted to parse-time assertions. `pnpm check` (855 unit tests) and `pnpm verify` (993 unit + integration tests; coverage core 97%, api 92%) are green. The ~50 generator/obfuscation/mutator tests went with the code.
 
+- 2026-09-28 **E0: design system, app shell, API client and session refresh** ([ADR 0028](decisions/0028-dashboard-adaptations.md), [ADR 0029](decisions/0029-web-api-client-and-session-refresh.md), [ADR 0004](decisions/0004-font-substitution.md) amended):
+  - **Theme generated from DESIGN.md.**
+    - `apps/web/scripts/gen-theme.mjs` reads DESIGN.md's front matter and writes `src/app/theme.css`: colors, radii, type tiers (with line height, tracking and weight), and the 810/1199 breakpoints.
+    - Spacing is a px scale (`--spacing: 1px`; user decision). Tailwind 4 resolves `max-w-md` from `--spacing-md` before `--container-md`, so DESIGN.md's spacing names would have silently broken container widths.
+    - `theme.test.ts` fails on a stale file and checks every contrast ratio ADR 0028 records.
+  - **DESIGN.md additions** (user decision: tokens live there):
+    - `semantic-danger/warning/neutral` (fail, flaky, error) and `chart-1..4`;
+    - the dashboard type tiers (`dash-title`, `dash-title-sm`, `dash-heading`, `data`, `data-label`, `code`);
+    - `badge-*` components;
+    - a "Dashboard Adaptations" section.
+
+    `@google/design.md lint` reports no new findings (one old orphaned-token warning is gone).
+  - **Findings that changed the design:**
+    - **Google's Inter has none of DESIGN.md's OpenType features.** Its GSUB table has no `cv01/05/09/11` or `ss03/07`, and fontsource's Inter lacks them too. Inter is now self-hosted from `inter-ui@4.1.1` (rsms' build) through `next/font/local`, and Playwright confirmed the features now change the rendered text.
+    - **Pass green and fail red are indistinguishable to deuteranopes** (OKLab ΔE 1.1, measured with the dataviz palette validator). Badges always carry a label, each StatusDot status has its own shape, and charts don't encode results in green/red.
+    - **The gradient anchors as series colors:** orange and coral sat above the dark-mode lightness band, and ink/ink-muted fail the chroma floor. The series are violet, orange, magenta and coral, with orange and coral stepped into the band. The validator passes on all three surfaces.
+    - **White text fails AA on the magenta, orange and coral gradient anchors** (3.43, 2.59 and 3.08), so `GradientCard` is violet only.
+    - **DESIGN.md's 0.15-alpha focus ring is 1.22:1.** The ring is now solid accent-blue plus the halo.
+  - **UI kit** (`apps/web/src/components/ui`, a Vitest test per module): Button (four variants; press = scale), Input/Textarea/Select (native), Tabs (pill toggle, ARIA tabs), Card (surface lift, panel header), GradientCard (a second mount warns in dev), Badge/StatusDot, DataTable (sortable, sticky header, tabular numerals), Toast, Dialog (native `<dialog>`), Skeleton/EmptyState, CodeBlock/CopyButton, and the Recharts theme. No component library, no icon dependency.
+  - **Shell:**
+    - `AppShell` has the 56px nav, a project switcher (native select), section links, and the account email with sign-out. Below 810px the links collapse into a menu.
+    - `(app)/projects/[projectId]/layout.tsx` wires it to `GET /auth/me` and `GET /projects`, with a placeholder overview page.
+  - **Plumbing:**
+    - `/api` is rewritten to `API_INTERNAL_URL`, the name already reserved in `.env.example`.
+    - The typed client is `openapi-fetch` over types generated from the committed `openapi.json`, which `scripts/export_openapi.py` writes. `test_openapi_schema.py` and the web CI job catch drift.
+    - Single-flight refresh: shared in a tab, under a Web Lock across tabs, with a `GET /auth/me` probe that skips the refresh when another tab already rotated the cookies.
+    - Route protection is `src/proxy.ts`.
+  - **API**: new `GET /auth/me` (session only; API keys get 403).
+  - **`/dev/components`** is `page.dev.tsx`, which exists only under `next dev` (`pageExtensions` by phase). CI builds for production and asserts the page isn't there.
+  - **Playwright** (playwright-skill) at 1440, 810 and 390. Measured:
+    - no horizontal page scroll;
+    - nav exactly 56px (it was 57 with a border; now an inset shadow);
+    - pills 44px, tabs 40px;
+    - blue only on the inline link;
+    - one gradient card;
+    - no console errors;
+    - no nav overlap from 810 to 1440 with a long project name.
+
+    Fixed from the screenshots:
+    - at 810 the nav links overlapped the switcher;
+    - skeletons were invisible on cards;
+    - the dialog's secondary button vanished into the surface-1 dialog.
+
+    The final shots are in `docs/screenshots/` (`components-{1440,810,390}.png`, `shell-menu-390.png`).
+  - **End-to-end smoke**, through the real rewrite against a local API on the dev DB:
+    - a missing session redirects to `/login?next=`;
+    - a cross-origin write through the proxy gets 403;
+    - the shell renders;
+    - an expired access cookie causes exactly one refresh;
+    - sign-out clears both cookies.
+
+    That run found a bug the unit tests had encoded: every `/api/auth/*` 401 passed through unrefreshed, so the shell's `/auth/me` would have failed on an expired cookie. Only login/register/refresh/logout pass through now, and there's a test for it. The throwaway user and project were deleted afterwards and verified gone (0 rows).
+  - `next dev` in Next 16 writes `AGENTS.md`/`CLAUDE.md` into `apps/web`. `agentRules: false` turns that off, since agent instructions live in the root CLAUDE.md.
+  - Tests: 98 web tests (theme and contrast, 13 component modules, shell, session, proxy, config), plus API tests for `/auth/me` (session, no cookie, API key) and the schema drift test.
+
 ## Next
+- **E1 pages**: login and register, and the projects list. `/login` should try a silent `POST /auth/refresh` before showing the form (ADR 0029 known limit).
 - **Live detection run** (user decision on when, and on the three predicted misses in ADR 0022 §Consequences): at the default 3 runs per case the v2 regression can't reach significance, and in llm mode the demo agents report no tool calls and the RAG route ignores `context`, so `unauthorized-delete` and `rag-indirect-injection` can't be caught as the agents stand. Changing the demo agents or the run count is the user's decision, not a tuning step to take unasked.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
@@ -399,7 +456,9 @@ A phase is complete only when every task in it is done.
 - The user approved PLAN.md §2 items 1–6 and 8 (immutable case rows, ingest/baseline endpoints, same-origin cookie auth, signup allowlist + budget guard, case-level judgments, share links, separate judge cost).
 - TypeScript 5.9 / ESLint 9 instead of 7 / 10 ([ADR 0002](decisions/0002-web-toolchain-versions.md)).
 - `agents.secret_ref` references a new `secrets` table, Fernet-encrypted, write-only ([ADR 0003](decisions/0003-secret-storage.md)). Unblocks B2.1.
-- Display font: Geist; monospace: Geist Mono; body: Inter Variable (unchanged) ([ADR 0004](decisions/0004-font-substitution.md)).
+- Display font: Geist; monospace: Geist Mono; body: Inter Variable (unchanged) ([ADR 0004](decisions/0004-font-substitution.md)). Amended 2026-09-28: Inter is self-hosted from `inter-ui`, because Google's Inter lacks the OpenType features DESIGN.md depends on.
+- Dashboard adaptations of DESIGN.md: result color tokens (badge/glyph only, with shape as secondary encoding), validated chart series, dashboard type tiers, a visible focus ring, a violet-only gradient card, a px spacing scale, tables scrolling at 390px ([ADR 0028](decisions/0028-dashboard-adaptations.md); user decisions: px spacing, tokens in DESIGN.md).
+- Web client: openapi-fetch over generated types, single-flight refresh (in-tab promise, cross-tab Web Lock, `/auth/me` probe), cookie-presence route protection in `proxy.ts` ([ADR 0029](decisions/0029-web-api-client-and-session-refresh.md); user decision: add `GET /auth/me`).
 - Trace timeline: plain HTML/CSS, no React Flow ([ADR 0005](decisions/0005-trace-timeline-no-react-flow.md)).
 - Regression statistics: Fisher exact (one-sided) + Holm (per case), paired sign-flip permutation (suite), case-level bootstrap CI; α=0.05, min_drop=0.05, all configurable via suite YAML and CLI flags ([ADR 0006](decisions/0006-statistics-methodology.md)). The per-case correction was later amended to Tarone–Holm (user decision, ADR 0014).
 - Hosting for the API/worker (Q2) is deliberately deferred to Phase F4; the only binding constraint now is that the worker stays behind the `QueueBackend` interface with `inline` as the local default.
@@ -465,6 +524,9 @@ A phase is complete only when every task in it is done.
 - `LLM_CACHE=1` is the recommended setting for live/dev runs (`.env.example`, docs/metrics.md). `scripts/measure_detection.py` forces it off for itself, because cached replays would erase the run-to-run variance it measures. Non-`live` tests clear it (user decision 2026-09-27, ADR 0022 amended).
 
 ## Known issues
+- A navigation from another site carries no `SameSite=Strict` refresh cookie, so with an expired access cookie the proxy sends a live session to `/login`. E1's login page should try a silent refresh first (ADR 0029).
+- `/login` and `/register` don't exist yet (E1): route protection currently redirects to a 404.
+- Background `next dev` processes on Windows can outlive a stopped parent `pnpm` process and keep port 3000. Check with `Get-NetTCPConnection -LocalPort 3000`.
 - Statistics power (ADR 0014 §Power), all measured after the `alpha` split:
   - At 3 runs per case a single broken case can never be flagged: its smallest possible p (1/20) is above the default per-case budget of 0.025, so detection is 0.5%. **Use 5 or more runs**; the CLI's `--help` and [docs/metrics.md](metrics.md) say so.
   - At 100 cases a single break is missed on 0.8% of runs (7+ flaky cases can come within reach of 0.025 and raise Tarone's K). At 10 and 30 cases it is 100%.
@@ -483,7 +545,7 @@ A phase is complete only when every task in it is done.
 - The pytest run shows a `StarletteDeprecationWarning`: Starlette's TestClient wants `httpx2` instead of `httpx`. Swapping `httpx==0.28.1` for `httpx2` was blocked by a local permission rule this session. Redo it once allowed. The HTTP adapter's SSRF guard swaps httpx's private `transport._pool` (ADR 0012), so rerun `packages/core/tests/adapters` after any httpx change.
 - Local `.env` files from before B1.4 still say `ALLOW_PRIVATE_AGENT_URLS`, which nothing reads. Rename it to `ALLOW_PRIVATE_TARGETS=1` to reach the demo agents on localhost.
 - An OpenAI-style agent that omits `tool_calls` when it made none gets an error under the strict mapping rule. Add an explicit "optional" flag to `ResponseMapping` if such an agent needs support (ADR 0012).
-- `next build` downloads Google Fonts (Inter, Geist), so it needs network access. `pnpm check` doesn't build.
+- `next build` downloads Google Fonts (Geist, Geist Mono; Inter is self-hosted), so it needs network access. `pnpm check` doesn't build; CI does.
 - Replacing or clearing an agent's `auth_header` orphans the old `secrets` row instead of deleting it (`ponytail:` comment in `agents.py`). Harmless (it's ciphertext, never returned) but worth a cleanup pass if the table's size ever matters.
 - This machine has a stale machine-level `CURL_CA_BUNDLE=C:\Program Files\PostgreSQL\18\ssl\certs\ca-bundle.crt` (the file doesn't exist; left by an uninstalled PostgreSQL). The live LLM provider refuses to start while it is set. Remove it from an admin PowerShell: `[Environment]::SetEnvironmentVariable('CURL_CA_BUNDLE', $null, 'Machine')`, then open a new terminal.
 - LiteLLM 1.102.1 ships a `cl100k_base` tokenizer file that fails tiktoken's hash check, so the first live import downloads the canonical file (hash-verified) into `.agentprobe/tiktoken/`. It needs network once; after that imports are offline.

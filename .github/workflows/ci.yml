@@ -71,6 +71,11 @@ jobs:
       - run: pnpm --filter web lint
       - run: pnpm --filter web typecheck
       - run: pnpm --filter web test
+      # Generated files (theme from DESIGN.md, API types from openapi.json) must be committed current.
+      - run: pnpm --filter web gen:theme && pnpm --filter web gen:api && git diff --exit-code
+      - run: pnpm --filter web build
+      # /dev/components is a *.dev.tsx page: it must never reach a production build.
+      - run: test ! -e apps/web/.next/server/app/dev
 
   packaging:
     # The CLI as an end user installs it (PyPI wheels), not the uv workspace's editable

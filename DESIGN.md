@@ -21,6 +21,16 @@ colors:
   gradient-orange: "#ff7a3d"
   gradient-coral: "#ff5577"
   semantic-success: "#22c55e"
+  # Dashboard additions (ADR 0028): result glyphs and badge text only, never surfaces.
+  semantic-danger: "#f87171"
+  semantic-warning: "#f59e0b"
+  semantic-neutral: "#999999"
+  # Chart series, in this fixed order (ADR 0028): the gradient anchors, with orange and coral
+  # stepped into the dark-mode lightness band (OKLCH L 0.48-0.67) for categorical use.
+  chart-1: "#6a4cf5"
+  chart-2: "#e5672a"
+  chart-3: "#d44df0"
+  chart-4: "#f24f70"
 
 typography:
   display-xxl:
@@ -105,6 +115,46 @@ typography:
     lineHeight: 1.0
     letterSpacing: -0.14px
     fontFeature: cv11
+  # Dashboard tiers (ADR 0028), derived from the scale above; tracking keeps each
+  # parent tier's percentage of size.
+  dash-title:
+    fontFamily: Geist
+    fontSize: 32px
+    fontWeight: 500
+    lineHeight: 1.13
+    letterSpacing: -1.0px
+  dash-title-sm:
+    fontFamily: Geist
+    fontSize: 24px
+    fontWeight: 500
+    lineHeight: 1.13
+    letterSpacing: -0.75px
+  dash-heading:
+    fontFamily: Geist
+    fontSize: 18px
+    fontWeight: 500
+    lineHeight: 1.20
+    letterSpacing: -0.65px
+  data:
+    fontFamily: Inter Variable
+    fontSize: 13px
+    fontWeight: 400
+    lineHeight: 1.40
+    letterSpacing: -0.13px
+    fontFeature: tnum
+  data-label:
+    fontFamily: Inter Variable
+    fontSize: 12px
+    fontWeight: 500
+    lineHeight: 1.20
+    letterSpacing: -0.12px
+    fontFeature: cv11
+  code:
+    fontFamily: Geist Mono
+    fontSize: 13px
+    fontWeight: 400
+    lineHeight: 1.50
+    letterSpacing: 0px
 
 rounded:
   xs: 4px
@@ -245,6 +295,36 @@ components:
     typography: "{typography.body}"
     rounded: "{rounded.md}"
     padding: 24px
+  badge-pass:
+    backgroundColor: "{colors.surface-2}"
+    textColor: "{colors.semantic-success}"
+    typography: "{typography.data-label}"
+    rounded: "{rounded.sm}"
+    padding: 2px 8px
+  badge-fail:
+    backgroundColor: "{colors.surface-2}"
+    textColor: "{colors.semantic-danger}"
+    typography: "{typography.data-label}"
+    rounded: "{rounded.sm}"
+    padding: 2px 8px
+  badge-flaky:
+    backgroundColor: "{colors.surface-2}"
+    textColor: "{colors.semantic-warning}"
+    typography: "{typography.data-label}"
+    rounded: "{rounded.sm}"
+    padding: 2px 8px
+  badge-error:
+    backgroundColor: "{colors.surface-2}"
+    textColor: "{colors.semantic-neutral}"
+    typography: "{typography.data-label}"
+    rounded: "{rounded.sm}"
+    padding: 2px 8px
+  badge-stable:
+    backgroundColor: "{colors.surface-2}"
+    textColor: "{colors.ink}"
+    typography: "{typography.data-label}"
+    rounded: "{rounded.sm}"
+    padding: 2px 8px
   footer:
     backgroundColor: "{colors.canvas}"
     textColor: "{colors.ink-muted}"
@@ -474,6 +554,17 @@ The defining decorative surface of Framer's marketing — oversized atmospheric 
 
 **`footer`** — Dense link grid on `{colors.canvas}` with the Framer wordmark left and 5–6 columns of caption-sized links.
 - Background `{colors.canvas}`, text `{colors.ink-muted}`, type `{typography.caption}`, padding 64px 32px.
+
+## Dashboard Adaptations
+
+This file describes a marketing site; AgentProbe is a data-dense dashboard. [ADR 0028](docs/decisions/0028-dashboard-adaptations.md) records every deviation. In short:
+
+- **Result colors.** `{colors.semantic-danger}` (fail), `{colors.semantic-warning}` (flaky) and `{colors.semantic-neutral}` (error, skipped; the same value as ink-muted) join `{colors.semantic-success}` (pass). Like the success green, they color glyphs and badge text only, never surfaces, and every badge carries a text label.
+- **Dashboard type.** `{typography.dash-title}` / `{typography.dash-title-sm}` for page titles, `{typography.dash-heading}` for panel titles, `{typography.data}` / `{typography.data-label}` for tables, `{typography.code}` for traces and YAML. The display-xl/xxl sizes are not used.
+- **Fonts.** Geist substitutes for GT Walsheim, Geist Mono for code ([ADR 0004](docs/decisions/0004-font-substitution.md)).
+- **Focus.** A solid 1px `{colors.accent-blue}` ring plus the level-3 halo; the halo alone is too faint to see.
+- **Charts.** Categorical series use `{colors.chart-1}` to `{colors.chart-4}` in that order; a fifth series folds into "Other". Ink is the single-series and "current" line, ink-muted the dashed "baseline". Pass green and fail red are indistinguishable to deuteranopes (OKLab ΔE 1.1), so results are never encoded by those two colors alone: badges carry labels and status dots differ in shape.
+- **Gradient cards.** Violet only; white text on the magenta, orange and coral anchors fails WCAG AA. Those anchors remain chart series colors.
 
 ## Do's and Don'ts
 

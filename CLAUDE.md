@@ -60,7 +60,10 @@ Unmarked tests must be offline and deterministic.
 - Never log secrets. Use parametrized queries only.
 
 ## Design
-- DESIGN.md governs all UI. Dark mode only. Any deviation needs an ADR.
+- DESIGN.md governs all UI. Dark mode only. Any deviation needs an ADR. The dashboard's deviations are in [ADR 0028](docs/decisions/0028-dashboard-adaptations.md).
+- Tokens live in DESIGN.md's front matter. `pnpm --filter web gen:theme` generates `apps/web/src/app/theme.css`; never edit that file by hand.
+- Spacing utilities are px (`--spacing: 1px`): `p-15` is 15px and `h-56` is 56px, not Tailwind's 4px steps.
+- UI primitives live in `apps/web/src/components/ui`; `/dev/components` (dev server only) shows them all.
 
 ## Plugins
 - Ponytail runs at **lite** intensity by default: stdlib and native features first, no speculative abstractions. Never simplify away:

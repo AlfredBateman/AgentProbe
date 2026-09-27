@@ -257,6 +257,17 @@ async def login(
     return UserOut(id=user.id, email=user.email)
 
 
+@router.get("/me")
+async def me(user: CurrentUser, db: Db) -> UserOut:
+    """The signed-in user. The web client also probes it to learn whether another tab has
+    already refreshed the session, before it spends the refresh token (ADR 0029).
+    """
+    email = await db.scalar(select(User.email).where(User.id == user.user_id))
+    if email is None:  # a valid access token for a deleted account
+        raise _unauthenticated("Invalid or expired session")
+    return UserOut(id=user.user_id, email=email)
+
+
 @router.post("/refresh", status_code=204)
 async def refresh(request: Request, response: Response, db: Db, settings: AppSettings) -> None:
     """Rotates the refresh token. Presenting an already-rotated token means it was stolen
