@@ -1,37 +1,38 @@
 @import "tailwindcss";
+@import "./theme.css";
 
-/* Tokens from DESIGN.md. Dark only; there is no light theme. */
+/* Dark only; there is no light theme. Tokens live in theme.css, generated from DESIGN.md. */
 @theme {
-  --color-canvas: #090909;
-  --color-surface-1: #141414;
-  --color-surface-2: #1c1c1c;
-  --color-hairline: #262626;
-  --color-hairline-soft: #1a1a1a;
-  --color-ink: #ffffff;
-  --color-ink-muted: #999999;
-  --color-accent-blue: #0099ff;
-  --color-semantic-success: #22c55e;
-  --color-gradient-magenta: #d44df0;
-  --color-gradient-violet: #6a4cf5;
-  --color-gradient-orange: #ff7a3d;
-  --color-gradient-coral: #ff5577;
-
   --font-sans: var(--font-inter);
   --font-display: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
 
-  --radius-pill: 100px;
+  /* DESIGN.md "Elevation & Depth": level 2 (floating cards, dialogs, toasts). */
+  --shadow-float: inset 0 0.5px 0 rgba(255, 255, 255, 0.1), 0 10px 30px rgba(0, 0, 0, 0.25);
+  /* Level 3 plus a solid 1px ring: the 0.15 halo alone is too faint for WCAG 1.4.11 (ADR 0028). */
+  --shadow-focus: 0 0 0 1px var(--color-accent-blue), 0 0 0 4px rgba(0, 153, 255, 0.15);
 }
 
-:root {
-  color-scheme: dark;
-}
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
 
-body {
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 15px;
-  line-height: 1.3;
-  letter-spacing: -0.15px;
-  font-feature-settings: "cv01", "cv05", "cv09", "cv11", "ss03", "ss07";
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans), system-ui, sans-serif;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    letter-spacing: var(--text-body--letter-spacing);
+    font-feature-settings: "cv01", "cv05", "cv09", "cv11", "ss03", "ss07";
+  }
+
+  ::selection {
+    background: rgba(0, 153, 255, 0.35);
+  }
+
+  a {
+    color: var(--color-accent-blue);
+  }
 }

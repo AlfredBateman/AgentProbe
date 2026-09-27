@@ -77,6 +77,7 @@ async def test_api_key_is_scoped_to_its_project(sign_up: SignUp, clients: Client
     ("method", "path", "body"),
     [
         ("POST", "/projects", {"name": "x"}),
+        ("GET", "/auth/me", None),
         ("GET", "/projects/{id}/api-keys", None),
         ("POST", "/projects/{id}/api-keys", {"label": "x"}),
         ("DELETE", "/projects/{id}/api-keys/{key_id}", None),
