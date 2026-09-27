@@ -89,7 +89,7 @@ Gate: `pnpm check` / `pnpm verify`.
 | C1 | Attack library: 8 categories from SPEC §4.4, parameterized templates, default expectations. ✂ **Obfuscation variety is cut first** (base64/leetspeak/split-word and the Hinglish packs); the categories the golden tests need stay (§0). | Unit tests; golden tests extended |
 | C2 | LLM mutator (seeded, budget-guarded) | Mock-mode determinism test |
 | C3 | MCP adapter: list tools, `call:` cases. One adapter type for breadth, not an MCP-security product ([POSITIONING.md](POSITIONING.md) §4). Done 2026-09-27 ([ADR 0023](decisions/0023-mcp-adapter.md)); the tool-description injection scan wasn't built this pass (PROGRESS.md Next). | Test against a bundled demo MCP server |
-| C4 | Failure clustering: embeddings (768-d), clustering, LLM cluster summaries, `findings` API. ✂ **First cut if time runs short** (§0): it presents already-detected failures. Dropping it also drops `top_findings` and E6's Findings page. | Mock-mode test clusters planted failure groups |
+| C4 | Failure clustering: embeddings (768-d), clustering, LLM cluster summaries, `findings` API. Done 2026-09-27 ([ADR 0024](decisions/0024-failure-clustering.md)). | Mock-mode test clusters planted failure groups |
 
 ### Phase E: dashboard (Next.js)
 Gate: `pnpm check` + Playwright screenshots at 1440/810/390, compared against DESIGN.md.

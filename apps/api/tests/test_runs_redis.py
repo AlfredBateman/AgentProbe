@@ -110,6 +110,38 @@ async def test_a_run_completes_through_the_worker(
     assert await count(db, RunResult, RunResult.run_id == run_id) == 4
     assert await count(db, RunCaseSummary, RunCaseSummary.run_id == run_id) == 2
     assert await count(db, Judgment, Judgment.run_id == run_id) == 1  # case-scope consistency
+    assert (await alice.get(f"/runs/{run_id}/findings")).json() == []  # nothing failed
+
+
+FAILING_YAML = """
+suite: always-fails
+agent: support-v1
+runs_per_case: 2
+cases:
+  - id: always-fails
+    input: "Hello there"
+    expect:
+      - judge: contains
+        value: "this text never appears in the reply"
+"""
+
+
+async def test_clustering_runs_as_a_post_run_job_on_the_redis_backend(
+    sign_up: SignUp, app: FastAPI, demo_url: str, start_worker: StartWorker
+) -> None:
+    """SPEC.md §4.8 / ADR 0024: failure clustering is a post-run job on both queue backends,
+    not just inline (the golden test in test_findings.py covers inline).
+    """
+    await start_worker()
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, f"{demo_url}/support/v1/chat", yaml=FAILING_YAML)
+    run = await start_run(alice, ids["suite_id"])
+    done = await wait_for_run(alice, app, run["id"])
+    assert done["status"] == "completed"
+
+    findings = (await alice.get(f"/runs/{run['id']}/findings")).json()
+    assert len(findings) == 1  # the same input fails identically twice: one cluster
+    assert len(findings[0]["member_result_ids"]) == 2
 
 
 async def test_sse_streams_over_redis_pubsub(

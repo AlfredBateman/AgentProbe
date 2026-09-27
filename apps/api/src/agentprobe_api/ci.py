@@ -17,6 +17,7 @@ sessions per call for the queue/worker's benefit, which would deadlock against t
 request's own `db` session here. The row-level field mapping is still shared (ADR 0018).
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -25,7 +26,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from sqlalchemy import select
 
-from agentprobe_api import runstore
+from agentprobe_api import findings, runstore
 from agentprobe_api.auth import CurrentApiKey, Db
 from agentprobe_api.baselines import find_baseline
 from agentprobe_api.errors import ApiError
@@ -35,8 +36,10 @@ from agentprobe_core.runner import AttemptResult, check_results, finalize_run
 from agentprobe_core.stats import RegressionReport, compare_runs
 from agentprobe_core.suite import SuiteParseError, parse_suite_yaml
 
+log = logging.getLogger("agentprobe.ci")
 router = APIRouter(tags=["ci"])
 MAX_RESULTS = 500 * 20  # a run's own limit (SPEC's suite MAX_CASES x MAX_RUNS_PER_CASE)
+TOP_FINDINGS = 5  # the largest clusters, by member count
 
 
 class CiReportIn(BaseModel):
@@ -64,11 +67,18 @@ class CiReportIn(BaseModel):
         return self
 
 
+class TopFindingOut(BaseModel):
+    label: str
+    summary: str
+    suggested_fix: str | None
+    member_count: int
+
+
 class CiReportOut(BaseModel):
     run_id: uuid.UUID
     verdict: str  # a stats.Verdict, or "no_baseline" when the target branch has none
     comparison: dict[str, Any] | None
-    top_findings: list[Any] = []  # populated once failure clustering exists (Prompt 15)
+    top_findings: list[TopFindingOut] = []
     dashboard_url: str | None
 
 
@@ -140,6 +150,24 @@ async def ci_report(
     )
     await runstore.insert_summary(db, run, case_ids, summary)
 
+    top_findings: list[TopFindingOut] = []
+    try:
+        async with db.begin_nested():  # a clustering failure never fails the ingest
+            llm = await runstore.make_llm_client(body.mock)
+            rows = await findings.cluster_run(db, run.id, llm)
+        ranked = sorted(rows, key=lambda r: len(r.member_result_ids), reverse=True)
+        top_findings = [
+            TopFindingOut(
+                label=r.cluster_label,
+                summary=r.summary,
+                suggested_fix=r.suggested_fix,
+                member_count=len(r.member_result_ids),
+            )
+            for r in ranked[:TOP_FINDINGS]
+        ]
+    except Exception:
+        log.exception("clustering failed", extra={"run_id": str(run.id)})
+
     verdict = "no_baseline"
     comparison: dict[str, Any] | None = None
     baseline = await find_baseline(
@@ -162,5 +190,9 @@ async def ci_report(
         f"{settings.public_web_url.rstrip('/')}/runs/{run.id}" if settings.public_web_url else None
     )
     return CiReportOut(
-        run_id=run.id, verdict=verdict, comparison=comparison, dashboard_url=dashboard_url
+        run_id=run.id,
+        verdict=verdict,
+        comparison=comparison,
+        top_findings=top_findings,
+        dashboard_url=dashboard_url,
     )

@@ -21,7 +21,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from agentprobe_api import runstore
+from agentprobe_api import findings, runstore
 from agentprobe_api.crypto import SecretBox
 from agentprobe_api.progress import ProgressBus
 from agentprobe_api.runstore import Plan, Sessions, Unrecoverable
@@ -112,8 +112,24 @@ async def finalize(deps: Deps, plan: Plan) -> None:
         llm=llm,
         statistics=plan.suite.statistics,
     )
-    await runstore.save_summary(deps.sessions, plan, summary)
+    status = await runstore.save_summary(deps.sessions, plan, summary)
+    if status == "completed":
+        # Before publish_status: nothing should still be running against the shared
+        # session after an observer (SSE, polling) sees "completed" and moves on.
+        await cluster_findings(deps, plan)
     await publish_status(deps, plan.run_id)
+
+
+async def cluster_findings(deps: Deps, plan: Plan) -> None:
+    """Clusters this run's failing outputs into findings (SPEC.md §4.8, ADR 0024), as a
+    post-run job on both queue backends. Never raises: a clustering failure is logged, not a
+    run failure -- the run itself already completed successfully.
+    """
+    try:
+        llm = await runstore.make_llm_client(plan.mock)
+        await findings.cluster_and_save(deps.sessions, plan.run_id, llm)
+    except Exception:
+        log.exception("clustering failed", extra={"run_id": str(plan.run_id)})
 
 
 # --- inline -------------------------------------------------------------------------------
@@ -152,7 +168,9 @@ async def execute_inline(deps: Deps, run_id: uuid.UUID, cancel: asyncio.Event) -
     finally:
         await runstore.close_adapter(adapter)
     if summary.status == "completed":
-        await runstore.save_summary(deps.sessions, plan, summary)
+        status = await runstore.save_summary(deps.sessions, plan, summary)
+        if status == "completed":
+            await cluster_findings(deps, plan)
         await publish_status(deps, run_id)
     else:  # cancelled or failed: summarize exactly what was saved
         await finalize(deps, plan)
