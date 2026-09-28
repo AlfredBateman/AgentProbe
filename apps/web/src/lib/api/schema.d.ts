@@ -204,6 +204,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agents/{agent_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Agent
+         * @description One probe request against a saved agent's stored config, no retries.
+         */
+        post: operations["test_agent_agents__agent_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/agents/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Draft Agent
+         * @description The same probe, for a not-yet-saved config (the add-agent form's "Test connection").
+         *     The project id only scopes access; nothing about the draft is stored.
+         */
+        post: operations["test_draft_agent_projects__project_id__agents_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/suites": {
         parameters: {
             query?: never;
@@ -229,7 +270,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Suite */
+        get: operations["get_suite_suites__suite_id__get"];
         /** Update Suite */
         put: operations["update_suite_suites__suite_id__put"];
         post?: never;
@@ -318,6 +360,23 @@ export interface paths {
         put?: never;
         /** Start Run */
         post: operations["start_run_suites__suite_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Runs */
+        get: operations["list_project_runs_projects__project_id__runs_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -619,6 +678,27 @@ export interface components {
              * @default false
              */
             retryable: boolean;
+        };
+        /**
+         * AgentTestDraft
+         * @description A not-yet-saved config, probed once and never persisted or logged (same validation as
+         *     a real agent, since it's the same `AgentConfig`/`AuthHeader` types).
+         */
+        AgentTestDraft: {
+            /** Config */
+            config: components["schemas"]["HttpAgentConfig"] | components["schemas"]["McpAgentConfig"];
+            auth_header?: components["schemas"]["AuthHeader"] | null;
+        };
+        /**
+         * AgentTestOut
+         * @description `message` is the adapter's own sanitized text: it never includes a resolved address
+         *     (ADR 0012's SSRF guard keeps that out of user-facing errors) and is safe to show as-is.
+         */
+        AgentTestOut: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message: string;
         };
         /** AgentUpdate */
         AgentUpdate: {
@@ -1156,6 +1236,59 @@ export interface components {
             /** Pr Number */
             pr_number?: number | null;
         };
+        /**
+         * RunListOut
+         * @description A run as shown in a project's run history (overview trends, latest-runs table).
+         *     `agent_name` is the agent's current name for a registered agent, or the name an
+         *     unregistered/CI-pushed run recorded for itself (ADR 0020) — whichever applies.
+         *     `mean_latency_ms` isn't a stored column: it's the attempts-weighted average of
+         *     `run_case_summaries.mean_latency_ms` across the run's cases, computed at read time.
+         */
+        RunListOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /** Suite Name */
+            suite_name: string;
+            /** Agent Id */
+            agent_id: string | null;
+            /** Agent Name */
+            agent_name: string | null;
+            /** Status */
+            status: string;
+            /** Branch */
+            branch: string | null;
+            /** Mock Mode */
+            mock_mode: boolean;
+            /** Pass Rate */
+            pass_rate: number | null;
+            /** Ci Lower */
+            ci_lower: number | null;
+            /** Ci Upper */
+            ci_upper: number | null;
+            /** Total Cost */
+            total_cost: number | null;
+            /** Judge Cost Usd */
+            judge_cost_usd: number | null;
+            /** Total Tokens */
+            total_tokens: number | null;
+            /** Mean Latency Ms */
+            mean_latency_ms: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
         /** RunOut */
         RunOut: {
             /**
@@ -1306,10 +1439,48 @@ export interface components {
             /** Expires In */
             expires_in: number;
         };
+        /** SuiteDetailOut */
+        SuiteDetailOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+            /** Case Count */
+            case_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Yaml */
+            yaml: string;
+        };
         /** SuiteIn */
         SuiteIn: {
             /** Yaml */
             yaml: string;
+        };
+        /**
+         * SuiteIssue
+         * @description One problem in a suite YAML file. `line`/`col` (1-indexed) are set whenever a source
+         *     position could be resolved: always for YAML syntax errors, best-effort for schema
+         *     violations (located by walking the composed node tree against the error's field path).
+         *     `path` is the dotted/bracketed pydantic field path, set only for schema violations.
+         */
+        SuiteIssue: {
+            /** Message */
+            message: string;
+            /** Path */
+            path?: string | null;
+            /** Line */
+            line?: number | null;
+            /** Col */
+            col?: number | null;
         };
         /** SuiteOut */
         SuiteOut: {
@@ -1337,7 +1508,7 @@ export interface components {
             /** Case Count */
             case_count?: number | null;
             /** Issues */
-            issues?: string[];
+            issues?: components["schemas"]["SuiteIssue"][];
         };
         /**
          * TokenUsage
@@ -1925,6 +2096,72 @@ export interface operations {
             };
         };
     };
+    test_agent_agents__agent_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_draft_agent_projects__project_id__agents_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTestDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_suites_projects__project_id__suites_get: {
         parameters: {
             query?: never;
@@ -1978,6 +2215,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuiteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_suite_suites__suite_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuiteDetailOut"];
                 };
             };
             /** @description Validation Error */
@@ -2180,6 +2448,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_runs_projects__project_id__runs_get: {
+        parameters: {
+            query?: {
+                suite_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListOut"][];
                 };
             };
             /** @description Validation Error */

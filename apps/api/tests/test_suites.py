@@ -148,7 +148,49 @@ async def test_validate_endpoint_reports_issues(sign_up: SignUp) -> None:
     assert body["issues"]
 
 
+async def test_validate_endpoint_locates_syntax_errors(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    r = await alice.post("/suites/validate", json={"yaml": INVALID_YAML})
+    assert r.status_code == 200
+    [issue] = r.json()["issues"]
+    # PyYAML marks an unterminated flow sequence where it gave up: the end of the stream.
+    assert (issue["line"], issue["col"]) == (3, 1)
+    assert "line 3, column 1" in issue["message"]
+    assert issue["path"] is None
+
+
+async def test_validate_endpoint_locates_schema_violations(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    bad = VALID_YAML + "extra_field: true\n"
+    r = await alice.post("/suites/validate", json={"yaml": bad})
+    assert r.status_code == 200
+    [issue] = r.json()["issues"]
+    assert issue["path"] == "extra_field"
+    assert issue["line"] is not None
+    assert issue["col"] is not None
+
+
 async def test_get_nonexistent_suite_put_is_404(sign_up: SignUp) -> None:
     alice = await sign_up("alice@example.com")
     r = await alice.put("/suites/00000000-0000-0000-0000-000000000000", json={"yaml": VALID_YAML})
+    assert r.status_code == 404
+
+
+async def test_get_suite_returns_yaml_source(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    created = (
+        await alice.post(f"/projects/{project['id']}/suites", json={"yaml": VALID_YAML})
+    ).json()
+    r = await alice.get(f"/suites/{created['id']}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["yaml"] == VALID_YAML
+    assert body["version"] == 1
+    assert body["case_count"] == 1
+
+
+async def test_get_nonexistent_suite_is_404(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    r = await alice.get("/suites/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404

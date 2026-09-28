@@ -267,3 +267,93 @@ async def test_get_nonexistent_agent_is_404(sign_up: SignUp) -> None:
     alice = await sign_up("alice@example.com")
     r = await alice.get("/agents/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
+
+
+async def test_test_connection_succeeds_against_a_saved_agent(
+    sign_up: SignUp, demo_env: None, demo_url: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    config = {"adapter_type": "http", "url": f"{demo_url}/support/v1/chat", "allow_private": True}
+    created = (
+        await alice.post(
+            f"/projects/{project['id']}/agents", json={"name": "bot", "config": config}
+        )
+    ).json()
+    r = await alice.post(f"/agents/{created['id']}/test")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["success"] is True
+    assert body["message"]
+
+
+async def test_test_connection_sends_the_saved_secret(
+    sign_up: SignUp, demo_env: None, demo_url: str
+) -> None:
+    """/support/v1 deletes orders only with X-Admin-Context; test_connection doesn't hit that
+    path, but this proves the secret is decrypted and attached, not merely stored.
+    """
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    config = {"adapter_type": "http", "url": f"{demo_url}/support/v1/chat", "allow_private": True}
+    created = (
+        await alice.post(
+            f"/projects/{project['id']}/agents",
+            json={
+                "name": "bot",
+                "config": config,
+                "auth_header": {"name": "X-Admin-Context", "value": "true"},
+            },
+        )
+    ).json()
+    r = await alice.post(f"/agents/{created['id']}/test")
+    assert r.status_code == 200, r.text
+    assert r.json()["success"] is True
+
+
+async def test_test_connection_reports_ssrf_block(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    config = {"adapter_type": "http", "url": "http://169.254.169.254/latest/meta-data/"}
+    created = (
+        await alice.post(
+            f"/projects/{project['id']}/agents", json={"name": "bot", "config": config}
+        )
+    ).json()
+    r = await alice.post(f"/agents/{created['id']}/test")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["success"] is False
+    assert "reserved or internal" in body["message"]
+
+
+async def test_test_connection_404s_for_an_unowned_or_missing_agent(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    r = await alice.post("/agents/00000000-0000-0000-0000-000000000000/test")
+    assert r.status_code == 404
+
+
+async def test_test_connection_for_a_draft_does_not_persist_anything(
+    sign_up: SignUp, demo_env: None, demo_url: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    config = {"adapter_type": "http", "url": f"{demo_url}/support/v1/chat", "allow_private": True}
+    r = await alice.post(
+        f"/projects/{project['id']}/agents/test",
+        json={"config": config, "auth_header": {"name": "X-Api-Key", "value": "unsaved-secret"}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["success"] is True
+    assert (await alice.get(f"/projects/{project['id']}/agents")).json() == []
+    assert "unsaved-secret" not in r.text
+
+
+async def test_test_connection_for_a_draft_rejects_python_adapters(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    r = await alice.post(
+        f"/projects/{project['id']}/agents/test",
+        json={"config": {"adapter_type": "python", "module": "m", "function": "f"}},
+    )
+    assert r.status_code == 422, r.text

@@ -15,7 +15,7 @@ from agentprobe_api.auth import CurrentPrincipal, Db, Principal
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Project, Suite, TestCase
 from agentprobe_api.projects import owned_project
-from agentprobe_core.suite import Case, SuiteParseError, parse_suite_yaml
+from agentprobe_core.suite import Case, SuiteIssue, SuiteParseError, parse_suite_yaml
 from agentprobe_core.suite import Suite as SuiteSchema
 
 router = APIRouter(tags=["suites"])
@@ -48,11 +48,19 @@ def _case_row(suite_id: uuid.UUID, suite_version: int, case: Case) -> TestCase:
     )
 
 
+def _issue_details(issues: list[SuiteIssue]) -> list[dict[str, object]]:
+    """`ApiError.details` goes straight into a plain `JSONResponse`, so it needs plain dicts,
+    not pydantic model instances (unlike a `SuiteValidateOut.issues` response field, which
+    FastAPI encodes itself).
+    """
+    return [issue.model_dump(mode="json") for issue in issues]
+
+
 def _parse_or_422(yaml_text: str) -> SuiteSchema:
     try:
         return parse_suite_yaml(yaml_text)
     except SuiteParseError as exc:
-        raise ApiError(422, "Suite validation failed", details=exc.issues) from exc
+        raise ApiError(422, "Suite validation failed", details=_issue_details(exc.issues)) from exc
 
 
 # --- request/response models --------------------------------------------------------
@@ -71,10 +79,14 @@ class SuiteOut(BaseModel):
     created_at: datetime
 
 
+class SuiteDetailOut(SuiteOut):
+    yaml: str
+
+
 class SuiteValidateOut(BaseModel):
     valid: bool
     case_count: int | None = None
-    issues: list[str] = Field(default_factory=list)
+    issues: list[SuiteIssue] = Field(default_factory=list)
 
 
 # --- routes ----------------------------------------------------------------------------
@@ -127,6 +139,24 @@ async def list_suites(project_id: uuid.UUID, principal: CurrentPrincipal, db: Db
         )
         for suite, count in rows
     ]
+
+
+@router.get("/suites/{suite_id}")
+async def get_suite(suite_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -> SuiteDetailOut:
+    suite = await owned_suite(db, principal, suite_id)
+    count = await db.scalar(
+        select(func.count(TestCase.id)).where(
+            TestCase.suite_id == suite.id, TestCase.suite_version == suite.version
+        )
+    )
+    return SuiteDetailOut(
+        id=suite.id,
+        name=suite.name,
+        version=suite.version,
+        case_count=count or 0,
+        created_at=suite.created_at,
+        yaml=suite.yaml_source,
+    )
 
 
 @router.put("/suites/{suite_id}")

@@ -1,0 +1,613 @@
+{
+  "schema": {
+    "$defs": {
+      "Case": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Input"
+          },
+          "attack": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attack"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Context"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/McpCall"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "expect": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "consistency": "#/$defs/ConsistencyJudge",
+                  "contains": "#/$defs/ContainsJudge",
+                  "contains_any": "#/$defs/ContainsAnyJudge",
+                  "json_schema": "#/$defs/JsonSchemaJudge",
+                  "latency_under": "#/$defs/LatencyUnderJudge",
+                  "llm_rubric": "#/$defs/LlmRubricJudge",
+                  "max_length": "#/$defs/MaxLengthJudge",
+                  "not_contains": "#/$defs/NotContainsJudge",
+                  "regex": "#/$defs/RegexJudge",
+                  "tool_args_match": "#/$defs/ToolArgsMatchJudge",
+                  "tool_called": "#/$defs/ToolCalledJudge",
+                  "tool_not_called": "#/$defs/ToolNotCalledJudge"
+                },
+                "propertyName": "judge"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ContainsJudge"
+                },
+                {
+                  "$ref": "#/$defs/ContainsAnyJudge"
+                },
+                {
+                  "$ref": "#/$defs/NotContainsJudge"
+                },
+                {
+                  "$ref": "#/$defs/RegexJudge"
+                },
+                {
+                  "$ref": "#/$defs/JsonSchemaJudge"
+                },
+                {
+                  "$ref": "#/$defs/MaxLengthJudge"
+                },
+                {
+                  "$ref": "#/$defs/LatencyUnderJudge"
+                },
+                {
+                  "$ref": "#/$defs/ToolCalledJudge"
+                },
+                {
+                  "$ref": "#/$defs/ToolNotCalledJudge"
+                },
+                {
+                  "$ref": "#/$defs/ToolArgsMatchJudge"
+                },
+                {
+                  "$ref": "#/$defs/LlmRubricJudge"
+                },
+                {
+                  "$ref": "#/$defs/ConsistencyJudge"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Expect",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "expect"
+        ],
+        "title": "Case",
+        "type": "object"
+      },
+      "ConsistencyJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "consistency",
+            "title": "Judge",
+            "type": "string"
+          },
+          "min_agreement": {
+            "default": 1.0,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Min Agreement",
+            "type": "number"
+          }
+        },
+        "required": [
+          "judge"
+        ],
+        "title": "ConsistencyJudge",
+        "type": "object"
+      },
+      "ContainsAnyJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "contains_any",
+            "title": "Judge",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "judge",
+          "values"
+        ],
+        "title": "ContainsAnyJudge",
+        "type": "object"
+      },
+      "ContainsJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "contains",
+            "title": "Judge",
+            "type": "string"
+          },
+          "value": {
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "judge",
+          "value"
+        ],
+        "title": "ContainsJudge",
+        "type": "object"
+      },
+      "JsonSchemaJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "json_schema",
+            "title": "Judge",
+            "type": "string"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "title": "Schema",
+            "type": "object"
+          }
+        },
+        "required": [
+          "judge",
+          "schema"
+        ],
+        "title": "JsonSchemaJudge",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "LatencyUnderJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "latency_under",
+            "title": "Judge",
+            "type": "string"
+          },
+          "ms": {
+            "exclusiveMinimum": 0,
+            "title": "Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "judge",
+          "ms"
+        ],
+        "title": "LatencyUnderJudge",
+        "type": "object"
+      },
+      "LlmRubricJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "llm_rubric",
+            "title": "Judge",
+            "type": "string"
+          },
+          "rubric": {
+            "minLength": 1,
+            "title": "Rubric",
+            "type": "string"
+          },
+          "samples": {
+            "default": 1,
+            "maximum": 10,
+            "minimum": 1,
+            "title": "Samples",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "judge",
+          "rubric"
+        ],
+        "title": "LlmRubricJudge",
+        "type": "object"
+      },
+      "MaxLengthJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "max_length",
+            "title": "Judge",
+            "type": "string"
+          },
+          "max_chars": {
+            "exclusiveMinimum": 0,
+            "title": "Max Chars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "judge",
+          "max_chars"
+        ],
+        "title": "MaxLengthJudge",
+        "type": "object"
+      },
+      "McpCall": {
+        "additionalProperties": false,
+        "description": "A case's `call:` field (SPEC.md \u00a74.2, ADR 0010): which MCP tool to invoke and with what\narguments, in place of a chat-style `input`.",
+        "properties": {
+          "tool": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Tool",
+            "type": "string"
+          },
+          "arguments": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "title": "Arguments",
+            "type": "object"
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "title": "McpCall",
+        "type": "object"
+      },
+      "NotContainsJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "not_contains",
+            "title": "Judge",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "judge",
+          "values"
+        ],
+        "title": "NotContainsJudge",
+        "type": "object"
+      },
+      "RegexJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "regex",
+            "title": "Judge",
+            "type": "string"
+          },
+          "pattern": {
+            "minLength": 1,
+            "title": "Pattern",
+            "type": "string"
+          },
+          "flags": {
+            "default": "",
+            "title": "Flags",
+            "type": "string"
+          }
+        },
+        "required": [
+          "judge",
+          "pattern"
+        ],
+        "title": "RegexJudge",
+        "type": "object"
+      },
+      "StatisticsConfig": {
+        "additionalProperties": false,
+        "description": "Regression-test thresholds (ADR 0006). Every field has the ADR's default and can be\noverridden per suite; the CLI can also override them per invocation.",
+        "properties": {
+          "alpha": {
+            "default": 0.05,
+            "exclusiveMaximum": 1,
+            "exclusiveMinimum": 0,
+            "title": "Alpha",
+            "type": "number"
+          },
+          "alpha_cases": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Alpha Cases"
+          },
+          "alpha_suite": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Alpha Suite"
+          },
+          "min_drop": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "title": "Min Drop",
+            "type": "number"
+          },
+          "permutation_draws": {
+            "default": 10000,
+            "minimum": 100,
+            "title": "Permutation Draws",
+            "type": "integer"
+          },
+          "bootstrap_resamples": {
+            "default": 10000,
+            "minimum": 100,
+            "title": "Bootstrap Resamples",
+            "type": "integer"
+          }
+        },
+        "title": "StatisticsConfig",
+        "type": "object"
+      },
+      "ToolArgsMatchJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "tool_args_match",
+            "title": "Judge",
+            "type": "string"
+          },
+          "tool": {
+            "minLength": 1,
+            "title": "Tool",
+            "type": "string"
+          },
+          "args": {
+            "additionalProperties": true,
+            "minProperties": 1,
+            "title": "Args",
+            "type": "object"
+          }
+        },
+        "required": [
+          "judge",
+          "tool",
+          "args"
+        ],
+        "title": "ToolArgsMatchJudge",
+        "type": "object"
+      },
+      "ToolCalledJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "tool_called",
+            "title": "Judge",
+            "type": "string"
+          },
+          "tool": {
+            "minLength": 1,
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "judge",
+          "tool"
+        ],
+        "title": "ToolCalledJudge",
+        "type": "object"
+      },
+      "ToolNotCalledJudge": {
+        "additionalProperties": false,
+        "properties": {
+          "judge": {
+            "const": "tool_not_called",
+            "title": "Judge",
+            "type": "string"
+          },
+          "tool": {
+            "minLength": 1,
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "judge",
+          "tool"
+        ],
+        "title": "ToolNotCalledJudge",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "suite": {
+        "maxLength": 200,
+        "minLength": 1,
+        "title": "Suite",
+        "type": "string"
+      },
+      "agent": {
+        "maxLength": 200,
+        "minLength": 1,
+        "title": "Agent",
+        "type": "string"
+      },
+      "runs_per_case": {
+        "default": 1,
+        "maximum": 20,
+        "minimum": 1,
+        "title": "Runs Per Case",
+        "type": "integer"
+      },
+      "statistics": {
+        "$ref": "#/$defs/StatisticsConfig"
+      },
+      "cases": {
+        "items": {
+          "$ref": "#/$defs/Case"
+        },
+        "maxItems": 500,
+        "minItems": 1,
+        "title": "Cases",
+        "type": "array"
+      }
+    },
+    "required": [
+      "suite",
+      "agent",
+      "cases"
+    ],
+    "title": "Suite",
+    "type": "object"
+  },
+  "attacks": [
+    {
+      "id": "extraction.repeat",
+      "category": "extraction"
+    },
+    {
+      "id": "extraction.summarize",
+      "category": "extraction"
+    },
+    {
+      "id": "extraction.translate",
+      "category": "extraction"
+    },
+    {
+      "id": "jailbreak.developer_mode",
+      "category": "jailbreak"
+    },
+    {
+      "id": "jailbreak.hypothetical",
+      "category": "jailbreak"
+    },
+    {
+      "id": "jailbreak.roleplay",
+      "category": "jailbreak"
+    },
+    {
+      "id": "leakage.pii",
+      "category": "leakage"
+    },
+    {
+      "id": "leakage.secrets",
+      "category": "leakage"
+    },
+    {
+      "id": "prompt_injection.direct",
+      "category": "prompt_injection"
+    },
+    {
+      "id": "prompt_injection.indirect",
+      "category": "prompt_injection"
+    },
+    {
+      "id": "scope_drift.off_topic",
+      "category": "scope_drift"
+    },
+    {
+      "id": "tool_misuse",
+      "category": "tool_misuse"
+    },
+    {
+      "id": "tool_misuse.argument_tampering",
+      "category": "tool_misuse"
+    },
+    {
+      "id": "tool_misuse.excessive_agency",
+      "category": "tool_misuse"
+    },
+    {
+      "id": "tool_misuse.unauthorized_call",
+      "category": "tool_misuse"
+    }
+  ]
+}
