@@ -615,6 +615,104 @@
         }
       }
     },
+    "/agents/{agent_id}/test": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Test Agent",
+        "description": "One probe request against a saved agent's stored config, no retries.",
+        "operationId": "test_agent_agents__agent_id__test_post",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/agents/test": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Test Draft Agent",
+        "description": "The same probe, for a not-yet-saved config (the add-agent form's \"Test connection\").\nThe project id only scopes access; nothing about the draft is stored.",
+        "operationId": "test_draft_agent_projects__project_id__agents_test_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentTestDraft"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/suites": {
       "post": {
         "tags": [
@@ -714,6 +812,47 @@
       }
     },
     "/suites/{suite_id}": {
+      "get": {
+        "tags": [
+          "suites"
+        ],
+        "summary": "Get Suite",
+        "operationId": "get_suite_suites__suite_id__get",
+        "parameters": [
+          {
+            "name": "suite_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Suite Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuiteDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "put": {
         "tags": [
           "suites"
@@ -1050,6 +1189,93 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List Project Runs",
+        "operationId": "list_project_runs_projects__project_id__runs_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "suite_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Suite Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunListOut"
+                  },
+                  "title": "Response List Project Runs Projects  Project Id  Runs Get"
                 }
               }
             }
@@ -1876,6 +2102,64 @@
         ],
         "title": "AgentResponse",
         "description": "One call to the agent under test. A failed call (after retries) has `error` set, an\n`ErrorStep` in `steps` and an empty `output`; adapters return it rather than raising."
+      },
+      "AgentTestDraft": {
+        "properties": {
+          "config": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HttpAgentConfig"
+              },
+              {
+                "$ref": "#/components/schemas/McpAgentConfig"
+              }
+            ],
+            "title": "Config",
+            "discriminator": {
+              "propertyName": "adapter_type",
+              "mapping": {
+                "http": "#/components/schemas/HttpAgentConfig",
+                "mcp": "#/components/schemas/McpAgentConfig"
+              }
+            }
+          },
+          "auth_header": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthHeader"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "config"
+        ],
+        "title": "AgentTestDraft",
+        "description": "A not-yet-saved config, probed once and never persisted or logged (same validation as\na real agent, since it's the same `AgentConfig`/`AuthHeader` types)."
+      },
+      "AgentTestOut": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "AgentTestOut",
+        "description": "`message` is the adapter's own sanitized text: it never includes a resolved address\n(ADR 0012's SSRF guard keeps that out of user-facing errors) and is safe to show as-is."
       },
       "AgentUpdate": {
         "properties": {
@@ -3277,6 +3561,182 @@
         "type": "object",
         "title": "RunIn"
       },
+      "RunListOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "suite_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Suite Id"
+          },
+          "suite_name": {
+            "type": "string",
+            "title": "Suite Name"
+          },
+          "agent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "mock_mode": {
+            "type": "boolean",
+            "title": "Mock Mode"
+          },
+          "pass_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Rate"
+          },
+          "ci_lower": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Lower"
+          },
+          "ci_upper": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Upper"
+          },
+          "total_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Cost"
+          },
+          "judge_cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge Cost Usd"
+          },
+          "total_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Tokens"
+          },
+          "mean_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Latency Ms"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "suite_id",
+          "suite_name",
+          "agent_id",
+          "agent_name",
+          "status",
+          "branch",
+          "mock_mode",
+          "pass_rate",
+          "ci_lower",
+          "ci_upper",
+          "total_cost",
+          "judge_cost_usd",
+          "total_tokens",
+          "mean_latency_ms",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "RunListOut",
+        "description": "A run as shown in a project's run history (overview trends, latest-runs table).\n`agent_name` is the agent's current name for a registered agent, or the name an\nunregistered/CI-pushed run recorded for itself (ADR 0020) \u2014 whichever applies.\n`mean_latency_ms` isn't a stored column: it's the attempts-weighted average of\n`run_case_summaries.mean_latency_ms` across the run's cases, computed at read time."
+      },
       "RunOut": {
         "properties": {
           "id": {
@@ -3834,6 +4294,46 @@
         ],
         "title": "StreamTokenOut"
       },
+      "SuiteDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "case_count": {
+            "type": "integer",
+            "title": "Case Count"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "yaml": {
+            "type": "string",
+            "title": "Yaml"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version",
+          "case_count",
+          "created_at",
+          "yaml"
+        ],
+        "title": "SuiteDetailOut"
+      },
       "SuiteIn": {
         "properties": {
           "yaml": {
@@ -3848,6 +4348,53 @@
           "yaml"
         ],
         "title": "SuiteIn"
+      },
+      "SuiteIssue": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "col": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Col"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "SuiteIssue",
+        "description": "One problem in a suite YAML file. `line`/`col` (1-indexed) are set whenever a source\nposition could be resolved: always for YAML syntax errors, best-effort for schema\nviolations (located by walking the composed node tree against the error's field path).\n`path` is the dotted/bracketed pydantic field path, set only for schema violations."
       },
       "SuiteOut": {
         "properties": {
@@ -3903,7 +4450,7 @@
           },
           "issues": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/SuiteIssue"
             },
             "type": "array",
             "title": "Issues"

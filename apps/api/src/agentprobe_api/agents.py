@@ -7,8 +7,9 @@ import json
 import uuid
 from typing import Annotated, Any, Literal
 
+from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +19,14 @@ from agentprobe_api.crypto import SecretBox
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Project, Secret
 from agentprobe_api.projects import owned_project
-from agentprobe_core.adapters import HttpAdapterConfig, check_header
+from agentprobe_api.runstore import close_adapter
+from agentprobe_core.adapters import (
+    AdapterNotAllowed,
+    HttpAdapterConfig,
+    TargetPolicy,
+    build_adapter,
+    check_header,
+)
 from agentprobe_core.adapters.mcp import McpHttpConfig
 
 router = APIRouter(tags=["agents"])
@@ -90,6 +98,43 @@ class AgentOut(BaseModel):
     adapter_type: str
     config: dict[str, Any]
     has_secret: bool
+
+
+class AgentTestOut(BaseModel):
+    """`message` is the adapter's own sanitized text: it never includes a resolved address
+    (ADR 0012's SSRF guard keeps that out of user-facing errors) and is safe to show as-is.
+    """
+
+    success: bool
+    message: str
+
+
+class AgentTestDraft(BaseModel):
+    """A not-yet-saved config, probed once and never persisted or logged (same validation as
+    a real agent, since it's the same `AgentConfig`/`AuthHeader` types).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    config: AgentConfig
+    auth_header: AuthHeader | None = None
+
+
+async def _test_connection(
+    adapter_type: str, config: dict[str, Any], secret_headers: dict[str, SecretStr]
+) -> AgentTestOut:
+    try:
+        adapter = build_adapter(
+            adapter_type, config, secret_headers=secret_headers, policy=TargetPolicy.from_env()
+        )
+    except (AdapterNotAllowed, ValueError) as exc:
+        return AgentTestOut(success=False, message=str(exc))
+    try:
+        response = await adapter.test_connection()
+    finally:
+        await close_adapter(adapter)
+    if response.error is None:
+        return AgentTestOut(success=True, message="Connection succeeded")
+    return AgentTestOut(success=False, message=response.error)
 
 
 def _agent_out(agent: Agent) -> AgentOut:
@@ -206,3 +251,37 @@ async def update_agent(
 async def delete_agent(agent_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -> None:
     agent = await owned_agent(db, principal, agent_id)
     await db.delete(agent)
+
+
+@router.post("/agents/{agent_id}/test")
+async def test_agent(
+    agent_id: uuid.UUID, principal: CurrentPrincipal, db: Db, request: Request
+) -> AgentTestOut:
+    """One probe request against a saved agent's stored config, no retries."""
+    agent = await owned_agent(db, principal, agent_id)
+    secret_headers: dict[str, SecretStr] = {}
+    if agent.secret_ref is not None:
+        ciphertext = await db.scalar(select(Secret.ciphertext).where(Secret.id == agent.secret_ref))
+        if ciphertext is None:
+            return AgentTestOut(success=False, message="the agent's auth header is missing")
+        try:
+            header = json.loads(_secret_box(request).decrypt(ciphertext).get_secret_value())
+        except InvalidToken:
+            return AgentTestOut(success=False, message="the agent's auth header can't be decrypted")
+        secret_headers = {header["name"]: SecretStr(header["value"])}
+    return await _test_connection(agent.adapter_type, agent.config, secret_headers)
+
+
+@router.post("/projects/{project_id}/agents/test")
+async def test_draft_agent(
+    project_id: uuid.UUID, body: AgentTestDraft, principal: CurrentPrincipal, db: Db
+) -> AgentTestOut:
+    """The same probe, for a not-yet-saved config (the add-agent form's "Test connection").
+    The project id only scopes access; nothing about the draft is stored.
+    """
+    await owned_project(db, principal, project_id)
+    secret_headers = (
+        {body.auth_header.name: SecretStr(body.auth_header.value)} if body.auth_header else {}
+    )
+    config = body.config.model_dump(mode="json", exclude={"adapter_type"})
+    return await _test_connection(body.config.adapter_type, config, secret_headers)

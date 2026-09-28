@@ -316,7 +316,8 @@ def run(
         except OSError as exc:
             raise ConfigError(f"can't read {suite_file}: {exc.strerror}") from None
         except SuiteParseError as exc:
-            raise ConfigError(f"{suite_file}:\n  " + "\n  ".join(exc.issues)) from None
+            issues = "\n  ".join(issue.message for issue in exc.issues)
+            raise ConfigError(f"{suite_file}:\n  {issues}") from None
         statistics = _statistics(
             suite.statistics,
             alpha=alpha,

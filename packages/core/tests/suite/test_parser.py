@@ -81,7 +81,63 @@ def test_unknown_top_level_key_reported_with_field_path() -> None:
     bad = VALID_YAML + "extra_field: true\n"
     with pytest.raises(SuiteParseError) as exc_info:
         parse_suite_yaml(bad)
-    assert any("extra_field" in issue for issue in exc_info.value.issues)
+    assert any("extra_field" in (issue.path or "") for issue in exc_info.value.issues)
+
+
+def test_schema_violation_locates_line_and_column() -> None:
+    bad = """
+suite: demo
+agent: demo-bot
+cases:
+  - id: c1
+    input: "hi"
+    expect:
+      - judge: contains
+        value: "ok"
+  - id: c1
+    input: "bye"
+    expect:
+      - judge: contains
+        value: "no"
+"""
+    with pytest.raises(SuiteParseError) as exc_info:
+        parse_suite_yaml(bad)
+    issue = next(i for i in exc_info.value.issues if "duplicate case id" in i.message)
+    assert issue.path == "cases"
+    assert issue.line is not None
+    assert issue.col is not None
+
+
+def test_model_level_violation_locates_its_containing_field() -> None:
+    bad = """
+suite: demo
+agent: demo-bot
+statistics:
+  alpha: 0.05
+  alpha_cases: 0.04
+  alpha_suite: 0.04
+cases:
+  - id: c1
+    input: "hi"
+    expect:
+      - judge: contains
+        value: "ok"
+"""
+    with pytest.raises(SuiteParseError) as exc_info:
+        parse_suite_yaml(bad)
+    issue = next(i for i in exc_info.value.issues if "more than alpha" in i.message)
+    assert issue.path == "statistics"
+    assert issue.line is not None  # "statistics" itself still locates fine
+
+
+def test_locate_returns_none_for_an_unresolvable_path() -> None:
+    from agentprobe_core.suite.parser import _compose, _locate
+
+    root = _compose(VALID_YAML)
+    assert _locate((), root) is None  # empty loc: nothing to point at
+    assert _locate(("no_such_key",), root) is None  # not a real key
+    assert _locate(("cases", 99), root) is None  # index out of range
+    assert _locate(("cases",), None) is None  # nothing was composed
 
 
 def test_duplicate_case_id_reported() -> None:

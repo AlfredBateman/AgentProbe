@@ -22,6 +22,7 @@ from agentprobe_api.security import encode_token
 from agentprobe_core.runner import execute_attempt
 from apitest import ClientFactory, SignUp, bind_db, make_settings
 from runtest import (
+    SMALL_YAML,
     SMOKE_YAML,
     NullQueue,
     deps_of,
@@ -95,6 +96,57 @@ async def test_a_suite_run_completes_with_everything_persisted(
     assert len(summaries) == 9
     assert sum(s.attempts for s in summaries) == 45
     assert {s.label for s in summaries} <= {"stable-pass", "flaky"}
+
+
+async def test_project_runs_lists_suite_and_agent_names_with_latency(
+    sign_up: SignUp, app: FastAPI, demo_url: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, f"{demo_url}/support/v1/chat", yaml=SMALL_YAML)
+    run = await start_run(alice, ids["suite_id"])
+    done = await wait_for_run(alice, app, run["id"])
+
+    r = await alice.get(f"/projects/{ids['project_id']}/runs")
+    assert r.status_code == 200
+    [listed] = r.json()
+    assert listed["id"] == run["id"]
+    assert listed["suite_id"] == ids["suite_id"]
+    assert listed["suite_name"] == "small"
+    assert listed["agent_id"] == ids["agent_id"]
+    assert listed["agent_name"] == "support-v1"
+    assert listed["status"] == "completed"
+    assert listed["pass_rate"] == done["pass_rate"]
+    assert listed["total_cost"] == done["total_cost"]
+    # A real attempts-weighted average across the run's case summaries, not a stored column.
+    assert listed["mean_latency_ms"] is not None
+    assert listed["mean_latency_ms"] > 0
+
+
+async def test_project_runs_filters_by_suite_and_scopes_to_the_project(
+    sign_up: SignUp, app: FastAPI, demo_url: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids_a = await make_project(alice, f"{demo_url}/support/v1/chat", yaml=SMALL_YAML)
+    # A second suite in the same project, same agent (its YAML names the same agent).
+    other_suite = await alice.post(
+        f"/projects/{ids_a['project_id']}/suites",
+        json={"yaml": SMALL_YAML.replace("suite: small", "suite: small2")},
+    )
+    assert other_suite.status_code == 201
+
+    run = await start_run(alice, ids_a["suite_id"])
+    await wait_for_run(alice, app, run["id"])
+    other_run = await start_run(alice, other_suite.json()["id"])
+    await wait_for_run(alice, app, other_run["id"])
+
+    r = await alice.get(f"/projects/{ids_a['project_id']}/runs?suite_id={ids_a['suite_id']}")
+    assert r.status_code == 200
+    assert [row["id"] for row in r.json()] == [run["id"]]
+
+    other_project = (await alice.post("/projects", json={"name": "p2"})).json()
+    r = await alice.get(f"/projects/{other_project['id']}/runs")
+    assert r.status_code == 200
+    assert r.json() == []  # that project's own runs list is empty, not alice's other project's
 
 
 async def test_the_snapshot_keeps_the_secret_out_and_the_run_still_sends_it(

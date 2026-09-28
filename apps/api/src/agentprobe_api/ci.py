@@ -98,7 +98,11 @@ async def ci_report(
     try:
         parsed = parse_suite_yaml(suite.yaml_source)
     except SuiteParseError as exc:
-        raise ApiError(422, "the suite's stored YAML no longer parses", details=exc.issues) from exc
+        raise ApiError(
+            422,
+            "the suite's stored YAML no longer parses",
+            details=[issue.model_dump(mode="json") for issue in exc.issues],
+        ) from exc
 
     name = body.agent or body.agent_name
     agent = await db.scalar(select(Agent).where(Agent.project_id == project.id, Agent.name == name))

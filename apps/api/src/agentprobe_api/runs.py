@@ -12,7 +12,7 @@ from contextlib import AsyncExitStack
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
@@ -32,8 +32,9 @@ from agentprobe_api.auth import (
 )
 from agentprobe_api.errors import ApiError
 from agentprobe_api.htmlexport import render_html
-from agentprobe_api.models import Agent, Project, Run, Suite
+from agentprobe_api.models import Agent, Project, Run, RunCaseSummary, Suite
 from agentprobe_api.progress import Subscription
+from agentprobe_api.projects import owned_project
 from agentprobe_api.runstore import LIVE, TERMINAL
 from agentprobe_api.suites import owned_suite
 from agentprobe_core.runner import plan_attempts
@@ -92,6 +93,33 @@ class StreamTokenOut(BaseModel):
     expires_in: int
 
 
+class RunListOut(BaseModel):
+    """A run as shown in a project's run history (overview trends, latest-runs table).
+    `agent_name` is the agent's current name for a registered agent, or the name an
+    unregistered/CI-pushed run recorded for itself (ADR 0020) — whichever applies.
+    `mean_latency_ms` isn't a stored column: it's the attempts-weighted average of
+    `run_case_summaries.mean_latency_ms` across the run's cases, computed at read time.
+    """
+
+    id: uuid.UUID
+    suite_id: uuid.UUID
+    suite_name: str
+    agent_id: uuid.UUID | None
+    agent_name: str | None
+    status: str
+    branch: str | None
+    mock_mode: bool
+    pass_rate: float | None
+    ci_lower: float | None
+    ci_upper: float | None
+    total_cost: float | None
+    judge_cost_usd: float | None
+    total_tokens: int | None
+    mean_latency_ms: float | None
+    created_at: datetime
+    finished_at: datetime | None
+
+
 async def owned_run(db: AsyncSession, principal: Principal, run_id: uuid.UUID) -> Run:
     """Not-owned and nonexistent are both 404 (mirrors `owned_suite`)."""
     row = (
@@ -117,7 +145,11 @@ async def start_run(
     try:
         parsed = parse_suite_yaml(suite.yaml_source)
     except SuiteParseError as exc:  # stored YAML was valid when uploaded; limits may change
-        raise ApiError(422, "Suite validation failed", details=exc.issues) from exc
+        raise ApiError(
+            422,
+            "Suite validation failed",
+            details=[issue.model_dump(mode="json") for issue in exc.issues],
+        ) from exc
     agent = await db.scalar(
         select(Agent).where(Agent.project_id == suite.project_id, Agent.name == parsed.agent)
     )
@@ -149,6 +181,59 @@ async def start_run(
     await db.commit()  # the queue runs it in another session: it must be visible first
     await request.app.state.queue.enqueue(run.id)
     return out
+
+
+@router.get("/projects/{project_id}/runs")
+async def list_project_runs(
+    project_id: uuid.UUID,
+    principal: CurrentPrincipal,
+    db: Db,
+    suite_id: uuid.UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[RunListOut]:
+    project = await owned_project(db, principal, project_id)
+    latency = (
+        select(
+            func.sum(RunCaseSummary.mean_latency_ms * RunCaseSummary.attempts)
+            / func.nullif(func.sum(RunCaseSummary.attempts), 0)
+        )
+        .where(RunCaseSummary.run_id == Run.id, RunCaseSummary.mean_latency_ms.isnot(None))
+        .correlate(Run)
+        .scalar_subquery()
+    )
+    stmt = (
+        select(Run, Suite.name, Agent.name, latency)
+        .join(Suite, Suite.id == Run.suite_id)
+        .outerjoin(Agent, Agent.id == Run.agent_id)
+        .where(Suite.project_id == project.id)
+    )
+    if suite_id is not None:
+        stmt = stmt.where(Run.suite_id == suite_id)
+    stmt = stmt.order_by(Run.created_at.desc()).limit(limit).offset(offset)
+    rows = await db.execute(stmt)
+    return [
+        RunListOut(
+            id=run.id,
+            suite_id=run.suite_id,
+            suite_name=suite_name,
+            agent_id=run.agent_id,
+            agent_name=agent_name if agent_name is not None else run.agent_name,
+            status=run.status,
+            branch=run.branch,
+            mock_mode=run.mock_mode,
+            pass_rate=run.pass_rate,
+            ci_lower=run.ci_lower,
+            ci_upper=run.ci_upper,
+            total_cost=float(run.total_cost) if run.total_cost is not None else None,
+            judge_cost_usd=float(run.judge_cost_usd) if run.judge_cost_usd is not None else None,
+            total_tokens=run.total_tokens,
+            mean_latency_ms=float(mean_latency_ms) if mean_latency_ms is not None else None,
+            created_at=run.created_at,
+            finished_at=run.finished_at,
+        )
+        for run, suite_name, agent_name, mean_latency_ms in rows.tuples()
+    ]
 
 
 @router.get("/runs/{run_id}")

@@ -16,7 +16,12 @@ from agentprobe_core.suite.judges import (
     ToolCalledJudge,
     ToolNotCalledJudge,
 )
-from agentprobe_core.suite.parser import SuiteParseError, parse_suite_yaml, suite_json_schema
+from agentprobe_core.suite.parser import (
+    SuiteIssue,
+    SuiteParseError,
+    parse_suite_yaml,
+    suite_json_schema,
+)
 from agentprobe_core.suite.schema import Case, StatisticsConfig, Suite
 
 __all__ = [
@@ -34,6 +39,7 @@ __all__ = [
     "RegexJudge",
     "StatisticsConfig",
     "Suite",
+    "SuiteIssue",
     "SuiteParseError",
     "ToolArgsMatchJudge",
     "ToolCalledJudge",
