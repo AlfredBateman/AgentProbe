@@ -1,7 +1,6 @@
 // The JSON shape of core's `RegressionReport` (agentprobe_core.stats.regression), as
-// `GET /runs/compare` and `GET /runs/{id}/verdict` dump it (pydantic `TypeAdapter.dump_python`
-// on the dataclass: declared fields only, no computed properties). `pct`/`caseLabel` below
-// recompute `pass_rate`/`label`, which the dump doesn't carry.
+// `GET /runs/compare` and `GET /runs/{id}/verdict` dump it (pydantic `TypeAdapter.dump_python`).
+// `pass_rate` and `label` are core's computed fields: the label rule lives only in core.
 import { pct } from "./format";
 
 export type CaseSummaryDump = {
@@ -11,6 +10,8 @@ export type CaseSummaryDump = {
   mean_score: number | null;
   mean_latency_ms: number | null;
   cost_usd: number | null;
+  pass_rate: number;
+  label: "stable-pass" | "stable-fail" | "flaky";
 };
 
 export type MetricDeltaDump = { baseline: number; candidate: number; delta: number };
@@ -65,13 +66,6 @@ export type RegressionReportDump = {
   added: string[];
   removed: string[];
 };
-
-/** Mirrors `CaseSummary.label` (agentprobe_core.stats.summary): not carried by the JSON dump. */
-export function caseLabel(s: CaseSummaryDump): "stable-pass" | "stable-fail" | "flaky" {
-  if (s.passes === s.attempts) return "stable-pass";
-  if (s.passes === 0) return "stable-fail";
-  return "flaky";
-}
 
 const signedPct = (x: number) => `${x >= 0 ? "+" : ""}${pct(x)}`;
 

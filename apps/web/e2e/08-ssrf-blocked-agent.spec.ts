@@ -29,5 +29,5 @@ test("an agent URL the SSRF guard blocks shows a clear error on Test connection"
   await agents.fillUrl("http://127.0.0.1:1/nope");
   await agents.allowPrivate(false);
   const privateMessage = await agents.testConnection();
-  expect(privateMessage).toMatch(/private|not allowed/i);
+  expect(privateMessage).toContain("127.0.0.1 resolves to a private address. Private targets need allow_private");
 });

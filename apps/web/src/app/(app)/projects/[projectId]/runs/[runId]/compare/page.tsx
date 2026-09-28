@@ -151,14 +151,14 @@ function CompareView({
     {
       key: "baseline",
       header: "Baseline",
-      value: (c) => c.baseline.passes / c.baseline.attempts,
+      value: (c) => c.baseline.pass_rate,
       align: "right",
       render: (c) => `${c.baseline.passes}/${c.baseline.attempts}`,
     },
     {
       key: "candidate",
       header: "Candidate",
-      value: (c) => c.candidate.passes / c.candidate.attempts,
+      value: (c) => c.candidate.pass_rate,
       align: "right",
       render: (c) => `${c.candidate.passes}/${c.candidate.attempts}`,
     },

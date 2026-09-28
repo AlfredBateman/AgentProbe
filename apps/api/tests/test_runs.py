@@ -117,9 +117,13 @@ async def test_project_runs_lists_suite_and_agent_names_with_latency(
     assert listed["status"] == "completed"
     assert listed["pass_rate"] == done["pass_rate"]
     assert listed["total_cost"] == done["total_cost"]
-    # A real attempts-weighted average across the run's case summaries, not a stored column.
-    assert listed["mean_latency_ms"] is not None
-    assert listed["mean_latency_ms"] > 0
+    # The attempts-weighted average of the case means: with every latency known, that's the
+    # mean over all of the run's attempts. `run_results.latency_ms` is whole milliseconds and the
+    # case means aren't, so the two agree to within half a millisecond.
+    results = (await alice.get(f"/runs/{run['id']}/results")).json()
+    latencies = [r["latency_ms"] for r in results]
+    assert None not in latencies
+    assert listed["mean_latency_ms"] == pytest.approx(sum(latencies) / len(latencies), abs=0.5)
 
 
 async def test_project_runs_filters_by_suite_and_scopes_to_the_project(

@@ -62,6 +62,10 @@ async def test_v1_then_v2_compare_is_a_regression_and_v1_vs_v1_is_no_change(
     assert report["verdict"] == "regression"
     assert "refund-outside-window" in report["newly_failing"]
     assert "refund-outside-window" in report["regressed"]
+    # The dashboard reads core's label and pass rate straight from the dump.
+    [refund] = [c for c in report["cases"] if c["case_id"] == "refund-outside-window"]
+    assert (refund["baseline"]["label"], refund["baseline"]["pass_rate"]) == ("stable-pass", 1.0)
+    assert (refund["candidate"]["label"], refund["candidate"]["pass_rate"]) == ("stable-fail", 0.0)
 
 
 async def test_compare_rejects_runs_of_different_suites(

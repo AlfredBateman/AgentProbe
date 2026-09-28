@@ -127,7 +127,8 @@ test("register -> project -> agent -> suite -> run -> trace -> v2 regression -> 
     const compare = new ComparePage(page);
     await compare.pickBaseline(v1RunId);
     await compare.waitForVerdict("Regression");
-    await expect(page.getByText("refund-outside-window").first()).toBeVisible();
+    // The verdict names the case that fired, not just any mention of it in the case table.
+    await expect(page.getByText(/1 case \(refund-outside-window\) dropped significantly/)).toBeVisible();
     await compare.openCaseDiff("refund-outside-window");
     await expect(page).toHaveURL(/\/results\/[0-9a-f-]+\?compare=/);
   });

@@ -1,8 +1,11 @@
+from typing import Any
+
 import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentprobe_api import agents as agents_module
 from agentprobe_api.models import Secret
 from agentprobe_core.adapters import HttpAdapterConfig
 from agentprobe_core.adapters.mcp import McpHttpConfig
@@ -282,17 +285,23 @@ async def test_test_connection_succeeds_against_a_saved_agent(
     ).json()
     r = await alice.post(f"/agents/{created['id']}/test")
     assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["success"] is True
-    assert body["message"]
+    assert r.json() == {"success": True, "message": "Connection succeeded"}
 
 
 async def test_test_connection_sends_the_saved_secret(
-    sign_up: SignUp, demo_env: None, demo_url: str
+    sign_up: SignUp, demo_env: None, demo_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """/support/v1 deletes orders only with X-Admin-Context; test_connection doesn't hit that
-    path, but this proves the secret is decrypted and attached, not merely stored.
+    """The stored header is decrypted and handed to the adapter (which sends secret headers,
+    as core's adapter tests prove), not merely stored.
     """
+    seen: list[dict[str, str]] = []
+    real = agents_module.build_adapter
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append({k: v.get_secret_value() for k, v in kwargs["secret_headers"].items()})
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(agents_module, "build_adapter", spy)
     alice = await sign_up("alice@example.com")
     project = await new_project(alice)
     config = {"adapter_type": "http", "url": f"{demo_url}/support/v1/chat", "allow_private": True}
@@ -309,6 +318,7 @@ async def test_test_connection_sends_the_saved_secret(
     r = await alice.post(f"/agents/{created['id']}/test")
     assert r.status_code == 200, r.text
     assert r.json()["success"] is True
+    assert seen == [{"X-Admin-Context": "true"}]
 
 
 async def test_test_connection_reports_ssrf_block(sign_up: SignUp) -> None:

@@ -4,6 +4,7 @@ import statistics
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import TypeAdapter
 
 from agentprobe_core.stats import CaseSummary, suite_stats, wilson_interval
 from agentprobe_core.stats.summary import _quantile
@@ -51,6 +52,15 @@ def test_label_rule(passes: int, attempts: int, errors: int, label: str) -> None
 def test_label_matches_pass_rate(summary: CaseSummary) -> None:
     expected = {1.0: "stable-pass", 0.0: "stable-fail"}.get(summary.pass_rate, "flaky")
     assert summary.label == expected
+
+
+def test_json_dump_carries_label_and_pass_rate_and_still_loads() -> None:
+    """The dashboard reads `label` from the API's dumps instead of re-deriving the rule."""
+    adapter = TypeAdapter(CaseSummary)
+    summary = CaseSummary(passes=3, attempts=5, errors=2)
+    dumped = adapter.dump_python(summary, mode="json")
+    assert (dumped["label"], dumped["pass_rate"]) == ("flaky", 0.6)
+    assert adapter.validate_python(dumped) == summary  # computed keys are ignored on load
 
 
 # --- Wilson interval ---
