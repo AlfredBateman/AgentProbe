@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { type FormEvent, useId, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/code";
 import { Dialog } from "@/components/ui/dialog";
 import { FieldError, Input, Label, Select } from "@/components/ui/field";
@@ -43,6 +44,12 @@ export function RunActions({ run, projectId, onChanged }: Props) {
 
   return (
     <div className="flex flex-wrap gap-8">
+      <Link href={`/projects/${projectId}/runs/${run.id}/compare`} className={buttonClasses("secondary")}>
+        Compare
+      </Link>
+      <Link href={`/projects/${projectId}/runs/${run.id}/findings`} className={buttonClasses("secondary")}>
+        Findings
+      </Link>
       {live && (
         <Button variant="secondary" onClick={() => setDialog("cancel")}>
           Cancel run
