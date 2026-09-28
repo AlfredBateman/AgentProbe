@@ -67,13 +67,16 @@ async def test_revoke_invalidates_the_link(
     sign_up: SignUp, app: FastAPI, demo_url: str, clients: ClientFactory
 ) -> None:
     alice, _, done = await a_completed_run(sign_up, app, demo_url)
+    assert done["shared"] is False
     token = (await alice.post(f"/runs/{done['id']}/share", json={})).json()["token"]
     anonymous = clients()
     assert (await anonymous.get(f"/shared/{token}")).status_code == 200
+    assert (await alice.get(f"/runs/{done['id']}")).json()["shared"] is True
 
     revoked = await alice.delete(f"/runs/{done['id']}/share")
     assert revoked.status_code == 204
     assert (await anonymous.get(f"/shared/{token}")).status_code == 404
+    assert (await alice.get(f"/runs/{done['id']}")).json()["shared"] is False
     # Idempotent: revoking again (already gone) doesn't error.
     assert (await alice.delete(f"/runs/{done['id']}/share")).status_code == 204
 

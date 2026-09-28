@@ -1,8 +1,8 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useId, useState } from "react";
 import { cx } from "@/lib/cx";
-import { SortIcon } from "./icons";
+import { ChevronDownIcon, SortIcon } from "./icons";
 
 export type Column<T> = {
   key: string;
@@ -25,6 +25,9 @@ type Props<T> = {
   empty?: ReactNode;
   /** Set a max height here to get a vertically scrolling body with a sticky header. */
   className?: string;
+  /** Detail shown under a row when its toggle is open; `expandLabel` names the row for the toggle. */
+  expand?: (row: T) => ReactNode;
+  expandLabel?: (row: T) => string;
 };
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
@@ -35,8 +38,10 @@ function compare(a: number | string | null, b: number | string | null): number {
 }
 
 /** Sortable table: sticky header, tabular numerals, hairline row dividers. */
-export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empty, className }: Props<T>) {
+export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empty, className, expand, expandLabel }: Props<T>) {
   const [sort, setSort] = useState<Sort | undefined>(initialSort);
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const baseId = useId();
   const column = columns.find((c) => c.key === sort?.key);
   const sorted =
     column?.value && sort
@@ -53,12 +58,27 @@ export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empt
     );
   }
 
+  function toggleRow(key: string) {
+    setOpen((o) => {
+      const next = new Set(o);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }
+
+  const th = "sticky top-0 z-10 border-b border-hairline bg-canvas px-10 py-8 text-data-label whitespace-nowrap text-ink-muted";
   return (
-    <div className={cx("min-w-0 overflow-auto", className)}>
+    // A size container, so an expanded row's detail can be exactly as wide as what's visible.
+    <div className={cx("@container min-w-0 overflow-auto", className)}>
       <table className="w-full border-collapse text-data tabular-nums">
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr>
+            {expand && (
+              <th scope="col" className={cx(th, "w-0 pr-0")}>
+                <span className="sr-only">Details</span>
+              </th>
+            )}
             {columns.map((c) => {
               const direction = sort?.key === c.key ? sort.direction : undefined;
               return (
@@ -66,10 +86,7 @@ export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empt
                   key={c.key}
                   scope="col"
                   aria-sort={direction ?? (c.value ? "none" : undefined)}
-                  className={cx(
-                    "sticky top-0 z-10 border-b border-hairline bg-canvas px-12 py-8 text-data-label whitespace-nowrap text-ink-muted",
-                    c.align === "right" ? "text-right" : "text-left",
-                  )}
+                  className={cx(th, c.align === "right" ? "text-right" : "text-left")}
                 >
                   {c.value ? (
                     <button
@@ -93,18 +110,46 @@ export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empt
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row) => (
-            <tr key={rowKey(row)} className="border-b border-hairline-soft last:border-0 hover:bg-surface-1">
-              {columns.map((c) => (
-                <td
-                  key={c.key}
-                  className={cx("px-12 py-10 whitespace-nowrap", c.align === "right" ? "text-right" : "text-left")}
-                >
-                  {c.render ? c.render(row) : c.value?.(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sorted.map((row, i) => {
+            const key = rowKey(row);
+            const isOpen = !!expand && open.has(key);
+            const detailId = `${baseId}-detail-${i}`;
+            return (
+              <Fragment key={key}>
+                <tr className={cx("border-b border-hairline-soft last:border-0 hover:bg-surface-1", isOpen && "border-0 bg-surface-1")}>
+                  {expand && (
+                    <td className="py-4 pr-0 pl-8">
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        aria-controls={isOpen ? detailId : undefined}
+                        aria-label={`${isOpen ? "Hide" : "Show"} ${expandLabel?.(row) ?? "details"}`}
+                        onClick={() => toggleRow(key)}
+                        className="inline-flex size-32 cursor-pointer items-center justify-center rounded-full text-ink-muted outline-none hover:text-ink focus-visible:shadow-focus pointer-coarse:size-44"
+                      >
+                        <ChevronDownIcon className={cx("transition-transform motion-reduce:transition-none", isOpen ? "rotate-0" : "-rotate-90")} />
+                      </button>
+                    </td>
+                  )}
+                  {columns.map((c) => (
+                    <td
+                      key={c.key}
+                      className={cx("px-10 py-10 whitespace-nowrap", c.align === "right" ? "text-right" : "text-left")}
+                    >
+                      {c.render ? c.render(row) : c.value?.(row)}
+                    </td>
+                  ))}
+                </tr>
+                {isOpen && (
+                  <tr id={detailId} className="border-b border-hairline-soft bg-surface-1 last:border-0">
+                    <td colSpan={columns.length + 1} className="p-0">
+                      <div className="sticky left-0 w-[100cqw] px-12 pt-4 pb-15">{expand(row)}</div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
       {rows.length === 0 && empty}

@@ -58,6 +58,8 @@ PROBES = [
     Probe("POST", "/runs/{run_id}/stream-token"),
     Probe("GET", "/runs/{run_id}/stream"),
     Probe("GET", "/runs/{run_id}/results"),
+    Probe("GET", "/runs/{run_id}/cases"),
+    Probe("GET", "/runs/{run_id}/verdict"),
     Probe("GET", "/runs/{run_id}/findings"),
     Probe("GET", "/results/{result_id}/trace"),
     Probe("GET", "/runs/compare?a={run_id}&b={run_id}"),

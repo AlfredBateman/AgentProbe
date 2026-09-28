@@ -17,6 +17,7 @@ from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Judgment, Project, Run, RunCaseSummary, RunResult, Suite, TestCase
 from agentprobe_api.runs import owned_run
 from agentprobe_core.adapters.types import TraceStep
+from agentprobe_core.runner import judgment_steps
 from agentprobe_core.stats import RegressionReport, compare_runs
 
 router = APIRouter(tags=["results"])
@@ -45,7 +46,12 @@ class ResultOut(BaseModel):
     judgments: list[JudgmentOut]
 
 
+class TraceJudgmentOut(JudgmentOut):
+    step: int | None  # index into `steps` of the step it concerns; None: the whole attempt
+
+
 class TraceOut(BaseModel):
+    run_id: uuid.UUID
     case: str
     attempt: int
     status: str
@@ -58,7 +64,21 @@ class TraceOut(BaseModel):
     judge_cost_usd: float
     retries: int
     steps: list[TraceStep]
-    judgments: list[JudgmentOut]
+    judgments: list[TraceJudgmentOut]
+
+
+class CaseSummaryOut(BaseModel):
+    case: str
+    attack_category: str | None
+    label: str
+    attempts: int
+    passes: int
+    errors: int
+    pass_rate: float
+    mean_score: float | None
+    consistency_score: float | None
+    mean_latency_ms: float | None
+    total_cost: float | None
 
 
 class CompareOut(BaseModel):
@@ -154,11 +174,14 @@ async def list_results(
 
 @router.get("/results/{result_id}/trace")
 async def get_trace(result_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -> TraceOut:
-    await owned_result(db, principal, result_id)
+    _, run = await owned_result(db, principal, result_id)
     attempt = await runstore.read_attempt(db, result_id)
     if attempt is None:
         raise ApiError(404, "Result not found")
+    case = next((c for c in runstore.parsed_suite(run).cases if c.id == attempt.case_id), None)
+    steps = judgment_steps(case, attempt) if case else [None] * len(attempt.judgments)
     return TraceOut(
+        run_id=run.id,
         case=attempt.case_id,
         attempt=attempt.attempt,
         status=attempt.status,
@@ -172,10 +195,44 @@ async def get_trace(result_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -
         retries=attempt.retries,
         steps=attempt.response.steps if attempt.response else [],
         judgments=[
-            JudgmentOut(judge=j.judge, status=j.status, score=j.score, reason=j.reason)
-            for j in attempt.judgments
+            TraceJudgmentOut(
+                judge=j.judge, status=j.status, score=j.score, reason=j.reason, step=step
+            )
+            for j, step in zip(attempt.judgments, steps, strict=True)
         ],
     )
+
+
+@router.get("/runs/{run_id}/cases")
+async def list_cases(
+    run_id: uuid.UUID, principal: CurrentPrincipal, db: Db
+) -> list[CaseSummaryOut]:
+    """Per-case summaries (label, pass counts, consistency, latency, cost). Written when the
+    run is summarized, so empty while it is still running.
+    """
+    run = await owned_run(db, principal, run_id)
+    rows = await db.execute(
+        select(RunCaseSummary, TestCase.case_key, TestCase.attack_type)
+        .join(TestCase, TestCase.id == RunCaseSummary.case_id)
+        .where(RunCaseSummary.run_id == run.id)
+        .order_by(TestCase.case_key)
+    )
+    return [
+        CaseSummaryOut(
+            case=case_key,
+            attack_category=attack_type,
+            label=row.label,
+            attempts=row.attempts,
+            passes=row.passes,
+            errors=row.errors,
+            pass_rate=row.pass_rate,
+            mean_score=row.mean_score,
+            consistency_score=row.consistency_score,
+            mean_latency_ms=row.mean_latency_ms,
+            total_cost=float(row.total_cost) if row.total_cost is not None else None,
+        )
+        for row, case_key, attack_type in rows.tuples()
+    ]
 
 
 @router.get("/runs/compare")

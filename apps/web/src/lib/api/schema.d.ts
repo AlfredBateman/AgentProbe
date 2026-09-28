@@ -332,6 +332,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cases
+         * @description Per-case summaries (label, pass counts, consistency, latency, cost). Written when the
+         *     run is summarized, so empty while it is still running.
+         */
+        get: operations["list_cases_runs__run_id__cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/compare": {
         parameters: {
             query?: never;
@@ -528,6 +549,27 @@ export interface paths {
          *     unregistered `agent_name` on `branch`.
          */
         get: operations["get_baseline_projects__project_id__baselines__branch__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Verdict
+         * @description This run against the baseline of its suite and agent on its branch (`main` for a run
+         *     without one). 404 when no baseline is set there.
+         */
+        get: operations["run_verdict_runs__run_id__verdict_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -858,6 +900,31 @@ export interface components {
              */
             run_id: string;
             run: components["schemas"]["RunOut"];
+        };
+        /** CaseSummaryOut */
+        CaseSummaryOut: {
+            /** Case */
+            case: string;
+            /** Attack Category */
+            attack_category: string | null;
+            /** Label */
+            label: string;
+            /** Attempts */
+            attempts: number;
+            /** Passes */
+            passes: number;
+            /** Errors */
+            errors: number;
+            /** Pass Rate */
+            pass_rate: number;
+            /** Mean Score */
+            mean_score: number | null;
+            /** Consistency Score */
+            consistency_score: number | null;
+            /** Mean Latency Ms */
+            mean_latency_ms: number | null;
+            /** Total Cost */
+            total_cost: number | null;
         };
         /** CiReportIn */
         CiReportIn: {
@@ -1218,6 +1285,78 @@ export interface components {
             /** Judgments */
             judgments: components["schemas"]["JudgmentOut"][];
         };
+        /**
+         * RunDetailOut
+         * @description A run for its own page: the suite's name, the agent's name as the run recorded it, and
+         *     whether a share link is live (the link's token is only ever returned when it's created).
+         */
+        RunDetailOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Suite Id
+             * Format: uuid
+             */
+            suite_id: string;
+            /** Suite Version */
+            suite_version: number;
+            /** Agent Id */
+            agent_id: string | null;
+            /** Agent Name */
+            agent_name: string | null;
+            /** Status */
+            status: string;
+            /** Model */
+            model: string | null;
+            /** Git Sha */
+            git_sha: string | null;
+            /** Branch */
+            branch: string | null;
+            /** Pr Number */
+            pr_number: number | null;
+            /** Runs Per Case */
+            runs_per_case: number;
+            /** Mock Mode */
+            mock_mode: boolean;
+            /** Attempts Total */
+            attempts_total: number;
+            /** Attempts Done */
+            attempts_done: number;
+            /** Pass Rate */
+            pass_rate: number | null;
+            /** Ci Lower */
+            ci_lower: number | null;
+            /** Ci Upper */
+            ci_upper: number | null;
+            /** Total Tokens */
+            total_tokens: number | null;
+            /** Total Cost */
+            total_cost: number | null;
+            /** Judge Cost Usd */
+            judge_cost_usd: number | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Suite Name */
+            suite_name: string;
+            /** Agent */
+            agent: string;
+            /** Shared */
+            shared: boolean;
+            /** Share Expires At */
+            share_expires_at: string | null;
+        };
         /** RunIn */
         RunIn: {
             /** Runs Per Case */
@@ -1348,6 +1487,26 @@ export interface components {
             started_at: string | null;
             /** Finished At */
             finished_at: string | null;
+        };
+        /**
+         * RunVerdictOut
+         * @description A run against its baseline: `report` is core's `RegressionReport`, None when the run
+         *     is the baseline itself or hasn't completed yet.
+         */
+        RunVerdictOut: {
+            /** Branch */
+            branch: string;
+            /**
+             * Baseline Run Id
+             * Format: uuid
+             */
+            baseline_run_id: string;
+            /** Is Baseline */
+            is_baseline: boolean;
+            /** Report */
+            report: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ShareIn */
         ShareIn: {
@@ -1572,8 +1731,26 @@ export interface components {
             /** Member Count */
             member_count: number;
         };
+        /** TraceJudgmentOut */
+        TraceJudgmentOut: {
+            /** Judge */
+            judge: string;
+            /** Status */
+            status: string;
+            /** Score */
+            score: number | null;
+            /** Reason */
+            reason: string | null;
+            /** Step */
+            step: number | null;
+        };
         /** TraceOut */
         TraceOut: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
             /** Case */
             case: string;
             /** Attempt */
@@ -1599,7 +1776,7 @@ export interface components {
             /** Steps */
             steps: (components["schemas"]["MessageStep"] | components["schemas"]["ToolCallStep"] | components["schemas"]["ToolResultStep"] | components["schemas"]["ErrorStep"])[];
             /** Judgments */
-            judgments: components["schemas"]["JudgmentOut"][];
+            judgments: components["schemas"]["TraceJudgmentOut"][];
         };
         /** UserOut */
         UserOut: {
@@ -2394,6 +2571,37 @@ export interface operations {
             };
         };
     };
+    list_cases_runs__run_id__cases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseSummaryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     compare_runs_compare_get: {
         parameters: {
             query: {
@@ -2513,7 +2721,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RunOut"];
+                    "application/json": components["schemas"]["RunDetailOut"];
                 };
             };
             /** @description Validation Error */
@@ -2744,6 +2952,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BaselineOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_verdict_runs__run_id__verdict_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunVerdictOut"];
                 };
             };
             /** @description Validation Error */

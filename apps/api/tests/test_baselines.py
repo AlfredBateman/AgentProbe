@@ -114,3 +114,41 @@ async def test_baseline_requires_a_completed_run(
         f"/projects/{ids['project_id']}/baseline", json={"branch": "main", "run_id": run["id"]}
     )
     assert r.status_code == 422
+
+
+async def test_a_run_is_judged_against_its_branch_baseline(
+    sign_up: SignUp, app: FastAPI, demo_url: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, f"{demo_url}/support/v1/chat", yaml=SMOKE_YAML)
+    base = await wait_for_run(alice, app, (await start_run(alice, ids["suite_id"]))["id"])
+    assert (await alice.get(f"/runs/{base['id']}/verdict")).status_code == 404  # none set
+
+    set_r = await alice.post(
+        f"/projects/{ids['project_id']}/baseline", json={"branch": "main", "run_id": base["id"]}
+    )
+    assert set_r.status_code == 201
+    own = (await alice.get(f"/runs/{base['id']}/verdict")).json()
+    assert (own["branch"], own["baseline_run_id"], own["is_baseline"], own["report"]) == (
+        "main",
+        base["id"],
+        True,
+        None,
+    )
+
+    # A run without a branch (the dashboard's) is compared against main.
+    later = await wait_for_run(alice, app, (await start_run(alice, ids["suite_id"]))["id"])
+    verdict = (await alice.get(f"/runs/{later['id']}/verdict")).json()
+    assert (verdict["branch"], verdict["baseline_run_id"], verdict["is_baseline"]) == (
+        "main",
+        base["id"],
+        False,
+    )
+    assert verdict["report"]["verdict"] == "no_change"
+    compared = await alice.get("/runs/compare", params={"a": base["id"], "b": later["id"]})
+    assert verdict["report"] == compared.json()["report"]
+
+    # A run on another branch looks for that branch's baseline only.
+    feature = await start_run(alice, ids["suite_id"], branch="feature/x")
+    await wait_for_run(alice, app, feature["id"])
+    assert (await alice.get(f"/runs/{feature['id']}/verdict")).status_code == 404

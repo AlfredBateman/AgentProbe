@@ -27,7 +27,13 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, JsonValue
 
-from agentprobe_core.adapters.types import AgentAdapter, AgentResponse
+from agentprobe_core.adapters.types import (
+    AgentAdapter,
+    AgentResponse,
+    MessageStep,
+    ToolCallStep,
+    ToolResultStep,
+)
 from agentprobe_core.judges.registry import evaluate
 from agentprobe_core.judges.types import JudgeContext, Judgment, Status
 from agentprobe_core.llm.config import Price
@@ -434,6 +440,37 @@ async def finalize_run(
 def uses_llm(suite: Suite) -> bool:
     """Whether a judge in the suite calls an LLM: `llm_rubric`, or `consistency` (embeddings)."""
     return any(spec.judge in ("llm_rubric", CONSISTENCY) for c in suite.cases for spec in c.expect)
+
+
+def judgment_steps(case: Case, result: AttemptResult) -> list[int | None]:
+    """For each of `result.judgments`, the index of the trace step it concerns, or None for
+    the attempt as a whole. Tool judges point at the first call to their tool (None when it
+    was never called); `latency_under` at nothing; every other judge reads the output, so it
+    points at the step that carries it: the last assistant message or tool result.
+    """
+    steps = result.response.steps if result.response else []
+    output = None
+    for i, step in enumerate(steps):
+        if isinstance(step, ToolResultStep) or (
+            isinstance(step, MessageStep) and step.role == "assistant"
+        ):
+            output = i
+
+    def anchor(spec: JudgeSpec) -> int | None:
+        if (tool := getattr(spec, "tool", None)) is not None:
+            return next(
+                (
+                    i
+                    for i, step in enumerate(steps)
+                    if isinstance(step, ToolCallStep) and step.tool == tool
+                ),
+                None,
+            )
+        return None if spec.judge == "latency_under" else output
+
+    # `execute_attempt` judges `expect` in order, skipping consistency (a case-level judge).
+    specs = [spec for spec in case.expect if spec.judge != CONSISTENCY]
+    return [anchor(spec) for spec, _ in zip(specs, result.judgments, strict=False)]
 
 
 class _Retry(Exception):
