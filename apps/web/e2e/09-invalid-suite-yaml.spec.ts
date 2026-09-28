@@ -32,7 +32,7 @@ test("an invalid suite YAML shows validation errors instead of a generic failure
     await suites.pasteYaml("suite: bad\nagent: support-v1\ncases: []");
     await suites.create();
     const issues = await suites.validationIssues();
-    expect(issues.length).toBeGreaterThan(0);
+    expect(issues).toContain("cases: List should have at least 1 item"); // the field and the reason
     await suites.cancel();
   });
 

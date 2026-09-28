@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from statistics import NormalDist, fmean
 from typing import Literal
 
+from pydantic import ConfigDict, computed_field, with_config
+
 Label = Literal["stable-pass", "stable-fail", "flaky"]
 
 DEFAULT_SEED = 0
@@ -21,6 +23,9 @@ class Interval:
     upper: float
 
 
+# Ignores extra keys on load, so its own dumped computed fields (below) read back even inside a
+# model that forbids extras (a saved `RunSummary`).
+@with_config(ConfigDict(extra="ignore"))
 @dataclass(frozen=True)
 class CaseSummary:
     """One case's attempts in one run.
@@ -49,10 +54,14 @@ class CaseSummary:
                 f"non-passing attempts), got {self.errors}"
             )
 
+    # Computed fields so JSON dumps (compare, verdict, export) carry them: no client re-derives
+    # the label rule.
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def pass_rate(self) -> float:
         return self.passes / self.attempts
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def label(self) -> Label:
         """`stable-pass` when every attempt passed, `stable-fail` when none did, `flaky`

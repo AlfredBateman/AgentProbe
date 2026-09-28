@@ -104,8 +104,7 @@ cases:
         parse_suite_yaml(bad)
     issue = next(i for i in exc_info.value.issues if "duplicate case id" in i.message)
     assert issue.path == "cases"
-    assert issue.line is not None
-    assert issue.col is not None
+    assert (issue.line, issue.col) == (5, 3)  # the `cases` list: its first `- id: c1`
 
 
 def test_model_level_violation_locates_its_containing_field() -> None:
@@ -127,7 +126,7 @@ cases:
         parse_suite_yaml(bad)
     issue = next(i for i in exc_info.value.issues if "more than alpha" in i.message)
     assert issue.path == "statistics"
-    assert issue.line is not None  # "statistics" itself still locates fine
+    assert (issue.line, issue.col) == (5, 3)  # the `statistics` mapping: its `alpha:` line
 
 
 def test_locate_returns_none_for_an_unresolvable_path() -> None:

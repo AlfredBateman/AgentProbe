@@ -1,19 +1,15 @@
 import { expect, test } from "vitest";
-import { caseLabel, type RegressionReportDump, verdictSummary } from "./regression";
+import { type RegressionReportDump, verdictSummary } from "./regression";
 
-const summary = (passes: number, attempts: number) => ({
+const summary = (passes: number, attempts: number, label: "stable-pass" | "stable-fail" | "flaky") => ({
   passes,
   attempts,
   errors: 0,
   mean_score: null,
   mean_latency_ms: null,
   cost_usd: null,
-});
-
-test("caseLabel mirrors core's CaseSummary.label", () => {
-  expect(caseLabel(summary(5, 5))).toBe("stable-pass");
-  expect(caseLabel(summary(0, 5))).toBe("stable-fail");
-  expect(caseLabel(summary(3, 5))).toBe("flaky");
+  pass_rate: passes / attempts,
+  label,
 });
 
 function report(overrides: Partial<RegressionReportDump>): RegressionReportDump {
@@ -52,8 +48,8 @@ test("a flagged case names itself, its test and its alpha share", () => {
       cases: [
         {
           case_id: "refund-outside-window",
-          baseline: summary(5, 5),
-          candidate: summary(0, 5),
+          baseline: summary(5, 5, "stable-pass"),
+          candidate: summary(0, 5, "stable-fail"),
           pass_rate_delta: -1,
           p_worse: 0.004,
           p_worse_min: 0.004,

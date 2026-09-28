@@ -166,8 +166,11 @@ async def test_validate_endpoint_locates_schema_violations(sign_up: SignUp) -> N
     assert r.status_code == 200
     [issue] = r.json()["issues"]
     assert issue["path"] == "extra_field"
-    assert issue["line"] is not None
-    assert issue["col"] is not None
+    # The offending key's value, on the line appended after VALID_YAML's own lines.
+    assert (issue["line"], issue["col"]) == (
+        len(VALID_YAML.splitlines()) + 1,
+        len("extra_field: ") + 1,
+    )
 
 
 async def test_get_nonexistent_suite_put_is_404(sign_up: SignUp) -> None:

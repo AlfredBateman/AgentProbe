@@ -22,6 +22,8 @@ _SENSITIVE_VALUE = [
     (re.compile(r"\bap_[A-Za-z0-9_\-]{8,}"), REDACTED),  # API keys
     (re.compile(r"\beyJ[\w-]+\.[\w-]+\.[\w-]+"), REDACTED),  # JWTs
     (re.compile(r"(?i)\b(bearer|basic)\s+[^\s'\",]+"), r"\1 " + REDACTED),
+    # Share-link tokens travel in the path (`GET /shared/{token}`); only their hash is stored.
+    (re.compile(r"(/shared/)[^/?#\s'\"]+"), r"\1" + REDACTED),
     # key=value / "key": "value" pairs whose name looks sensitive
     (
         re.compile(

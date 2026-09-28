@@ -94,6 +94,17 @@ def test_tracebacks_are_scrubbed(output: io.StringIO) -> None:
     assert_clean(output)
 
 
+def test_share_tokens_in_paths_are_scrubbed(output: io.StringIO) -> None:
+    share = "Zm9vYmFyYmF6cXV4" * 3  # token_urlsafe-shaped, matches no other secret pattern
+    log = logging.getLogger("t")
+    log.info("request", extra={"path": f"/shared/{share}", "method": "GET"})
+    log.info("link: https://app.example.com/shared/%s?x=1", share)
+    entries = lines(output)
+    assert entries[0]["path"] == f"/shared/{REDACTED}"
+    assert entries[1]["msg"] == f"link: https://app.example.com/shared/{REDACTED}?x=1"
+    assert share not in output.getvalue()
+
+
 def test_query_string_tokens_are_redacted() -> None:
     assert (
         redact_query(f"token={JWT}&page=2")
