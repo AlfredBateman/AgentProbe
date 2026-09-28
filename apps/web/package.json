@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "e2e": "playwright test",
+    "e2e": "node scripts/reset-e2e-db.mjs && playwright test",
     "gen:theme": "node scripts/gen-theme.mjs",
     "gen:api": "openapi-typescript src/lib/api/openapi.json -o src/lib/api/schema.d.ts"
   },

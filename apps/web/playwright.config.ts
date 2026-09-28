@@ -17,9 +17,11 @@ const DEMO_AGENTS_PORT = 9100;
 
 // e2e tests run against their own dedicated ports and TEST_DATABASE_URL, never the ports or
 // database a developer's own `pnpm dev:api`/`pnpm dev:web` use — reusing those would silently
-// run against the dev database instead. `globalSetup` (migrate + full reset) runs once per
-// `pnpm e2e` invocation, so every run starts from an empty database; SIGNUP_ALLOWED_EMAILS lists
-// exactly the fixed addresses the spec files register (see e2e/fixtures.ts).
+// run against the dev database instead. `scripts/reset-e2e-db.mjs` (migrate + full reset) runs
+// once per `pnpm e2e` invocation, chained with && ahead of `playwright test` itself (not a
+// Playwright globalSetup: see that script for why), so every run starts from an empty database;
+// SIGNUP_ALLOWED_EMAILS lists exactly the fixed addresses the spec files register (see
+// e2e/fixtures.ts).
 const signupAllowedEmails = [E2E_EMAIL, MAIN_FLOW_EMAIL, SSRF_EMAIL, INVALID_YAML_EMAIL, VISUAL_EMAIL].join(",");
 
 // Fake, committed, test-only values (never used for anything real): Fernet needs a valid key
@@ -43,7 +45,6 @@ const apiEnv = {
 
 export default defineConfig({
   testDir: "./e2e",
-  globalSetup: "./e2e/global-setup.ts",
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,
