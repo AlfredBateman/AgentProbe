@@ -159,7 +159,12 @@ async def test_refresh_token_reuse_revokes_every_session(
     assert replay.status_code == 401
     assert "reuse" in replay.json()["error"]["message"]
     assert (await alice.post("/auth/refresh")).status_code == 401  # rotated token died too
-    active = await db.scalars(select(RefreshToken).where(RefreshToken.revoked_at.is_(None)))
+    alice_id = await db.scalar(select(User.id).where(User.email == "alice@example.com"))
+    active = await db.scalars(
+        select(RefreshToken).where(
+            RefreshToken.user_id == alice_id, RefreshToken.revoked_at.is_(None)
+        )
+    )
     assert list(active) == []
 
 

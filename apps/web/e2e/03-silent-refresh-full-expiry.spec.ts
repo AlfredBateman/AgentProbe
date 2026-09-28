@@ -7,10 +7,11 @@ test.afterAll(() => cleanupE2eAccount());
 test("a fully expired session lands on /login with `next` preserved, and returns there after signing in", async ({
   page,
   context,
+  baseURL,
 }) => {
   const registered = await context.request.post("/api/auth/register", {
     data: { email: E2E_EMAIL, password: E2E_PASSWORD },
-    headers: { origin: "http://localhost:3000" },
+    headers: { origin: baseURL! },
   });
   expect(registered.ok()).toBe(true);
   await context.clearCookies(); // both cookies gone: a fully signed-out browser
