@@ -97,7 +97,7 @@ Gate: `pnpm check` + Playwright screenshots at 1440/810/390, compared against DE
 | # | Task |
 |---|---|
 | E0 | ADR: dashboard adaptations of DESIGN.md (see §4). Base components: pill buttons, cards, inputs, badges. Done 2026-09-28 ([ADR 0028](decisions/0028-dashboard-adaptations.md)), with the app shell and a `/dev/components` showcase. |
-| E1 | Login/register, projects list, `/api/*` rewrite to FastAPI. The rewrite, the typed client, session refresh and route protection are done (2026-09-28, [ADR 0029](decisions/0029-web-api-client-and-session-refresh.md)); the login/register pages and the projects list remain. |
+| E1 | Login/register, projects list, `/api/*` rewrite to FastAPI. Done 2026-09-28: the rewrite, the typed client, session refresh and route protection ([ADR 0029](decisions/0029-web-api-client-and-session-refresh.md)); login/register (with the ADR 0029 silent-refresh fix), the projects list with a create-project dialog, and Settings (API keys, read-only model config via the new `GET /config/llm`). |
 | E2 | Project overview (pass-rate and cost trend charts, latest runs) |
 | E3 | Agents (add/edit, test connection), Suites (YAML editor with validation, case list) |
 | E4 | Run detail (live SSE progress, per-case table, flaky badges, filters) |

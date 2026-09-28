@@ -16,6 +16,7 @@ from agentprobe_api import (
     baselines,
     ci,
     findings,
+    llmconfig,
     projects,
     results,
     runs,
@@ -150,6 +151,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(baselines.router)
     app.include_router(ci.router)
     app.include_router(share.router)
+    app.include_router(llmconfig.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

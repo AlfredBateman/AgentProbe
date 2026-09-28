@@ -529,6 +529,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/config/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Llm Config */
+        get: operations["get_llm_config_config_llm_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -946,6 +963,15 @@ export interface components {
             score: number | null;
             /** Reason */
             reason: string | null;
+        };
+        /** LlmConfigOut */
+        LlmConfigOut: {
+            /** Provider */
+            provider: string;
+            /** Models */
+            models: {
+                [key: string]: string;
+            };
         };
         /** Login */
         Login: {
@@ -2552,6 +2578,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_config_config_llm_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConfigOut"];
                 };
             };
         };

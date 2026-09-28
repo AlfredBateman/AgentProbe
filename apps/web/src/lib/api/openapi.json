@@ -1675,6 +1675,27 @@
         }
       }
     },
+    "/config/llm": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Get Llm Config",
+        "operationId": "get_llm_config_config_llm_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmConfigOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -2757,6 +2778,27 @@
           "reason"
         ],
         "title": "JudgmentOut"
+      },
+      "LlmConfigOut": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "models": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "models"
+        ],
+        "title": "LlmConfigOut"
       },
       "Login": {
         "properties": {

@@ -89,6 +89,7 @@ Tailwind 4 resolves `max-w-md` from `--spacing-md` before `--container-md`. Emit
 - **Touch targets**: pills are at least 44px tall and tabs 40px; the icon button is 40px, or 44px under `pointer-coarse`, as DESIGN.md specifies.
 - **Actions on a surface-1 container** (a card, a dialog) use the translucent (surface-2) button, not secondary. Secondary is surface-1 and would vanish into it (DESIGN.md: "lift, not color").
 - **Skeletons** are `hairline` (#262626). Surface-2 on a surface-1 card is invisible.
+- **Text inputs get a `hairline` border by default** (E1), not only on `aria-invalid`. DESIGN.md's `text-input` is `surface-1` on `canvas`, which reads fine on the marketing site; the login/register cards and every dialog are themselves `surface-1`, so a borderless `surface-1` input inside one was invisible until focused or invalid. Found from the E1 screenshots (login/register), fixed once in `Input`/`Textarea`/`Select` rather than per page.
 
 ## Consequences
 - DESIGN.md gains the tokens, five `badge-*` component entries and a "Dashboard Adaptations" section. `@google/design.md lint` reports no new findings, and one existing orphaned-token warning is gone.

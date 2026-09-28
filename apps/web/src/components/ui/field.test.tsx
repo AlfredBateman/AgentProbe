@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { expect, test } from "vitest";
-import { Input, Select, Textarea } from "./field";
+import { FieldError, Input, Select, Textarea } from "./field";
 
 test("Input forwards props and ref, and styles the invalid state", () => {
   const ref = createRef<HTMLInputElement>();
@@ -30,4 +30,11 @@ test("Textarea and Select render native controls", () => {
   );
   expect((screen.getByLabelText("YAML") as HTMLTextAreaElement).value).toBe("cases: []");
   expect((screen.getByLabelText("Agent") as HTMLSelectElement).value).toBe("b");
+});
+
+test("FieldError renders the message linked to its id, or nothing at all", () => {
+  const { rerender } = render(<FieldError id="email-error">Enter a valid email address.</FieldError>);
+  expect(screen.getByText("Enter a valid email address.").id).toBe("email-error");
+  rerender(<FieldError id="email-error">{null}</FieldError>);
+  expect(screen.queryByText("Enter a valid email address.")).toBeNull();
 });
