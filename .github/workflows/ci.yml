@@ -77,6 +77,59 @@ jobs:
       # /dev/components is a *.dev.tsx page: it must never reach a production build.
       - run: test ! -e apps/web/.next/server/app/dev
 
+  e2e:
+    # SPEC.md §11's main flow, end to end: its own Postgres service container (never Neon, and
+    # never the other jobs' database), migrated and reset before the run (playwright.config.ts's
+    # globalSetup), with the API (QUEUE_BACKEND=inline, LLM_PROVIDER=mock) and the demo agents
+    # (mock mode, seeded flakiness) started as Playwright webServers alongside a production
+    # `next build`.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agentprobe_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agentprobe_e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Playwright's Chromium (and OS deps only on a cache miss)
+        run: pnpm --filter web exec playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      - run: pnpm --filter web exec playwright install-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+      - run: pnpm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 14
+
   packaging:
     # The CLI as an end user installs it (PyPI wheels), not the uv workspace's editable
     # install: builds agentprobe-core and agentprobe, then checks they install and run in a
