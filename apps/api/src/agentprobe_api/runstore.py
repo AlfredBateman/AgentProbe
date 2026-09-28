@@ -306,10 +306,13 @@ def _judgment_rows(*, run_result_id: uuid.UUID, judgments: list[Any]) -> list[Ju
     ]
 
 
-async def save_attempt(sessions: Sessions, plan: Plan, result: AttemptResult) -> int | None:
+async def save_attempt(
+    sessions: Sessions, plan: Plan, result: AttemptResult
+) -> tuple[int, uuid.UUID] | None:
     """Saves one attempt with its trace and judgments, but only while the run is running:
     late results of a cancelled or failed run are dropped. Idempotent on (run, case,
-    attempt). Returns the run's `attempts_done` after this one, or None if nothing was saved.
+    attempt). Returns the run's `attempts_done` after this one and the new row's id, or None
+    if nothing was saved.
     """
     async with sessions() as session:
         # The row lock orders this against cancel/fail and the other attempts' counter.
@@ -344,7 +347,7 @@ async def save_attempt(sessions: Sessions, plan: Plan, result: AttemptResult) ->
             .returning(Run.attempts_done)
         )
         await session.commit()
-    return done
+    return None if done is None else (done, result_id)
 
 
 async def insert_results(

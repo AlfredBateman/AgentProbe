@@ -19,6 +19,7 @@ from agentprobe_core.adapters.types import (
     MessageStep,
     TokenUsage,
     ToolCallStep,
+    ToolResultStep,
 )
 from agentprobe_core.judges.registry import REGISTRY
 from agentprobe_core.llm.config import Price
@@ -32,6 +33,7 @@ from agentprobe_core.runner import (
     execute_attempt,
     execute_with_retries,
     finalize_run,
+    judgment_steps,
     plan_attempts,
     run_suite,
 )
@@ -138,6 +140,52 @@ async def test_attempt_captures_the_full_trace_and_accounting() -> None:
     assert result.tokens == 1500
     assert result.cost_usd == pytest.approx((1000 * 1.0 + 500 * 4.0) / 1e6)
     assert result.error is None
+
+
+async def test_judgment_steps_point_each_verdict_at_the_step_it_concerns() -> None:
+    subject = case(
+        expect=[
+            {"judge": "not_contains", "values": ["secret"]},
+            {"judge": "consistency"},  # case-level: no attempt verdict
+            {"judge": "tool_called", "tool": "lookup"},
+            {"judge": "tool_not_called", "tool": "delete"},
+            {"judge": "latency_under", "ms": 1000},
+            {"judge": "max_length", "max_chars": 100},
+        ]
+    )
+    result = await execute_attempt(subject, FakeAdapter([ok()]))
+    # ok(): [user message, lookup call, assistant message]
+    assert [j.judge for j in result.judgments] == [
+        "not_contains",
+        "tool_called",
+        "tool_not_called",
+        "latency_under",
+        "max_length",
+    ]
+    assert judgment_steps(subject, result) == [2, 1, None, None, 2]
+
+
+def test_judgment_steps_anchor_output_judges_on_a_tool_result_without_a_reply() -> None:
+    subject = case(expect=[{"judge": "contains", "value": "x"}])
+    response = AgentResponse(
+        output="x",
+        steps=[ToolCallStep(tool="t"), ToolResultStep(tool="t", result="x")],
+        latency_ms=1.0,
+    )
+    result = AttemptResult.model_validate(
+        {
+            "case_id": "c",
+            "attempt": 0,
+            "input": "",
+            "status": "passed",
+            "response": response,
+            "judgments": [{"judge": "contains", "status": "pass", "score": 1.0, "reason": ""}],
+            "started_at": "2026-01-01T00:00:00Z",
+            "duration_ms": 1.0,
+        }
+    )
+    assert judgment_steps(subject, result) == [1]
+    assert judgment_steps(subject, result.model_copy(update={"response": None})) == [None]
 
 
 async def test_attempt_passes_when_every_judge_passes() -> None:

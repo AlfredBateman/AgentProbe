@@ -54,3 +54,33 @@ test("empty rows show the empty slot", () => {
   render(<DataTable caption="Cases" columns={columns} rows={[]} rowKey={(r) => r.id} empty={<p>No runs yet</p>} />);
   expect(screen.getByText("No runs yet")).toBeTruthy();
 });
+
+test("an expandable row toggles its detail, which survives a re-sort", () => {
+  render(
+    <DataTable
+      caption="Cases"
+      columns={columns}
+      rows={rows}
+      rowKey={(r) => r.id}
+      expand={(r) => <p>detail of {r.name}</p>}
+      expandLabel={(r) => `attempts of ${r.name}`}
+    />,
+  );
+  expect(screen.queryByText(/detail of/)).toBeNull();
+  const toggle = screen.getByRole("button", { name: "Show attempts of case-2" });
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(toggle.getAttribute("aria-label")).toBe("Hide attempts of case-2");
+  const detail = screen.getByText("detail of case-2");
+  expect(detail.closest("tr")!.id).toBe(toggle.getAttribute("aria-controls"));
+  expect(detail.closest("td")!.getAttribute("colspan")).toBe("4"); // three columns + the toggle
+
+  fireEvent.click(screen.getByRole("button", { name: /Case/ }));
+  const rowTexts = screen.getAllByRole("row").slice(1).map((r) => r.textContent);
+  expect(rowTexts.indexOf("detail of case-2")).toBe(rowTexts.findIndex((t) => t?.startsWith("case-2")) + 1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Hide attempts of case-2" }));
+  expect(screen.queryByText(/detail of/)).toBeNull();
+});

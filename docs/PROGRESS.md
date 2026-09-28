@@ -11,7 +11,7 @@ A phase is complete only when every task in it is done.
 | B2: server runner and results API | **Complete** (B2.1–B2.6). B2.5's ingest is `POST /ci/report`, not the planned `runs:ingest` ([ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md)). |
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
-| E: dashboard | E0, E1 **complete**. |
+| E: dashboard | E0, E1, E4, E5 **complete**; E2/E3 backend groundwork done (ADR 0030). |
 | F | Not started. |
 
 ## Done
@@ -464,8 +464,46 @@ A phase is complete only when every task in it is done.
   - The suite JSON Schema and attack registry are a committed static export (`scripts/export_suite_schema.py`), with a freshness test.
   - Verification found one wrong expectation: `test_validate_endpoint_locates_syntax_errors` expected line 2 for an unterminated flow sequence, but PyYAML marks where it gave up (line 3, column 1, the end of the stream), as the issue's own message says. The test now asserts the exact position.
 
+- 2026-09-28 **E4 + E5: run detail (live over SSE) and trace viewer** ([ADR 0031](decisions/0031-run-detail-and-trace-viewer.md)):
+  - **API**:
+    - `GET /runs/{id}` returns `RunDetailOut` (suite name, agent, share state).
+    - New `GET /runs/{id}/cases` (persisted case summaries) and `GET /runs/{id}/verdict` (against the baseline of the run's branch, or `main`).
+    - The SSE `attempt` event carries `result_id`, latency, cost and score.
+    - Trace judgments carry the `step` they concern, from the new core `runner.judgment_steps`.
+    - Token-authenticated streams send `Access-Control-Allow-Origin: WEB_ORIGIN`.
+  - **Measured: the `/api` rewrite buffers SSE.** Through Next's rewrite, all events of a 20-attempt run arrived at once when it ended, gzipped. Straight from the API they arrived live, and with `Accept-Encoding: identity` the rewrite streamed too. So the cause is Next's compression, which browsers can't opt out of. The browser now uses ADR 0009 §5's stream token and connects to `NEXT_PUBLIC_API_URL` directly (default `http://localhost:8000` under `next dev`).
+  - **`useRunStream`** manages its own reconnects:
+    - a resync through the API client after every (re)connect and error, merging and never replacing;
+    - backoff of 1, 2, 4 and 8 s;
+    - a watchdog: no snapshot in 10 s, or 45 s of silence, counts as a failed connection;
+    - polling every 3 s after three failed connections.
+
+    A refresh mid-run is just a first connection.
+  - **Run page** (`/projects/{id}/runs/{runId}`):
+    - Live panel: `<progress>` meter, counters, elapsed, ETA, cost so far, connection state and a cancel dialog.
+    - KPI tiles: pass rate with its CI as the lead figure, verdict vs baseline, cost and judging, tokens, model. Branch, commit and the mock/live badge sit in the header.
+    - Case table: search, attempt-status/stability/attack-category filters, sortable columns. Expanding a row loads that case's attempts with every judge's reason and a trace link.
+    - Actions: set as baseline (branch dialog), export JSON/HTML through the API client (so an expired session refreshes), and share links (create with an expiry, a copy button, replace, revoke).
+  - **Trace viewer** (`.../results/{resultId}`):
+    - An `<ol>` of native `<details>` steps with type glyphs, per-step offset and duration, and a compact/expanded toggle (traces over 30 steps start compact).
+    - Verdicts sit beside their step at 1199px and up, below it otherwise. Rule and LLM verdicts differ by solid vs dashed border plus a text label. Unanchored verdicts go under "Whole attempt".
+    - Side-by-side compare with another attempt of the case, or the same case in a recent completed run of the suite (`?compare=` in the URL). Steps align by index; a step whose content differs is lifted and labelled "Differs".
+  - **Untrusted content**: `PlainText` renders text children only and cuts values at 2,000 characters behind "Show full". `no-raw-html.test.ts` fails the build on `dangerouslySetInnerHTML`, `innerHTML`, `insertAdjacentHTML` or a markdown renderer anywhere in `src`.
+  - **Virtualization** is `content-visibility: auto` per step (user decision). Measured on a 2,000-step trace pushed through `/ci/report`: 47-61 fps while scrolling in both modes, with all 2,001 steps in the DOM, and 275 ms to switch every step to expanded.
+  - **Public `/shared/{token}` page**, so a copied share link opens something: pass rate, cases, and attempts with outputs and judge reasons; no traces or agent config.
+  - `DataTable` gains expandable rows. The detail is pinned to the visible width (`@container` plus `100cqw`), so it doesn't scroll sideways with a wide table. Cells are now 10px inset, on DESIGN.md's 5px rhythm; at 12px the case table overflowed its card at exactly 810px, which ADR 0028 §8 only allows below 810.
+  - **Screenshots** at 1440, 810 and 390, saved to `docs/screenshots/`: `run-live-*`, `run-detail-*`, `trace-*`, `trace-compare-*`, `trace-vulnerable-*`, `shared-*` and `trace-long-1440`. None scrolls the page horizontally, and there were no console errors. Fixed from the screenshots: the 810 table overflow, the trace title set in mono instead of the Geist page-title tier, a "+0 ms" offset on every step (HTTP traces stamp every step with the request start), "1 cases", and the breadcrumb naming a runs list that doesn't exist yet.
+  - **Tests**:
+    - Vitest: `use-run-stream.test.ts` (a fake EventSource and fake timers: live, drop and reconnect, buffering proxy to polling, idle watchdog, ended at connect, per-connection URL), `stream.test.ts`, `run-cases.test.ts`, the timeline test (XSS payload in every untrusted field, anchoring, rule vs LLM, compact, truncation, diff), DataTable expansion and the no-raw-HTML guard. Mutating the hook's backoff and snapshot resync fails three of its tests.
+    - Core: `judgment_steps` through a real `execute_attempt`.
+    - API integration: case summaries vs results, trace anchors, the verdict (baseline itself, `main` default, other branch 404, equal to `/runs/compare`), share state, enriched SSE events matching the result rows, stream CORS only on the token path, IDOR probes for `/cases` and `/verdict`.
+    - Playwright `e2e/04-run-detail-and-trace.spec.ts`: a live `/support/v1` run followed over the direct stream (CORS header checked) to a Flaky badge, then a `/vulnerable` api-key-leak trace where the step holding `AP-CANARY-APIKEY...` carries the failing `not_contains` Rule verdict, with keyboard toggling. Playwright starts its own demo agents on :9100 with `FLAKY_RATE=0.5`, so the flaky case is flaky in all but about 0.2% of runs.
+  - `scripts/cleanup_e2e_account.py` now cancels the account's live runs before deleting it; deleting under a still-saving run deadlocked (found when a spec failed mid-run).
+  - `pnpm verify` is green: 1,018 unit and integration tests, 143 web tests, coverage core 97% and api 92%. `next build` passes, and all four Playwright specs pass against the dev servers.
+
 ## Next
-- **E2**: project overview (pass-rate and cost trend charts, latest runs).
+- **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
+- **E3**: agents and suites pages, on ADR 0030's endpoints.
 - **Live detection run** (user decision on when, and on the three predicted misses in ADR 0022 §Consequences): at the default 3 runs per case the v2 regression can't reach significance, and in llm mode the demo agents report no tool calls and the RAG route ignores `context`, so `unauthorized-delete` and `rag-indirect-injection` can't be caught as the agents stand. Changing the demo agents or the run count is the user's decision, not a tuning step to take unasked.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
@@ -479,6 +517,7 @@ A phase is complete only when every task in it is done.
 - Web client: openapi-fetch over generated types, single-flight refresh (in-tab promise, cross-tab Web Lock, `/auth/me` probe), cookie-presence route protection in `proxy.ts` ([ADR 0029](decisions/0029-web-api-client-and-session-refresh.md); user decision: add `GET /auth/me`).
 - E1: registering redirects straight to the destination rather than to `/login`, since `POST /auth/register` already starts a session; `/login`'s own silent refresh (ADR 0029) is for arriving at a protected link with a dead access cookie, not for post-registration. `next` is validated by an allowlist regex (`lib/safe-next.ts`), not a denylist, so an unanticipated bypass falls back to `/projects` instead of forwarding it. The model/provider view added a new endpoint, `GET /config/llm` (session-only, no project scoping — it's server-wide config, not a secret), rather than hardcoding roles in the UI (SPEC.md §10). Input/Textarea/Select gained a default hairline border (ADR 0028 §8 amended) after E1's screenshots showed them invisible on `surface-1` cards and dialogs.
 - Trace timeline: plain HTML/CSS, no React Flow ([ADR 0005](decisions/0005-trace-timeline-no-react-flow.md)).
+- Run detail and trace viewer ([ADR 0031](decisions/0031-run-detail-and-trace-viewer.md)): the browser opens a run's SSE stream on the API with a stream token, because the `/api` rewrite gzips and so buffers it (measured); the page owns the state and resyncs on every (re)connect; judgments are anchored to steps by core's `judgment_steps`; `/runs/{id}/verdict` compares against the run's branch baseline, `main` for a run without a branch; long step lists use `content-visibility`, not windowing (user decision); rule vs LLM verdicts differ by border style plus label.
 - Regression statistics: Fisher exact (one-sided) + Holm (per case), paired sign-flip permutation (suite), case-level bootstrap CI; α=0.05, min_drop=0.05, all configurable via suite YAML and CLI flags ([ADR 0006](decisions/0006-statistics-methodology.md)). The per-case correction was later amended to Tarone–Holm (user decision, ADR 0014).
 - Hosting for the API/worker (Q2) is deliberately deferred to Phase F4; the only binding constraint now is that the worker stays behind the `QueueBackend` interface with `inline` as the local default.
 - `packages/core` must contain exactly one run-execution implementation (`execute_attempt` / `finalize_run` / `run_suite`), shared by the CLI's local run and the server runner — no duplicate run loops (Q6 requirement, tracked at B1.7).
@@ -543,8 +582,11 @@ A phase is complete only when every task in it is done.
 - `LLM_CACHE=1` is the recommended setting for live/dev runs (`.env.example`, docs/metrics.md). `scripts/measure_detection.py` forces it off for itself, because cached replays would erase the run-to-run variance it measures. Non-`live` tests clear it (user decision 2026-09-27, ADR 0022 amended).
 
 ## Known issues
+- `uvicorn --reload` on Windows can detect a change and never restart its worker while a run's SSE stream is open: the old code keeps serving with no second "Application startup complete" in the log (seen twice on 2026-09-28, including a peer session's API left from the morning). Restart `pnpm dev:api` after API changes if a new route 404s.
+- Deploys need `NEXT_PUBLIC_API_URL` (web, build time) and `WEB_ORIGIN` (API) for live run progress; without them the run page polls every 3 s (ADR 0031).
+- The local `.env`'s `PUBLIC_WEB_URL` points at `https://agentprobe.example.com`, so share links created locally carry that host. The dialog falls back to the page's own origin only when the API returns no URL.
 - Background `next dev`/`uvicorn` processes on Windows can outlive a stopped parent `pnpm` process and keep their port held. Check with `Get-NetTCPConnection -LocalPort 3000` (web) or `-LocalPort 8000` (API) before assuming a dev server is stale or absent; a session in this repo has hit a leftover `uvicorn` from a previous day still answering on :8000 with routes from before that session's changes.
-- `apps/web/e2e/` needs both dev servers up (`pnpm dev:api`, `pnpm dev:web`) against the dev DB, and only one address (`you@example.com`, from `SIGNUP_ALLOWED_EMAILS`) is allowed to register there, so specs run serially and each deletes that account in `afterAll` via `scripts/cleanup_e2e_account.py`. Not wired into `pnpm verify` or CI; run with `cd apps/web && npx playwright test`.
+- `apps/web/e2e/` needs both dev servers up (`pnpm dev:api` with `ALLOW_PRIVATE_TARGETS=1`, `pnpm dev:web`) against the dev DB (Playwright starts its own demo agents on :9100), and only one address (`you@example.com`, from `SIGNUP_ALLOWED_EMAILS`) is allowed to register there, so specs run serially and each deletes that account in `afterAll` via `scripts/cleanup_e2e_account.py`. Not wired into `pnpm verify` or CI; run with `cd apps/web && npx playwright test`.
 - Playwright's `page.waitForURL()` defaults to `waitUntil: "load"`, which never resolves after a client-side (History API) route change like `router.replace()` — a real navigation event never fires. Use `await expect(page).toHaveURL(...)` for those; `waitForURL` is still correct after a real (proxy-issued) redirect.
 - Statistics power (ADR 0014 §Power), all measured after the `alpha` split:
   - At 3 runs per case a single broken case can never be flagged: its smallest possible p (1/20) is above the default per-case budget of 0.025, so detection is 0.5%. **Use 5 or more runs**; the CLI's `--help` and [docs/metrics.md](metrics.md) say so.
@@ -562,7 +604,7 @@ A phase is complete only when every task in it is done.
 - `JWT_TTL_MINUTES` now defaults to 15. A local `.env` that still says 60 keeps 60-minute access cookies.
 - `uv` and `gh` are installed but not on PATH in some shells (`%USERPROFILE%\.local\bin`, `C:\Program Files\GitHub CLI`).
 - The pytest run shows a `StarletteDeprecationWarning`: Starlette's TestClient wants `httpx2` instead of `httpx`. Swapping `httpx==0.28.1` for `httpx2` was blocked by a local permission rule this session. Redo it once allowed. The HTTP adapter's SSRF guard swaps httpx's private `transport._pool` (ADR 0012), so rerun `packages/core/tests/adapters` after any httpx change.
-- Local `.env` files from before B1.4 still say `ALLOW_PRIVATE_AGENT_URLS`, which nothing reads. Rename it to `ALLOW_PRIVATE_TARGETS=1` to reach the demo agents on localhost.
+- Local `.env` files from before B1.4 still say `ALLOW_PRIVATE_AGENT_URLS`, which nothing reads. Rename it to `ALLOW_PRIVATE_TARGETS=1` to reach the demo agents on localhost (done in this machine's `.env` on 2026-09-28, user decision).
 - An OpenAI-style agent that omits `tool_calls` when it made none gets an error under the strict mapping rule. Add an explicit "optional" flag to `ResponseMapping` if such an agent needs support (ADR 0012).
 - `next build` downloads Google Fonts (Geist, Geist Mono; Inter is self-hosted), so it needs network access. `pnpm check` doesn't build; CI does.
 - Replacing or clearing an agent's `auth_header` orphans the old `secrets` row instead of deleting it (`ponytail:` comment in `agents.py`). Harmless (it's ciphertext, never returned) but worth a cleanup pass if the table's size ever matters.

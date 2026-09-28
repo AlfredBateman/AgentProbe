@@ -15,11 +15,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/api/src"))
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from agentprobe_api.db import make_engine
-from agentprobe_api.models import User
+from agentprobe_api.models import Project, Run, Suite, User
 
 EMAIL = os.environ.get("E2E_EMAIL", "you@example.com")
 
@@ -37,6 +37,15 @@ async def main() -> None:
             if user is None:
                 print(f"no user {EMAIL!r} found")
                 return
+            # A spec can end mid-run. Cancelling first makes the runner drop its remaining saves
+            # (they check the run's status under its row lock); deleting under them deadlocks.
+            owned = select(Suite.id).join(Project).where(Project.user_id == user.id)
+            await db.execute(
+                update(Run)
+                .where(Run.suite_id.in_(owned), Run.status.in_(("queued", "running")))
+                .values(status="cancelled", finished_at=func.now())
+            )
+            await db.commit()
             await db.execute(delete(User).where(User.id == user.id))
             await db.commit()
             print(f"deleted e2e test user {EMAIL!r} ({user.id})")

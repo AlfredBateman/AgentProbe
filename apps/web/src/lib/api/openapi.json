@@ -1100,6 +1100,54 @@
         }
       }
     },
+    "/runs/{run_id}/cases": {
+      "get": {
+        "tags": [
+          "results"
+        ],
+        "summary": "List Cases",
+        "description": "Per-case summaries (label, pass counts, consistency, latency, cost). Written when the\nrun is summarized, so empty while it is still running.",
+        "operationId": "list_cases_runs__run_id__cases_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CaseSummaryOut"
+                  },
+                  "title": "Response List Cases Runs  Run Id  Cases Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/runs/compare": {
       "get": {
         "tags": [
@@ -1318,7 +1366,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunOut"
+                  "$ref": "#/components/schemas/RunDetailOut"
                 }
               }
             }
@@ -1714,6 +1762,50 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BaselineOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/verdict": {
+      "get": {
+        "tags": [
+          "baselines"
+        ],
+        "summary": "Run Verdict",
+        "description": "This run against the baseline of its suite and agent on its branch (`main` for a run\nwithout one). 404 when no baseline is set there.",
+        "operationId": "run_verdict_runs__run_id__verdict_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunVerdictOut"
                 }
               }
             }
@@ -2607,6 +2699,104 @@
         ],
         "title": "BaselineOut"
       },
+      "CaseSummaryOut": {
+        "properties": {
+          "case": {
+            "type": "string",
+            "title": "Case"
+          },
+          "attack_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attack Category"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "passes": {
+            "type": "integer",
+            "title": "Passes"
+          },
+          "errors": {
+            "type": "integer",
+            "title": "Errors"
+          },
+          "pass_rate": {
+            "type": "number",
+            "title": "Pass Rate"
+          },
+          "mean_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Score"
+          },
+          "consistency_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consistency Score"
+          },
+          "mean_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Latency Ms"
+          },
+          "total_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Cost"
+          }
+        },
+        "type": "object",
+        "required": [
+          "case",
+          "attack_category",
+          "label",
+          "attempts",
+          "passes",
+          "errors",
+          "pass_rate",
+          "mean_score",
+          "consistency_score",
+          "mean_latency_ms",
+          "total_cost"
+        ],
+        "title": "CaseSummaryOut"
+      },
       "CiReportIn": {
         "properties": {
           "suite": {
@@ -3488,6 +3678,274 @@
         ],
         "title": "ResultOut"
       },
+      "RunDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "suite_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Suite Id"
+          },
+          "suite_version": {
+            "type": "integer",
+            "title": "Suite Version"
+          },
+          "agent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "git_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Sha"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "pr_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Number"
+          },
+          "runs_per_case": {
+            "type": "integer",
+            "title": "Runs Per Case"
+          },
+          "mock_mode": {
+            "type": "boolean",
+            "title": "Mock Mode"
+          },
+          "attempts_total": {
+            "type": "integer",
+            "title": "Attempts Total"
+          },
+          "attempts_done": {
+            "type": "integer",
+            "title": "Attempts Done"
+          },
+          "pass_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Rate"
+          },
+          "ci_lower": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Lower"
+          },
+          "ci_upper": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Upper"
+          },
+          "total_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Tokens"
+          },
+          "total_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Cost"
+          },
+          "judge_cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge Cost Usd"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "suite_name": {
+            "type": "string",
+            "title": "Suite Name"
+          },
+          "agent": {
+            "type": "string",
+            "title": "Agent"
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared"
+          },
+          "share_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "suite_id",
+          "suite_version",
+          "agent_id",
+          "agent_name",
+          "status",
+          "model",
+          "git_sha",
+          "branch",
+          "pr_number",
+          "runs_per_case",
+          "mock_mode",
+          "attempts_total",
+          "attempts_done",
+          "pass_rate",
+          "ci_lower",
+          "ci_upper",
+          "total_tokens",
+          "total_cost",
+          "judge_cost_usd",
+          "error",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "suite_name",
+          "agent",
+          "shared",
+          "share_expires_at"
+        ],
+        "title": "RunDetailOut",
+        "description": "A run for its own page: the suite's name, the agent's name as the run recorded it, and\nwhether a share link is live (the link's token is only ever returned when it's created)."
+      },
       "RunIn": {
         "properties": {
           "runs_per_case": {
@@ -3975,6 +4433,44 @@
           "finished_at"
         ],
         "title": "RunOut"
+      },
+      "RunVerdictOut": {
+        "properties": {
+          "branch": {
+            "type": "string",
+            "title": "Branch"
+          },
+          "baseline_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Baseline Run Id"
+          },
+          "is_baseline": {
+            "type": "boolean",
+            "title": "Is Baseline"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report"
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch",
+          "baseline_run_id",
+          "is_baseline",
+          "report"
+        ],
+        "title": "RunVerdictOut",
+        "description": "A run against its baseline: `report` is core's `RegressionReport`, None when the run\nis the baseline itself or hasn't completed yet."
       },
       "ShareIn": {
         "properties": {
@@ -4625,8 +5121,67 @@
         ],
         "title": "TopFindingOut"
       },
+      "TraceJudgmentOut": {
+        "properties": {
+          "judge": {
+            "type": "string",
+            "title": "Judge"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          }
+        },
+        "type": "object",
+        "required": [
+          "judge",
+          "status",
+          "score",
+          "reason",
+          "step"
+        ],
+        "title": "TraceJudgmentOut"
+      },
       "TraceOut": {
         "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
           "case": {
             "type": "string",
             "title": "Case"
@@ -4737,7 +5292,7 @@
           },
           "judgments": {
             "items": {
-              "$ref": "#/components/schemas/JudgmentOut"
+              "$ref": "#/components/schemas/TraceJudgmentOut"
             },
             "type": "array",
             "title": "Judgments"
@@ -4745,6 +5300,7 @@
         },
         "type": "object",
         "required": [
+          "run_id",
           "case",
           "attempt",
           "status",

@@ -146,6 +146,48 @@ async def test_trace_returns_the_full_attempt(sign_up: SignUp, app: FastAPI, dem
     assert body["steps"]  # the full trace, unlike the results listing
     tool_calls = [s for s in body["steps"] if s["type"] == "tool_call"]
     assert any(s["tool"] == "lookup_order" for s in tool_calls)
+    assert body["run_id"] == done["id"]
+    # Each verdict points at the step it concerns: `contains` at the reply it read,
+    # `tool_args_match` at the call it matched.
+    steps = body["steps"]
+    anchored = {j["judge"]: j["step"] for j in body["judgments"]}
+    assert set(anchored) == {"contains", "tool_args_match"}
+    reply = steps[anchored["contains"]]
+    assert (reply["type"], reply["role"], reply["content"]) == (
+        "message",
+        "assistant",
+        body["output"],
+    )
+    call = steps[anchored["tool_args_match"]]
+    assert (call["type"], call["tool"]) == ("tool_call", "lookup_order")
+
+
+async def test_cases_summarize_each_case_once_the_run_ends(
+    sign_up: SignUp, app: FastAPI, demo_url: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, f"{demo_url}/support/v1/chat")  # runtest.SMALL_YAML
+    run = await start_run(alice, ids["suite_id"])
+    done = await wait_for_run(alice, app, run["id"])
+    assert (done["suite_name"], done["agent"], done["shared"]) == ("small", "support-v1", False)
+
+    cases = await alice.get(f"/runs/{done['id']}/cases")
+    assert cases.status_code == 200, cases.text
+    by_case = {c["case"]: c for c in cases.json()}
+    results = (await alice.get(f"/runs/{done['id']}/results")).json()
+    assert set(by_case) == {"greeting", "refund-outside-window"}
+    for key, case in by_case.items():
+        rows = [r for r in results if r["case"] == key]
+        assert case["attempts"] == len(rows) == 2
+        assert case["passes"] == sum(r["status"] == "passed" for r in rows)
+        assert case["label"] == rows[0]["label"]
+        assert case["mean_score"] == pytest.approx(sum(r["score"] for r in rows) / 2)
+        assert case["mean_latency_ms"] == pytest.approx(
+            sum(r["latency_ms"] for r in rows) / 2, abs=1
+        )
+    # Only refund-outside-window has a consistency judge.
+    assert by_case["greeting"]["consistency_score"] is None
+    assert 0 <= by_case["refund-outside-window"]["consistency_score"] <= 1
 
 
 async def test_trace_404s_for_an_unknown_result(sign_up: SignUp) -> None:

@@ -77,9 +77,10 @@ async def record_attempt(deps: Deps, plan: Plan, result: AttemptResult) -> Outco
     `failed`: this attempt's infrastructure error failed the run. `dropped`: already saved,
     or the run isn't running any more.
     """
-    done = await runstore.save_attempt(deps.sessions, plan, result)
-    if done is None:
+    saved = await runstore.save_attempt(deps.sessions, plan, result)
+    if saved is None:
         return "dropped"
+    done, result_id = saved
     await deps.bus.publish(
         plan.run_id,
         {
@@ -87,6 +88,10 @@ async def record_attempt(deps: Deps, plan: Plan, result: AttemptResult) -> Outco
             "case": result.case_id,
             "attempt": result.attempt,
             "status": result.status,
+            "result_id": str(result_id),
+            "latency_ms": result.latency_ms,
+            "cost_usd": result.cost_usd,
+            "score": result.score,
             "done": done,
             "total": plan.attempts_total,
         },

@@ -5,21 +5,25 @@ bad PR run can't silently become the new baseline.
 """
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentprobe_api import runstore
 from agentprobe_api.auth import CurrentPrincipal, Db
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Baseline, Run, Suite
 from agentprobe_api.projects import owned_project
 from agentprobe_api.runs import RunOut, owned_run
+from agentprobe_core.stats import RegressionReport, compare_runs
 
 router = APIRouter(tags=["baselines"])
 KEY = "uq_baselines_project_id_suite_id_branch_agent_id_agent_name"
+DEFAULT_BRANCH = "main"  # for runs started without a branch (the dashboard's), ADR 0031
 
 
 class BaselineIn(BaseModel):
@@ -35,6 +39,17 @@ class BaselineOut(BaseModel):
     agent_name: str | None
     run_id: uuid.UUID
     run: RunOut
+
+
+class RunVerdictOut(BaseModel):
+    """A run against its baseline: `report` is core's `RegressionReport`, None when the run
+    is the baseline itself or hasn't completed yet.
+    """
+
+    branch: str
+    baseline_run_id: uuid.UUID
+    is_baseline: bool
+    report: dict[str, Any] | None
 
 
 def _out(branch: str, run: Run) -> BaselineOut:
@@ -125,3 +140,40 @@ async def get_baseline(
     if row is None:
         raise ApiError(404, f"no baseline set for suite {suite!r} on branch {branch!r}")
     return _out(row[0].branch, row[1])
+
+
+@router.get("/runs/{run_id}/verdict")
+async def run_verdict(run_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -> RunVerdictOut:
+    """This run against the baseline of its suite and agent on its branch (`main` for a run
+    without one). 404 when no baseline is set there.
+    """
+    run = await owned_run(db, principal, run_id)
+    project_id = (
+        await db.execute(select(Suite.project_id).where(Suite.id == run.suite_id))
+    ).scalar_one()
+    branch = run.branch or DEFAULT_BRANCH
+    baseline = await find_baseline(
+        db,
+        project_id,
+        suite_id=run.suite_id,
+        branch=branch,
+        agent_id=run.agent_id,
+        agent_name=run.agent_name,
+    )
+    if baseline is None:
+        raise ApiError(404, f"no baseline set for this suite and agent on branch {branch!r}")
+    out = RunVerdictOut(
+        branch=branch, baseline_run_id=baseline.run_id, is_baseline=False, report=None
+    )
+    if baseline.run_id == run.id:
+        return out.model_copy(update={"is_baseline": True})
+    if run.status != "completed":
+        return out
+    report = compare_runs(
+        await runstore.read_case_summaries(db, baseline.run_id),
+        await runstore.read_case_summaries(db, run.id),
+        runstore.parsed_suite(run).statistics,
+    )
+    return out.model_copy(
+        update={"report": TypeAdapter(RegressionReport).dump_python(report, mode="json")}
+    )

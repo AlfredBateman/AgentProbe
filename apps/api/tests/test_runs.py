@@ -197,7 +197,13 @@ async def test_sse_streams_progress_to_completion(
     attempts = [e for e in events if e["type"] == "attempt"]
     assert len(attempts) == 4
     assert sorted(e["done"] for e in attempts) == [1, 2, 3, 4]
-    assert all(set(e) == {"type", "case", "attempt", "status", "done", "total"} for e in attempts)
+    fields = {"type", "case", "attempt", "status", "result_id", "latency_ms", "cost_usd", "score"}
+    assert all(set(e) == fields | {"done", "total"} for e in attempts)
+    results = (await alice.get(f"/runs/{run_id}/results")).json()
+    assert {
+        e["result_id"]: (e["case"], e["attempt"], e["status"], e["score"]) for e in attempts
+    } == {r["id"]: (r["case"], r["attempt"], r["status"], r["score"]) for r in results}
+    assert all(e["latency_ms"] > 0 for e in attempts)
     assert [e["status"] for e in events if e["type"] == "status"] == ["running", "completed"]
 
 
@@ -222,6 +228,12 @@ async def test_stream_token_fallback(
     assert parse_sse(ok.text) == [
         {**parse_sse(ok.text)[0], "type": "snapshot", "status": "cancelled"}
     ]
+    # The browser reads it cross-origin: allowed for the web origin only, never with cookies.
+    assert ok.headers["access-control-allow-origin"] == app.state.settings.web_origin
+    assert "access-control-allow-credentials" not in ok.headers
+    own = await alice.get(f"/runs/{first}/stream")  # same-origin, by session: no CORS at all
+    assert own.status_code == 200
+    assert "access-control-allow-origin" not in own.headers
 
     assert (
         await anonymous.get(f"/runs/{other}/stream", params={"token": token})
@@ -344,7 +356,8 @@ async def test_a_crashed_run_resumes_without_redoing_saved_attempts(
     for n in (0, 1):
         result = await execute_attempt(plan.case("greeting"), adapter, attempt=n)
         failed = result.model_copy(update={"status": "failed", "score": 0.0})
-        assert await runstore.save_attempt(deps.sessions, plan, failed) == n + 1
+        saved = await runstore.save_attempt(deps.sessions, plan, failed)
+        assert saved is not None and saved[0] == n + 1
     await runstore.close_adapter(adapter)
 
     queue = InlineQueue(deps)

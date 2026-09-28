@@ -9,7 +9,7 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Query, Request, Response
@@ -86,6 +86,17 @@ class RunOut(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+
+
+class RunDetailOut(RunOut):
+    """A run for its own page: the suite's name, the agent's name as the run recorded it, and
+    whether a share link is live (the link's token is only ever returned when it's created).
+    """
+
+    suite_name: str
+    agent: str
+    shared: bool
+    share_expires_at: datetime | None
 
 
 class StreamTokenOut(BaseModel):
@@ -237,8 +248,17 @@ async def list_project_runs(
 
 
 @router.get("/runs/{run_id}")
-async def get_run(run_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -> RunOut:
-    return RunOut.model_validate(await owned_run(db, principal, run_id))
+async def get_run(run_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -> RunDetailOut:
+    run = await owned_run(db, principal, run_id)
+    suite_name = (await db.execute(select(Suite.name).where(Suite.id == run.suite_id))).scalar_one()
+    expired = run.share_expires_at is not None and run.share_expires_at <= datetime.now(UTC)
+    return RunDetailOut(
+        **RunOut.model_validate(run).model_dump(),
+        suite_name=suite_name,
+        agent=str(run.config_snapshot["agent"]["name"]),
+        shared=run.share_token_hash is not None and not expired,
+        share_expires_at=run.share_expires_at,
+    )
 
 
 @router.post("/runs/{run_id}/cancel")
@@ -299,10 +319,14 @@ async def stream_run(
     except BaseException:
         await stack.aclose()
         raise
+    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    if token is not None:
+        # The browser connects here directly, cross-origin, because the web app's /api rewrite
+        # gzips and so buffers an event stream (ADR 0031). Only the web origin may read it; no
+        # credentials are involved, the token is the whole authorization.
+        headers |= {"Access-Control-Allow-Origin": settings.web_origin, "Vary": "Origin"}
     return StreamingResponse(
-        _events(snapshot, subscription, stack),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        _events(snapshot, subscription, stack), media_type="text/event-stream", headers=headers
     )
 
 
