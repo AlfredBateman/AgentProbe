@@ -33,6 +33,6 @@ COPY apps/api/migrations migrations
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER app
 EXPOSE 8000
-HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --start-interval=2s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+# No HEALTHCHECK here: the worker runs this image too and has no HTTP port. docker-compose.yml
+# gives the api service its /health check.
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn agentprobe_api.main:app --host 0.0.0.0 --port 8000"]

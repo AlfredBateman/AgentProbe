@@ -53,6 +53,13 @@ services:
     environment: *api-env
     ports:
       - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 60s
+      start_interval: 2s
+      retries: 3
     depends_on:
       db:
         condition: service_healthy
@@ -60,11 +67,11 @@ services:
         condition: service_healthy
 
   worker:
+    # No healthcheck: it has no port. `up --wait` counts it ready once running, and the smoke
+    # test's run proves it works. (`healthcheck: disable` would make `up --wait` fail instead.)
     image: agentprobe-api:local  # the api service builds it
     command: ["taskiq", "worker", "agentprobe_api.worker:broker"]
     environment: *api-env
-    healthcheck:
-      disable: true  # no HTTP port; the image's own check is the API's
     depends_on:
       api:
         condition: service_healthy  # so migrations have run
