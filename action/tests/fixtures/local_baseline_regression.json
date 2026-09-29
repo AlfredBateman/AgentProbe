@@ -1,0 +1,14 @@
+{
+  "file": ".agentprobe/runs/20260929T121000Z-smoke-1234abcd.json",
+  "exit_code": 2,
+  "run": {
+    "pass_rate": 0.875,
+    "ci": {"lower": 0.74, "upper": 0.96}
+  },
+  "regression": {
+    "verdict": "regression",
+    "newly_failing": ["refund-outside-window"],
+    "newly_flaky": []
+  },
+  "push": null
+}

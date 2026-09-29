@@ -48,7 +48,14 @@ known-first-party = ["adapterfakes", "agentprobe", "cli_agents", "agentprobe_api
 
 [tool.mypy]
 python_version = "3.12"
-files = ["packages/core/src", "packages/cli/src", "apps/api/src", "demo-agents/src"]
+files = [
+    "packages/core/src",
+    "packages/cli/src",
+    "apps/api/src",
+    "demo-agents/src",
+    "action/format_comment.py",
+    "action/post_comment.py",
+]
 check_untyped_defs = true
 warn_unused_ignores = true
 
@@ -62,8 +69,8 @@ strict = true
 concurrency = ["thread", "greenlet"]
 
 [tool.pytest.ini_options]
-testpaths = ["packages", "apps/api", "demo-agents"]
-pythonpath = ["apps/api/tests", "packages/cli/tests", "packages/core/tests/adapters", "packages/core/tests/judges"]  # helpers: apitest, idor, cli_agents, adapterfakes, judgefakes
+testpaths = ["packages", "apps/api", "demo-agents", "action"]
+pythonpath = ["apps/api/tests", "packages/cli/tests", "packages/core/tests/adapters", "packages/core/tests/judges", "action"]  # helpers: apitest, idor, cli_agents, adapterfakes, judgefakes, format_comment
 addopts = "--import-mode=importlib -m 'not integration and not redis and not live'"
 asyncio_mode = "auto"
 # One loop per session so the integration engine (and its warm Neon connection) is shared.
