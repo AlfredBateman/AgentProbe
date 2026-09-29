@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable --package agentprobe-api
 
 FROM ${PYTHON_IMAGE}
-RUN useradd --system --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin app
+RUN useradd --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --from=build /app/.venv .venv
 COPY apps/api/alembic.ini ./

@@ -12,7 +12,7 @@ A phase is complete only when every task in it is done.
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
 | E: dashboard | E0, E1, E4, E5, E6, E7 **complete**; E3 done as a minimal agents/suites slice (below); E2 (project overview charts) not built. |
-| F | F1 (GitHub Action) and F2 (dogfood workflow) **complete**, out of build order (E2/E3 rest not done yet; user decision). F3–F6 not started. |
+| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F5's dependency audit is done (ADR 0034); the rest of F5, and F4 and F6, not started. |
 
 ## Done
 - 2026-09-24 **Bootstrap**:
@@ -573,13 +573,41 @@ A phase is complete only when every task in it is done.
   - `pnpm check` and `pnpm verify` are both green (action: 21 new tests; core 97% / api 92% coverage, both over the 80% gate).
   - The dogfood workflow's first real run on `main` failed 2 of 3 matrix jobs, neither a bug: `smoke.yaml`'s seeded-flaky `order-status` case routinely drops the suite below a blanket `fail-under: 1.0`, and `rag-safety.yaml`'s `rag-indirect-injection` case fails *every* run (confirmed by reproducing locally) because the `rag` demo agent has no retrieved-content filtering at all — a real, permanent, unfixed planted flaw, not flakiness. Fixed at the root cause, not papered over: each matrix entry now sets its own `fail-under` matching that suite's real ceiling (smoke 0.9, rag-safety 0.5, support-agent-safety 1.0), and the baseline-artifact upload is `if: always()` so a baseline still gets recorded on a run whose own check fails (ADR 0032 amendment).
 
+- 2026-09-29 **F3: Docker images, compose stack and CI completion** ([ADR 0033](decisions/0033-docker-images-and-compose.md), [ADR 0034](decisions/0034-dependency-audits.md)):
+  - Images. All are multi-stage, non-root and pinned by tag and digest, and each has an allowlist `Dockerfile.dockerignore`. The build context is the repo root.
+    - `apps/api/Dockerfile`: one image for the API and the worker. It uses a non-editable uv venv, and its default command is `alembic upgrade head && exec uvicorn`. 241 MB.
+    - `demo-agents/Dockerfile`: an editable install, because the prompts are found relative to the source. 169 MB.
+    - `apps/web/Dockerfile`: Next standalone on Node 22 Alpine. `NEXT_OUTPUT=standalone` switches it on, and only this Dockerfile sets it (`next.config.ts`). 207 MB.
+  - `docker-compose.yml` runs pgvector Postgres, Redis, the API, the worker (same image, `taskiq worker`), the web app and the demo agents.
+    - The defaults are the Redis queue, the Redis rate limiter and the mock LLM. It has no `${}` interpolation, so the developer's `.env` never leaks in.
+    - Its dev secrets are committed and so public. Ports bind to 127.0.0.1. Postgres, Redis and the demo agents publish nothing.
+    - Startup order uses health conditions. `api` waits for healthy `db` and `redis`, and `worker` and `web` wait for a healthy `api`, so migrations have run.
+  - CI (`.github/workflows/ci.yml`):
+    - `python` uploads a `coverage-report` artifact (HTML + XML for core and api) ahead of the existing per-package 80% gates. This run: core 97%, api 95%.
+    - New `audit` job: `pip-audit==2.10.1` over `uv export --all-extras --all-groups` (113 packages, 0 skipped), then `pnpm audit`. Both are clean, and any finding fails the job.
+    - New `workflow-lint` job: actionlint 1.7.12, with shellcheck, in its pinned image.
+    - New `docker` job: `docker compose build`, `docker compose up -d --wait`, `python3 scripts/compose_smoke.py`, then `docker compose down -v`, which are the README's commands. On failure it dumps `compose ps -a` and the logs; teardown always runs.
+  - `scripts/compose_smoke.py` (stdlib only):
+    - It checks API and web health, then goes through the web app's `/api` rewrite to register (or log in, on a rerun), create a project, an agent at `http://demo-agents:9000/support/v1/chat` and the smoke suite, and start a run.
+    - It asserts the run is `completed` with a pass rate in [0, 1]. First green run: 45 attempts, pass rate 0.98 (the seeded-flaky `order-status` case).
+    - It's the first time CI runs a real `taskiq worker` process.
+  - README: a new "Run the whole stack with Docker" section, whose commands match the `docker` job step for step.
+  - What CI found on the way (run 36541715958):
+    - `docker compose up --wait` fails on a service whose healthcheck is `disable: true` ("has no healthcheck configured"). Compose falls back to "running" only when the image defines no healthcheck at all. So the API's `/health` check moved from its Dockerfile to the compose `api` service, and the worker has none.
+    - The `e2e` 429 on `11-visual-snapshots`, listed under known issues after run 36537488573, happened again. Root cause: the e2e API ran with the production auth limit (10 per minute per IP, refilling one per 6 s), while the specs make 13 register/login calls from 127.0.0.1 in about 30 s. Whether the last spec's login got through depended on timing. `playwright.config.ts` now sets `AUTH_RATE_LIMIT_PER_MINUTE=1000` for the e2e API. No spec tests the limiter, which keeps its own API tests.
+  - Pipeline: 5m50s wall-clock on run 36542749623, against 5m53s before. The new jobs run in parallel and finish within 1m10s (`docker`: build 44 s uncached, `up --wait` 19 s, smoke 2 s). `python` is still the critical path: service containers 17 s, uncached mypy 31 s, pytest 4m32s, redis tests 17 s.
+    - Inside pytest, `test_family_wise_error.py` alone takes 85 s under coverage tracing, against about 21 s without. The four stats files take about 2 minutes, and `apps/api/tests` 105 s.
+    - Coverage's low-overhead `sysmon` core refuses `concurrency=greenlet`, so it isn't a drop-in fix.
+
 ## Next
+- **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
 - **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
 - **E3 (rest)**: MCP agent config, auth-header UI, suite versioning and a case browser, delete confirmations.
 - **Live detection run** (user decision on when, and on the three predicted misses in ADR 0022 §Consequences): at the default 3 runs per case the v2 regression can't reach significance, and in llm mode the demo agents report no tool calls and the RAG route ignores `context`, so `unauthorized-delete` and `rag-indirect-injection` can't be caught as the agents stand. Changing the demo agents or the run count is the user's decision, not a tuning step to take unasked.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
 ## Decisions
+- Docker and CI completion: three pinned, non-root, multi-stage images (one for the API and the worker); a local-only compose stack with committed dev secrets, 127.0.0.1 ports, no `${}` interpolation, the Redis queue and the mock LLM by default, and migrations on API start; a CI `docker` job that runs the README quick start command for command ([ADR 0033](decisions/0033-docker-images-and-compose.md)). Dependency audits cover every locked package, dev and `live` included, and fail on any finding; findings are fixed, pinned, or accepted in ADR 0034 ([ADR 0034](decisions/0034-dependency-audits.md)).
 - e2e specs that watch a run while it's live hold its agent behind `e2e/gated-agent.ts`, never a wider timeout or a slower agent: on CI a mock-LLM run ends in under 0.5 s (2026-09-29 entry above).
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
 - The user approved PLAN.md §2 items 1–6 and 8 (immutable case rows, ingest/baseline endpoints, same-origin cookie auth, signup allowlist + budget guard, case-level judgments, share links, separate judge cost).
@@ -703,4 +731,9 @@ A phase is complete only when every task in it is done.
 - The `/shared/{token}` public view omits per-attempt trace steps (tool-call arguments, message-by-message detail) by design (ADR 0018); revisit if a real use case needs the full trace in a public link.
 - The dogfood workflow's workflow-artifact baseline (ADR 0032) is throwaway by design: no versioning, GitHub's default 90-day retention, and nothing stops `main`'s last recorded run from itself having been a bad one (there's no server-side baseline gate on it, unlike ADR 0018's `POST /projects/{id}/baseline`). It also has no data until this change's own push-to-main job has run once — the very first PR touching `demo-agents/**`/`suites/**` after this merges will show `no_baseline` in its dogfood comment even though a direct judge failure (not a baseline comparison) can still fail the check via `--fail-under`. Revisit once F4 deploys a server: point the workflow at `api-url`/`api-key` and drop the artifact plumbing.
 - The dogfood matrix posts one PR comment per suite/agent pair (three, currently), not one combined comment, since a composite action step can't easily merge results across parallel matrix jobs (ADR 0032).
-- CI's `e2e` job failed once (2026-09-29, run 36537488573) on `apps/web/e2e/11-visual-snapshots.spec.ts` with `429 rate_limited` from `/auth/login` — plausibly the in-memory per-IP login rate limit (ADR 0009) accumulating across the ~10 login/register-heavy specs that run before it in the same API process. Unconfirmed as a genuine flake (not yet re-run); unrelated to any F1/F2 change (nothing in that commit touched `apps/web`).
+- The Docker images, compose file and smoke script are only verified by CI's `docker` job (Docker can't run on the development machine).
+- The images have no `live` extra (LiteLLM), so server runs in Docker judge with the mock LLM only. F4 adds it (a build arg or a separate target) if the deploy needs live judging (ADR 0033).
+- The web image fixes `API_INTERNAL_URL` (the `/api` rewrite target) and `NEXT_PUBLIC_API_URL` (the browser's SSE origin) at build time. Pointing it at a different API means rebuilding it with `--build-arg`; the runtime environment can't change them.
+- The compose worker has no healthcheck (no port). `up --wait` counts it ready once it's running, and a hung worker would only show up as runs that never finish. ADR 0033 notes a liveness check (its Redis consumer's idle time) for F4.
+- Through the compose web app, the API sees every browser's requests as coming from the web container, so the per-IP auth limit is shared by everyone using that stack. That's fine for one local user; a deploy must set `FORWARDED_ALLOW_IPS` (known issue above, ADR 0009 §9).
+- `pnpm/action-setup@v6` warns about a "pnpm v10 installation layout at PNPM_HOME" in every job that uses it (runner image vs pnpm 11). It's harmless, and it predates F3.
