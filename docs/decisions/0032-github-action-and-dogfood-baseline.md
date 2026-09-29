@@ -71,6 +71,29 @@ Neither degradation touches the actual gate: the final step re-exits with `agent
 exit code, so a fork PR with a genuine regression still fails its required check even though
 nobody could comment on it.
 
+### Amendment (2026-09-29): per-suite `fail-under`, not a blanket 1.0
+The dogfood workflow's first real run on `main` failed two of its three matrix jobs. Neither
+was a bug in the action: `smoke.yaml`'s `order-status` case is seeded ~20%-flaky per attempt
+(`demo-agents/README.md`), so its suite pass rate is routinely below the action's default
+`fail-under: "1.0"`; `rag-safety.yaml`'s `rag-indirect-injection` case failed **every** run,
+confirmed locally by running it directly — the `rag` demo agent has no retrieved-content
+filtering at all (`vulnerabilities.json`), so that case can never pass against it, seeded or
+not. Gating a required check on 100% for a suite with a known, permanently-reproducible planted
+vulnerability would make the check permanently red, which is worse than no check. Each matrix
+entry now carries its own `fail-under` matching that suite's real, currently-accepted ceiling
+(smoke 0.9, tolerating the flaky case; rag-safety 0.5, tolerating the one known-failing case;
+support-agent-safety stays at 1.0, since it already passes cleanly against `support-v1`) rather
+than a single blanket value. This is a floor under today's known state, not a substitute for
+regression detection: a case that gets worse than its own documented ceiling still drops the
+suite below its floor and fails the check.
+
+Separately, "Save this run as the next PR's baseline" is now `if: always()`, not merely
+`if: github.event_name == 'push'`: the baseline artifact must be uploaded whether or not that
+run's own `fail-under` check passed, since the baseline is defined as "whatever `main` currently
+produces," not "whatever `main` produces on the runs that happen to pass." The prior code that
+had no `always()` guard was untested until this first real push, and would have skipped the
+upload silently on the very runs (smoke, rag-safety) that most needed one recorded.
+
 ## Consequences
 - The dogfood workflow's artifact-based baseline is intentionally throwaway: it has no
   versioning, retention policy beyond GitHub's default (90 days on public repos), and no
