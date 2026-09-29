@@ -16,12 +16,14 @@ on:
       - "demo-agents/**"
       - "suites/**"
       - "action/**"
+      - ".github/workflows/agentprobe-dogfood.yml"
   push:
     branches: [main]
     paths:
       - "demo-agents/**"
       - "suites/**"
       - "action/**"
+      - ".github/workflows/agentprobe-dogfood.yml"
   workflow_dispatch: {}
 
 permissions:
