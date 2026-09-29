@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --package agentprobe-demo-agents
 
 FROM ${PYTHON_IMAGE}
-RUN useradd --system --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin app
+RUN useradd --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --from=build /app /app
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
