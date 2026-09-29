@@ -1,0 +1,12 @@
+# The build context is the repo root; send only what demo-agents/Dockerfile copies.
+*
+!pyproject.toml
+!uv.lock
+!packages/core/pyproject.toml
+!packages/core/src
+!packages/cli/pyproject.toml
+!apps/api/pyproject.toml
+!demo-agents/pyproject.toml
+!demo-agents/src
+!demo-agents/prompts
+**/__pycache__

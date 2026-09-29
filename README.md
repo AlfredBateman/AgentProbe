@@ -15,6 +15,21 @@ uv run agentprobe run suites/examples/mcp-safety.yaml --agent mcp-tools         
 
 Every run is saved to `.agentprobe/runs/`. `agentprobe compare <a> <b>` diffs two runs. The exit codes are `0` passed, `1` below `--fail-under` (default 1.0), `2` regression, `3` usage/config error and `4` infrastructure error; `agentprobe --help` lists them. `agentprobe init` scaffolds `agentprobe.yaml` and an example suite for your own agent.
 
+## Run the whole stack with Docker
+
+Needs Docker Engine 25+ with Compose v2, and nothing else: no API keys, no `.env`. `docker-compose.yml` starts Postgres (pgvector), Redis, the API (it migrates the database on start), the worker, the dashboard and the demo agents. The LLM is the offline mock, and runs go through the Redis queue to the worker. CI's `docker` job runs exactly these commands:
+
+```bash
+docker compose build
+docker compose up -d --wait              # returns once every healthcheck passes
+python3 scripts/compose_smoke.py          # registers smoke@example.com, runs suites/examples/smoke.yaml, prints the pass rate
+docker compose down -v                    # stop, and delete the database volume
+```
+
+Before `down`, open http://localhost:3000 (`localhost`, not `127.0.0.1`: the API only accepts that origin) and register as `demo@example.com`. That address and `smoke@example.com` are the only two allowed to sign up. The demo agents are reachable from the stack at `http://demo-agents:9000` (for example `http://demo-agents:9000/support/v1/chat`, with "Allow private targets" checked, which is the default) and aren't published to your machine. The API is also on http://localhost:8000.
+
+The compose file is for local use only. Its secrets are committed, so they're public, and its ports bind to 127.0.0.1.
+
 ## Database
 
 AgentProbe uses Postgres with pgvector. Locally that's Neon branches: one for development (`DATABASE_URL`) and a separate one for integration tests (`TEST_DATABASE_URL`).
