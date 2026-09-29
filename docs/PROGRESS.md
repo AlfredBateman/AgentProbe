@@ -595,8 +595,8 @@ A phase is complete only when every task in it is done.
   - What CI found on the way (run 36541715958):
     - `docker compose up --wait` fails on a service whose healthcheck is `disable: true` ("has no healthcheck configured"). Compose falls back to "running" only when the image defines no healthcheck at all. So the API's `/health` check moved from its Dockerfile to the compose `api` service, and the worker has none.
     - The `e2e` 429 on `11-visual-snapshots`, listed under known issues after run 36537488573, happened again. Root cause: the e2e API ran with the production auth limit (10 per minute per IP, refilling one per 6 s), while the specs make 13 register/login calls from 127.0.0.1 in about 30 s. Whether the last spec's login got through depended on timing. `playwright.config.ts` now sets `AUTH_RATE_LIMIT_PER_MINUTE=1000` for the e2e API. No spec tests the limiter, which keeps its own API tests.
-  - Pipeline: 5m50s wall-clock on run 36542749623, against 5m53s before. The new jobs run in parallel and finish within 1m10s (`docker`: build 44 s uncached, `up --wait` 19 s, smoke 2 s). `python` is still the critical path: service containers 17 s, uncached mypy 31 s, pytest 4m32s, redis tests 17 s.
-    - Inside pytest, `test_family_wise_error.py` alone takes 85 s under coverage tracing, against about 21 s without. The four stats files take about 2 minutes, and `apps/api/tests` 105 s.
+  - Pipeline: 5m50s and 7m19s wall-clock on the two green runs (36542749623, 36544231620), against 5m53s before. The difference is runner noise in the same code. The new jobs run in parallel and finish within 1m10s (`docker`: build 44 s uncached, `up --wait` 19 s, smoke 2 s). `python` is still the critical path: service containers 17 s, uncached mypy 31 s, pytest 4m32s, redis tests 17 s.
+    - Inside pytest, `test_family_wise_error.py` alone takes 85–114 s under coverage tracing, against about 21 s without. The four stats files take 2–2.7 minutes, and `apps/api/tests` 105–131 s.
     - Coverage's low-overhead `sysmon` core refuses `concurrency=greenlet`, so it isn't a drop-in fix.
 
 ## Next
