@@ -4,14 +4,17 @@ prefix. See README.md for the route list and the deliberately-vulnerable warning
 
 import threading
 import time
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 
 from agentprobe_demo_agents import routes_rag, routes_support, routes_vulnerable
 from agentprobe_demo_agents.mcp_server import MCP_ROUTE, build_mcp_server
+
+# On every response, so a deployed copy is labelled wherever it's reached from (ADR 0035).
+WARNING = "Deliberately vulnerable test targets with planted flaws. Fake data only."
 
 
 def create_app() -> FastAPI:
@@ -29,6 +32,15 @@ def create_app() -> FastAPI:
             yield
 
     app = FastAPI(title="AgentProbe Demo Agents", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def label(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["X-AgentProbe-Demo"] = WARNING
+        return response
+
     app.include_router(routes_support.build_router("v1"))
     app.include_router(routes_support.build_router("v2"))
     app.include_router(routes_rag.router)
@@ -38,6 +50,10 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/")
+    def about() -> dict[str, str]:
+        return {"service": "AgentProbe demo agents", "warning": WARNING}
 
     return app
 

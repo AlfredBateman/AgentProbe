@@ -2,6 +2,8 @@
 
 Status: accepted (2026-09-29). Completes PLAN.md F3.
 
+Amended 2026-09-29 by [ADR 0035](0035-production-deploy-on-fly-and-vercel.md): the web image reads `API_INTERNAL_URL` at runtime (compose sets it on the `web` service), so it's no longer a build arg; the API image carries `config/` and builds with LiteLLM when given `--build-arg API_EXTRAS=live` (CI builds that variant too).
+
 ## Context
 F3 ships Dockerfiles and a `docker-compose.yml` so that `docker compose up` runs the whole stack
 with no API keys. The developer can't run Docker locally (PLAN.md §2 #17), so CI is the only

@@ -41,6 +41,16 @@ async def test_memory_bucket_refills_over_time() -> None:
     assert await limiter.acquire("k") is not None
 
 
+async def test_memory_bucket_window_can_be_an_hour() -> None:
+    clock = FakeClock()
+    limiter = MemoryTokenBucket(2, window_s=3600, clock=clock)  # registration: 2 per hour
+    assert [await limiter.acquire("k") is None for _ in range(2)] == [True, True]
+    retry = await limiter.acquire("k")
+    assert retry is not None and 1799 < retry <= 1800  # one token back per 30 minutes
+    clock.now += 1800
+    assert await limiter.acquire("k") is None
+
+
 async def test_memory_bucket_prunes_full_buckets() -> None:
     clock = FakeClock()
     limiter = MemoryTokenBucket(60, clock=clock)

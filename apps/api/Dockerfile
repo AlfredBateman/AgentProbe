@@ -21,8 +21,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY packages/core/src packages/core/src
 COPY apps/api/src apps/api/src
 # Non-editable: the venv is self-contained, so the final image needs no source tree.
+# API_EXTRAS=live adds LiteLLM for live judging (docs/DEPLOY.md); the default image is mock-only.
+ARG API_EXTRAS=""
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable --package agentprobe-api
+    uv sync --locked --no-dev --no-editable --package agentprobe-api \
+        ${API_EXTRAS:+--extra ${API_EXTRAS}}
 
 FROM ${PYTHON_IMAGE}
 RUN useradd --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin app
@@ -30,7 +33,11 @@ WORKDIR /app
 COPY --from=build /app/.venv .venv
 COPY apps/api/alembic.ini ./
 COPY apps/api/migrations migrations
-ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# Model and price config for live judging (read only when LLM_PROVIDER=litellm). The LLM
+# layer's state (daily quota, tokenizer cache) goes to /tmp: the app user can't write /app.
+COPY config config
+ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
+    AGENTPROBE_CONFIG_DIR=/app/config AGENTPROBE_STATE_DIR=/tmp/agentprobe
 USER app
 EXPOSE 8000
 # No HEALTHCHECK here: the worker runs this image too and has no HTTP port. docker-compose.yml

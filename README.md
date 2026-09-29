@@ -30,6 +30,10 @@ Before `down`, open http://localhost:3000 (`localhost`, not `127.0.0.1`: the API
 
 The compose file is for local use only. Its secrets are committed, so they're public, and its ports bind to 127.0.0.1.
 
+## Deploy
+
+The production demo runs on Vercel (web), Fly.io (API and demo agents) and Neon (Postgres). [docs/DEPLOY.md](docs/DEPLOY.md) lists every environment variable per service and the one-time manual steps. After that, every push to `main` that passes CI deploys through `.github/workflows/deploy.yml`.
+
 ## Database
 
 AgentProbe uses Postgres with pgvector. Locally that's Neon branches: one for development (`DATABASE_URL`) and a separate one for integration tests (`TEST_DATABASE_URL`).

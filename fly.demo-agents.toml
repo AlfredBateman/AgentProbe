@@ -1,0 +1,31 @@
+# The bundled demo agents on Fly.io (ADR 0035): DELIBERATELY VULNERABLE test targets with planted
+# flaws and fake data only. Their own app, with no secrets, no database and no public IP: reachable
+# only as <app>.flycast on this organization's private network, from the API. deploy.yml deploys
+# with --no-public-ips; docs/DEPLOY.md allocates the private address once.
+
+app = "agentprobe-demo-agents"
+primary_region = "sin"
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[env]
+  AGENT_MODE = "mock" # rule-based: never an LLM, and no provider key is ever set on this app
+  FLAKY_RATE = "0.2"
+
+[http_service]
+  internal_port = 9000
+  force_https = false # Flycast is plain HTTP inside the private network
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

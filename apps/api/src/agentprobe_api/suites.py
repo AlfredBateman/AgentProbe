@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentprobe_api.auth import CurrentPrincipal, Db, Principal
+from agentprobe_api import limits
+from agentprobe_api.auth import AppSettings, CurrentPrincipal, Db, Principal
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Project, Suite, TestCase
 from agentprobe_api.projects import owned_project
@@ -94,10 +95,11 @@ class SuiteValidateOut(BaseModel):
 
 @router.post("/projects/{project_id}/suites", status_code=201)
 async def create_suite(
-    project_id: uuid.UUID, body: SuiteIn, principal: CurrentPrincipal, db: Db
+    project_id: uuid.UUID, body: SuiteIn, principal: CurrentPrincipal, db: Db, settings: AppSettings
 ) -> SuiteOut:
     project = await owned_project(db, principal, project_id)
     parsed = _parse_or_422(body.yaml)
+    limits.check_cases(settings, len(parsed.cases))
     suite = Suite(project_id=project.id, name=parsed.suite, yaml_source=body.yaml, version=1)
     db.add(suite)
     try:
@@ -161,10 +163,11 @@ async def get_suite(suite_id: uuid.UUID, principal: CurrentPrincipal, db: Db) ->
 
 @router.put("/suites/{suite_id}")
 async def update_suite(
-    suite_id: uuid.UUID, body: SuiteIn, principal: CurrentPrincipal, db: Db
+    suite_id: uuid.UUID, body: SuiteIn, principal: CurrentPrincipal, db: Db, settings: AppSettings
 ) -> SuiteOut:
     suite = await owned_suite(db, principal, suite_id)
     parsed = _parse_or_422(body.yaml)
+    limits.check_cases(settings, len(parsed.cases))
     if body.yaml == suite.yaml_source:  # no-op: nothing changed, no new version
         current_count = await db.scalar(
             select(func.count(TestCase.id)).where(

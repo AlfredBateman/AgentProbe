@@ -45,6 +45,7 @@ const apiEnv = {
   // spec's login got a 429 depending on timing. The limiter has its own API tests; no spec here
   // tests it.
   AUTH_RATE_LIMIT_PER_MINUTE: "1000",
+  REGISTER_RATE_LIMIT_PER_HOUR: "1000", // likewise; and a local run reuses the API across invocations
   LOG_LEVEL: "WARNING",
 };
 

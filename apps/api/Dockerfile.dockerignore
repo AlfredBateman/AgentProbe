@@ -10,4 +10,5 @@
 !apps/api/migrations
 !apps/api/src
 !demo-agents/pyproject.toml
+!config
 **/__pycache__

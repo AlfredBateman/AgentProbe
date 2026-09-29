@@ -4,7 +4,6 @@ with a branch's baseline.
 
 import sys
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -17,43 +16,13 @@ from agentprobe.push import fetch as fetch_run
 from agentprobe.push import payload as push_payload
 from agentprobe_api.main import create_app
 from agentprobe_core.adapters.python import PythonAdapter
-from agentprobe_core.adapters.types import AgentResponse, MessageStep
-from agentprobe_core.runner import AttemptResult, JudgeResult, RunSummary, run_suite
+from agentprobe_core.runner import RunSummary, run_suite
 from agentprobe_core.stats import compare_runs
 from agentprobe_core.suite import parse_suite_yaml
 from apitest import ClientFactory, SignUp, bind_db, client_for, make_settings, signed_up
-from runtest import SMALL_YAML, make_project
+from runtest import SMALL_YAML, attempt, make_project
 
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("demo_env")]
-
-
-def attempt(case_id: str, attempt: int, *, passed: bool, output: str = "ok") -> dict[str, object]:
-    response = AgentResponse(
-        output=output,
-        steps=[MessageStep(role="assistant", content=output)],
-        latency_ms=10.0,
-        tool_calls_reported=True,
-    )
-    result = AttemptResult(
-        case_id=case_id,
-        attempt=attempt,
-        input="hi",
-        status="passed" if passed else "failed",
-        response=response,
-        judgments=[
-            JudgeResult(
-                judge="contains",
-                status="pass" if passed else "fail",
-                score=1.0 if passed else 0.0,
-                reason="ok" if passed else "no match",
-            )
-        ],
-        score=1.0 if passed else 0.0,
-        latency_ms=10.0,
-        started_at=datetime.now(UTC),
-        duration_ms=10.0,
-    )
-    return result.model_dump(mode="json")
 
 
 async def api_key_for(

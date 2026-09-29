@@ -191,7 +191,7 @@ async def test_dns_rebinding_cannot_swap_in_an_internal_address(
     assert lookups == 2  # one lookup per connection: nothing between check and connect
 
 
-# --- the private-target opt-in needs both keys (and the allowlist, if set) --------------------
+# --- the private-target opt-in: the agent's key, plus the allowlist if set, else the flag -------
 
 
 @pytest.mark.parametrize(
@@ -204,6 +204,10 @@ async def test_dns_rebinding_cannot_swap_in_an_internal_address(
         (True, TargetPolicy(allow_private=True, private_allowlist=frozenset({HOST})), True),
         (True, TargetPolicy(allow_private=True, private_allowlist=frozenset({"other"})), False),
         (False, TargetPolicy(allow_private=True, private_allowlist=frozenset({HOST})), False),
+        # An allowlist is the whole server policy: production keeps the flag off (ADR 0035).
+        (True, TargetPolicy(private_allowlist=frozenset({HOST})), True),
+        (True, TargetPolicy(private_allowlist=frozenset({"other"})), False),
+        (False, TargetPolicy(private_allowlist=frozenset({HOST})), False),
     ],
 )
 async def test_private_targets_need_agent_and_server_opt_in(

@@ -26,8 +26,8 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from sqlalchemy import select
 
-from agentprobe_api import findings, runstore
-from agentprobe_api.auth import CurrentApiKey, Db
+from agentprobe_api import findings, limits, runstore
+from agentprobe_api.auth import AppSettings, CurrentApiKey, Db
 from agentprobe_api.baselines import find_baseline
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Run, Suite
@@ -84,11 +84,14 @@ class CiReportOut(BaseModel):
 
 @router.post("/ci/report", status_code=201)
 async def ci_report(
-    body: CiReportIn, principal: CurrentApiKey, db: Db, request: Request
+    body: CiReportIn, principal: CurrentApiKey, db: Db, request: Request, settings: AppSettings
 ) -> CiReportOut:
     if principal.project_id is None:
         raise ApiError(403, "This action requires a project API key, not a user session")
     project = await owned_project(db, principal, principal.project_id)
+    await limits.check_runs(db, settings, principal.user_id)
+    # A non-mock report clusters its failures with the server's live LLM (ADR 0024).
+    await limits.check_live_budget(db, settings, mock=body.mock)
 
     suite = await db.scalar(
         select(Suite).where(Suite.project_id == project.id, Suite.name == body.suite)

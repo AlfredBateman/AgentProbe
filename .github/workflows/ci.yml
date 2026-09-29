@@ -197,3 +197,7 @@ jobs:
         run: docker compose ps -a && docker compose logs --no-color --timestamps
       - if: always()
         run: docker compose down -v
+      # Not part of the quick start: the opt-in live-judging API image (docs/DEPLOY.md) builds
+      # and can import LiteLLM, so enabling it in production isn't the first time it's built.
+      - run: docker build -f apps/api/Dockerfile --build-arg API_EXTRAS=live -t agentprobe-api:live .
+      - run: docker run --rm agentprobe-api:live python -c "import litellm, agentprobe_core.llm.live"

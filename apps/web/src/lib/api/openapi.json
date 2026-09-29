@@ -2017,6 +2017,7 @@
     "/health": {
       "get": {
         "summary": "Health",
+        "description": "Liveness: the process answers. Touches nothing else.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
@@ -2030,6 +2031,23 @@
                   "type": "object",
                   "title": "Response Health Health Get"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Ready",
+        "description": "Readiness: the database answers too. The deploy checks it (docs/DEPLOY.md).",
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           }

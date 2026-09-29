@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentprobe_api import runstore
+from agentprobe_api import limits, runstore
 from agentprobe_api.auth import (
     STREAM_TOKEN_TTL,
     AppSettings,
@@ -150,7 +150,12 @@ async def owned_run(db: AsyncSession, principal: Principal, run_id: uuid.UUID) -
 
 @router.post("/suites/{suite_id}/runs", status_code=202)
 async def start_run(
-    suite_id: uuid.UUID, body: RunIn, principal: CurrentPrincipal, db: Db, request: Request
+    suite_id: uuid.UUID,
+    body: RunIn,
+    principal: CurrentPrincipal,
+    db: Db,
+    request: Request,
+    settings: AppSettings,
 ) -> RunOut:
     suite = await owned_suite(db, principal, suite_id)
     try:
@@ -168,6 +173,8 @@ async def start_run(
         raise ApiError(422, f"The suite's agent {parsed.agent!r} isn't in this project")
     if agent.adapter_type != "http":
         raise ApiError(422, f"{agent.adapter_type} agents can't run on the server yet")
+    await limits.check_runs(db, settings, principal.user_id)
+    await limits.check_live_budget(db, settings, mock=body.mock)
     runs_per_case = body.runs_per_case or parsed.runs_per_case
     attempts = plan_attempts(parsed, runs_per_case)
     run = Run(

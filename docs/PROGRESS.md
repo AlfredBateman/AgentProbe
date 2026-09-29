@@ -12,7 +12,7 @@ A phase is complete only when every task in it is done.
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
 | E: dashboard | E0, E1, E4, E5, E6, E7 **complete**; E3 done as a minimal agents/suites slice (below); E2 (project overview charts) not built. |
-| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F5's dependency audit is done (ADR 0034); the rest of F5, and F4 and F6, not started. |
+| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **config complete; the first deploy waits on the manual checklist in docs/DEPLOY.md**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
 
 ## Done
 - 2026-09-24 **Bootstrap**:
@@ -599,7 +599,43 @@ A phase is complete only when every task in it is done.
     - Inside pytest, `test_family_wise_error.py` alone takes 85–114 s under coverage tracing, against about 21 s without. The four stats files take 2–2.7 minutes, and `apps/api/tests` 105–131 s.
     - Coverage's low-overhead `sysmon` core refuses `concurrency=greenlet`, so it isn't a drop-in fix.
 
+- 2026-09-29 **F4: production deploy config** (Fly.io + Vercel + Neon, [ADR 0035](decisions/0035-production-deploy-on-fly-and-vercel.md), [docs/DEPLOY.md](DEPLOY.md)). Hosting was researched and decided with the user:
+  - Findings (2026-09-29):
+    - Render: free web services sleep after 15 min and take about a minute to wake; workers cost $7/month.
+    - Fly: no free tier; stopped machines bill only their disk; a worker can never stop.
+    - Upstash: 500K commands a month. Our idle taskiq polling is about 2.6M a month, so the free tier dies in about 6 days.
+  - User decisions: Fly, scale to zero (about $1–5/month, inline queue, no Redis); a shared-secret header for the web proxy; open signup with caps.
+  - Deploy files:
+    - `fly.api.toml` and `fly.demo-agents.toml`: one scale-to-zero machine each in `sin`; the demo agents are private-only (`.flycast`, `--no-public-ips`).
+    - `apps/web/vercel.json` turns Vercel's Git deploys off.
+    - `.github/workflows/deploy.yml`: after CI passes on main, on that commit: migrate, build and push both images to Fly's registry, deploy the demo agents, then the API, check `/ready`, `vercel build` + `deploy --prebuilt --prod`, then check `<web>/api/health`. Disarmed until `DEPLOY_ENABLED=true`.
+  - API:
+    - `GET /ready` (`SELECT 1`, 200 or 503) is Fly's health check.
+    - `client_ip()` trusts the web proxy's `x-agentprobe-client-ip` only with `PROXY_SECRET`, and the platform's `CLIENT_IP_HEADER` (Fly-Client-IP) only from `FORWARDED_ALLOW_IPS` peers (uvicorn `--no-proxy-headers` on Fly, because Fly appends to X-Forwarded-For).
+    - Startup refuses `COOKIE_SECURE=0` with an https origin, a short `PROXY_SECRET`, or a malformed `FORWARDED_ALLOW_IPS`.
+    - Register and login now require the web Origin: login CSRF is closed, since signup can be open (ADR 0009 amended).
+  - Public-abuse limits (`limits.py`; every setting defaults to unlimited, production values in `fly.api.toml`):
+    - `SIGNUP_OPEN`, `REGISTER_RATE_LIMIT_PER_HOUR` (token buckets gained a window), `MAX_SIGNUPS_PER_DAY`;
+    - per-user caps on projects, agents, cases per suite, and runs per day (server runs and CI reports);
+    - `LLM_GLOBAL_USD_PER_DAY`, which reserves 2 x `LLM_BUDGET_USD_PER_RUN` per non-mock run in the last 24 h and covers `/ci/report`'s live clustering too.
+  - Mock LLM by default. Live Gemini is an opt-in: `API_EXTRAS=live` builds LiteLLM into the image (a new `live` extra on `agentprobe-api`; CI builds and import-checks that variant), and the image now carries `config/`.
+  - Private targets: an allowlist is now the whole server policy (ADR 0012 amended), so production runs `ALLOW_PRIVATE_TARGETS=0` with `PRIVATE_TARGET_ALLOWLIST=<demo app>.flycast`.
+  - Demo agents label every response (`X-AgentProbe-Demo`, and `GET /`).
+  - Web: `src/proxy.ts` forwards `/api/*` itself (the `next.config.ts` rewrite is gone), reads `API_INTERNAL_URL` per request, and adds the secret and the browser's IP when `PROXY_SECRET` is set. Compose now passes `API_INTERNAL_URL` to the web container at runtime (ADR 0033 amended).
+  - Tests:
+    - `test_deploy_guards.py` (client-IP truth tables, startup refusals, `/ready`, caps without a database);
+    - `test_limits.py` (every cap and signup rule through the endpoints: 8 integration tests);
+    - an Origin test for register and login;
+    - an hourly-window bucket test;
+    - SSRF truth-table rows for "allowlist only";
+    - `proxy.test.ts` (target URL, secret and IP, forged headers dropped);
+    - a demo-agent label test.
+
+    The `/ci/report` `attempt()` test helper moved to `runtest.py`.
+  - Not deployed yet: the manual checklist (docs/DEPLOY.md §Manual steps) creates the Neon project, the Fly apps and secrets, the Vercel project and the GitHub secrets and variables. Its step 9 is the first end-to-end check of what can't be tested here (below).
+
 ## Next
+- **F4 go-live** (user): the numbered checklist in docs/DEPLOY.md, then step 9's checks. Record the measured cold starts and anything the unverified items below turn up.
 - **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
 - **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
 - **E3 (rest)**: MCP agent config, auth-header UI, suite versioning and a case browser, delete confirmations.
@@ -607,6 +643,7 @@ A phase is complete only when every task in it is done.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
 ## Decisions
+- Production deploy ([ADR 0035](decisions/0035-production-deploy-on-fly-and-vercel.md), user decisions 2026-09-29): Vercel + two scale-to-zero Fly apps (API inline, private demo agents) + a separate Neon project; deploy.yml after CI, migrations first; client IPs trusted only via the web proxy's secret or Fly-Client-IP from Fly's proxy; open signup with per-user caps, an hourly registration limit and a worst-case global live-LLM budget; an allowlist is the whole private-target policy.
 - Docker and CI completion: three pinned, non-root, multi-stage images (one for the API and the worker); a local-only compose stack with committed dev secrets, 127.0.0.1 ports, no `${}` interpolation, the Redis queue and the mock LLM by default, and migrations on API start; a CI `docker` job that runs the README quick start command for command ([ADR 0033](decisions/0033-docker-images-and-compose.md)). Dependency audits cover every locked package, dev and `live` included, and fail on any finding; findings are fixed, pinned, or accepted in ADR 0034 ([ADR 0034](decisions/0034-dependency-audits.md)).
 - e2e specs that watch a run while it's live hold its agent behind `e2e/gated-agent.ts`, never a wider timeout or a slower agent: on CI a mock-LLM run ends in under 0.5 s (2026-09-29 entry above).
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -622,7 +659,7 @@ A phase is complete only when every task in it is done.
 - Trace timeline: plain HTML/CSS, no React Flow ([ADR 0005](decisions/0005-trace-timeline-no-react-flow.md)).
 - Run detail and trace viewer ([ADR 0031](decisions/0031-run-detail-and-trace-viewer.md)): the browser opens a run's SSE stream on the API with a stream token, because the `/api` rewrite gzips and so buffers it (measured); the page owns the state and resyncs on every (re)connect; judgments are anchored to steps by core's `judgment_steps`; `/runs/{id}/verdict` compares against the run's branch baseline, `main` for a run without a branch; long step lists use `content-visibility`, not windowing (user decision); rule vs LLM verdicts differ by border style plus label.
 - Regression statistics: Fisher exact (one-sided) + Holm (per case), paired sign-flip permutation (suite), case-level bootstrap CI; α=0.05, min_drop=0.05, all configurable via suite YAML and CLI flags ([ADR 0006](decisions/0006-statistics-methodology.md)). The per-case correction was later amended to Tarone–Holm (user decision, ADR 0014).
-- Hosting for the API/worker (Q2) is deliberately deferred to Phase F4; the only binding constraint now is that the worker stays behind the `QueueBackend` interface with `inline` as the local default.
+- Hosting for the API/worker (Q2) is deliberately deferred to Phase F4; the only binding constraint now is that the worker stays behind the `QueueBackend` interface with `inline` as the local default. Decided 2026-09-29 (user): Fly.io, scale to zero, inline queue, no Redis in production ([ADR 0035](decisions/0035-production-deploy-on-fly-and-vercel.md)).
 - `packages/core` must contain exactly one run-execution implementation (`execute_attempt` / `finalize_run` / `run_suite`), shared by the CLI's local run and the server runner — no duplicate run loops (Q6 requirement, tracked at B1.7).
 - Share links store only `runs.share_token_hash` (SHA-256), not a plaintext token. The Fernet key env var stays `ENCRYPTION_KEY` (user decisions, 2026-09-25).
 - Data model conventions: UUID PKs, text+CHECK instead of PG enums, `NUMERIC(12,6)` costs, CASCADE along ownership, and every FK covered by a leading index ([ADR 0007](decisions/0007-data-model-additions.md)).
@@ -689,7 +726,7 @@ A phase is complete only when every task in it is done.
 - `pnpm e2e` reuses an already-running e2e web/API/demo-agents stack (`reuseExistingServer: true`) across consecutive invocations, which is deliberate for local iteration — but a `next build` produced by a since-changed working tree won't be picked up until those processes are stopped (Windows: `Get-NetTCPConnection -LocalPort 3010,8100,9100` to find and kill them). The reset script still runs on every invocation, so stale data is never the issue; a stale build is.
 - Locally, `pnpm e2e` and `pnpm verify` share one Neon branch (`TEST_DATABASE_URL`); CI gives each its own throwaway Postgres container, so this is a local-only concern. `pnpm e2e`'s reset wipes it before *its own* run, but several of its specs leave real users and active sessions behind afterward (by design — no per-spec cleanup, unlike `01`–`06`), which sat there until the next `pnpm e2e` reset. One integration test's assertion was scoped too broadly and read that leftover data as a failure (fixed, see the E7 entry above); if `pnpm verify` ever fails right after an e2e run in a way that looks unrelated to your change, run `uv run --env-file .env python scripts/reset_test_db.py` and retry before assuming it's real.
 - `uvicorn --reload` on Windows can detect a change and never restart its worker while a run's SSE stream is open: the old code keeps serving with no second "Application startup complete" in the log (seen twice on 2026-09-28, including a peer session's API left from the morning). Restart `pnpm dev:api` after API changes if a new route 404s.
-- Deploys need `NEXT_PUBLIC_API_URL` (web, build time) and `WEB_ORIGIN` (API) for live run progress; without them the run page polls every 3 s (ADR 0031).
+- Deploys need `NEXT_PUBLIC_API_URL` (web, build time) and `WEB_ORIGIN` (API) for live run progress; without them the run page polls every 3 s (ADR 0031). docs/DEPLOY.md sets both.
 - The local `.env`'s `PUBLIC_WEB_URL` points at `https://agentprobe.example.com`, so share links created locally carry that host. The dialog falls back to the page's own origin only when the API returns no URL.
 - Background `next dev`/`uvicorn` processes on Windows can outlive a stopped parent `pnpm` process and keep their port held. Check with `Get-NetTCPConnection -LocalPort 3000` (web) or `-LocalPort 8000` (API) before assuming a dev server is stale or absent; a session in this repo has hit a leftover `uvicorn` from a previous day still answering on :8000 with routes from before that session's changes.
 - Playwright's `page.waitForURL()` defaults to `waitUntil: "load"`, which never resolves after a client-side (History API) route change like `router.replace()` — a real navigation event never fires. Use `await expect(page).toHaveURL(...)` for those; `waitForURL` is still correct after a real (proxy-issued) redirect.
@@ -705,7 +742,6 @@ A phase is complete only when every task in it is done.
 - The suite CI under-covers with few cases: 87% at 10 cases vs 94% at 30 (percentile cluster bootstrap, ADR 0014).
 - `pnpm verify` needs `TEST_DATABASE_URL`, `DATABASE_URL` and `ALLOW_DB_TESTS=1` (loaded from `.env`). Without them it refuses with exit code 2, which is intended. It takes about 17 min against Neon from here (see the coverage note below): each request costs 2–4 round trips of 80–140 ms (more on a bad network day). A Neon region closer to the developer would cut this proportionally.
 - On native Windows, psycopg async needs `SelectorEventLoop`. Tests use the root conftest hook; `pnpm dev:api` passes `--loop asyncio:SelectorEventLoop`. Production start commands on Windows would need the same flag (Linux doesn't).
-- Deploy (F4) must set `FORWARDED_ALLOW_IPS` to the proxy and keep the API reachable only through it. Otherwise the per-IP auth limit is either global (every user shares the proxy's IP) or spoofable (ADR 0009 §9).
 - `JWT_TTL_MINUTES` now defaults to 15. A local `.env` that still says 60 keeps 60-minute access cookies.
 - `uv` and `gh` are installed but not on PATH in some shells (`%USERPROFILE%\.local\bin`, `C:\Program Files\GitHub CLI`).
 - The pytest run shows a `StarletteDeprecationWarning`: Starlette's TestClient wants `httpx2` instead of `httpx`. Swapping `httpx==0.28.1` for `httpx2` was blocked by a local permission rule this session. Redo it once allowed. The HTTP adapter's SSRF guard swaps httpx's private `transport._pool` (ADR 0012), so rerun `packages/core/tests/adapters` after any httpx change.
@@ -732,8 +768,9 @@ A phase is complete only when every task in it is done.
 - The dogfood workflow's workflow-artifact baseline (ADR 0032) is throwaway by design: no versioning, GitHub's default 90-day retention, and nothing stops `main`'s last recorded run from itself having been a bad one (there's no server-side baseline gate on it, unlike ADR 0018's `POST /projects/{id}/baseline`). It also has no data until this change's own push-to-main job has run once — the very first PR touching `demo-agents/**`/`suites/**` after this merges will show `no_baseline` in its dogfood comment even though a direct judge failure (not a baseline comparison) can still fail the check via `--fail-under`. Revisit once F4 deploys a server: point the workflow at `api-url`/`api-key` and drop the artifact plumbing.
 - The dogfood matrix posts one PR comment per suite/agent pair (three, currently), not one combined comment, since a composite action step can't easily merge results across parallel matrix jobs (ADR 0032).
 - The Docker images, compose file and smoke script are only verified by CI's `docker` job (Docker can't run on the development machine).
-- The images have no `live` extra (LiteLLM), so server runs in Docker judge with the mock LLM only. F4 adds it (a build arg or a separate target) if the deploy needs live judging (ADR 0033).
-- The web image fixes `API_INTERNAL_URL` (the `/api` rewrite target) and `NEXT_PUBLIC_API_URL` (the browser's SSE origin) at build time. Pointing it at a different API means rebuilding it with `--build-arg`; the runtime environment can't change them.
 - The compose worker has no healthcheck (no port). `up --wait` counts it ready once it's running, and a hung worker would only show up as runs that never finish. ADR 0033 notes a liveness check (its Redis consumer's idle time) for F4.
 - Through the compose web app, the API sees every browser's requests as coming from the web container, so the per-IP auth limit is shared by everyone using that stack. That's fine for one local user; a deploy must set `FORWARDED_ALLOW_IPS` (known issue above, ADR 0009 §9).
 - `pnpm/action-setup@v6` warns about a "pnpm v10 installation layout at PNPM_HOME" in every job that uses it (runner image vs pnpm 11). It's harmless, and it predates F3.
+- Unverified until the first real deploy (ADR 0035 §Consequences): that Vercel forwards `src/proxy.ts`'s request headers on an external rewrite; Fly's proxy source range (`172.16.0.0/12`, from Fly community reports, not its docs; if wrong, direct callers key on the proxy's address, which isn't spoofable); whether an open SSE stream keeps a Fly machine running; cold-start times; and the demo agents' MCP route behind a `.flycast` Host header.
+- The per-user caps count, then insert, so two concurrent creates can each pass a cap by one (`ponytail:` in `limits.py`). A resumed live run builds fresh LLM clients and can exceed its budget reservation (ADR 0035).
+- Production rate limits are in memory in one Fly machine. They reset when it stops, which happens only after it's idle.

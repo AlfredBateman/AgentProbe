@@ -6,7 +6,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -91,10 +93,24 @@ class RequestContextMiddleware:
             request_id_var.reset(token)
 
 
-def _limiter(redis: Redis | None, per_minute: int, prefix: str) -> RateLimiter:
+def _limiter(
+    redis: Redis | None, limit: int, prefix: str, *, window_s: float = 60.0
+) -> RateLimiter:
     if redis is not None:
-        return RedisTokenBucket(redis, per_minute, prefix=prefix)
-    return MemoryTokenBucket(per_minute)
+        return RedisTokenBucket(redis, limit, window_s=window_s, prefix=prefix)
+    return MemoryTokenBucket(limit, window_s=window_s)
+
+
+def check_production_settings(settings: Settings) -> None:
+    """Refuse to start with settings that are unsafe once the site is public."""
+    if settings.web_origin.startswith("https://") and not settings.cookie_secure:
+        raise RuntimeError("COOKIE_SECURE must stay on when WEB_ORIGIN is https (ADR 0009)")
+    if settings.proxy_secret is not None and len(settings.proxy_secret.get_secret_value()) < 32:
+        raise RuntimeError("PROXY_SECRET must be at least 32 characters")
+    try:
+        settings.trusted_proxies  # noqa: B018  parsed now, not on the first request
+    except ValueError as exc:
+        raise RuntimeError(f"FORWARDED_ALLOW_IPS: {exc}") from None
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -109,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise RuntimeError("DATABASE_URL is not set")
         if settings.jwt_secret is None or len(settings.jwt_secret.get_secret_value()) < 32:
             raise RuntimeError("JWT_SECRET must be set to at least 32 characters")
+        check_production_settings(settings)
         engine = make_engine(settings.database_url)
         app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
         await app.state.queue.start()
@@ -126,6 +143,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     redis = Redis.from_url(settings.redis_url) if settings.rate_limit_backend == "redis" else None
     app.state.api_key_limiter = _limiter(redis, settings.rate_limit_per_minute, "rl:key:")
     app.state.auth_limiter = _limiter(redis, settings.auth_rate_limit_per_minute, "rl:ip:")
+    app.state.register_limiter = _limiter(
+        redis, settings.register_rate_limit_per_hour, "rl:reg:", window_s=3600
+    )
     bus: ProgressBus = (
         RedisBus(Redis.from_url(settings.redis_url))
         if settings.queue_backend == "redis"
@@ -155,7 +175,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, str]:
+        """Liveness: the process answers. Touches nothing else."""
         return {"status": "ok"}
+
+    @app.get("/ready", response_model=None)
+    async def ready() -> dict[str, str] | JSONResponse:
+        """Readiness: the database answers too. The deploy checks it (docs/DEPLOY.md)."""
+        try:
+            async with app.state.sessionmaker() as session:
+                await session.execute(text("SELECT 1"))
+        except Exception:
+            log.exception("readiness check failed")
+            return JSONResponse({"status": "unavailable"}, status_code=503)
+        return {"status": "ready"}
 
     return app
 
