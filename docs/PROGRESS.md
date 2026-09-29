@@ -543,6 +543,27 @@ A phase is complete only when every task in it is done.
   - Weak tests fixed: the saved-secret test-connection test (its own docstring said it didn't prove the secret was sent; it now spies on what the adapter receives), exact "Connection succeeded" text, the run list's `mean_latency_ms` (was `> 0`, now equals the attempts' mean — within 0.5 ms, since `run_results.latency_ms` is stored as whole milliseconds but the per-case means aren't), exact suite-issue positions in three parser/API tests (were `is not None`), the landing page's CTAs (were "at least one link"; now register is always primary, sign-in secondary), and three e2e assertions: a schema violation must name `cases` and the reason (was "any text"), the private-address SSRF message is matched exactly, and the compare verdict must name `refund-outside-window` as the case that fired (the case table shows it regardless).
   - `pnpm check` (864 unit + 147 web tests) and `pnpm verify` (1,020 unit + integration tests against Neon; coverage core 97%, api 92%) are both green with all of the above.
 
+- 2026-09-29 **e2e flake in `04-run-detail-and-trace`: the run finished before the page loaded, not too slowly.**
+  - Symptom (CI run 36464897858): `Test timeout of 180000ms exceeded` in `page.waitForResponse` for the stream URL. It looked like a slow run hitting the 150 s "Completed" wait. It wasn't.
+  - Measured with temporary stage logging on CI (draft PR #1, closed unmerged). The table gives ms from the test's `POST /runs`. The first row is from the original failure's Playwright trace; the other three are instrumented reruns:
+
+    | Sample | Claimed | Attempts 1→20 saved | Completed published | Page's first `GET /runs/{id}` saw | Outcome |
+    |---|---|---|---|---|---|
+    | original | – | – | ~284 (`finished_at`) | `completed` at ~337 | no stream opened; hung 180 s |
+    | 1 | 55 | 133→312 | 365 | `completed` (sent ~378) | no stream opened |
+    | 2 | 59 | 127→345 | 404 | `completed` (sent ~399) | no stream opened |
+    | 3 | 60 | 130→369 | 447 | `running` (~461) | stream opened at 516 with a `completed` snapshot; live panel never rendered |
+
+  - What it rules out:
+    - Poll latency: e2e runs `QUEUE_BACKEND=inline`, with no Taskiq/Redis; enqueue to claim was 5–6 ms.
+    - Serialized attempts: concurrency 4; about 11 ms per attempt, bounded by the per-run row lock on saves.
+    - Event-bus delay: the in-process bus is a `put_nowait`.
+  - Root cause: the spec assumed a 20-attempt run outlives a page load. On CI's local Postgres the run takes 0.3–0.45 s, about the same as the page's first fetch, so the test was a coin flip. It passed locally only because Neon's round trips stretch the run to many seconds. `07-main-flow` had the same assumption at 40 attempts and had only been winning the race.
+  - Fix (tests only; no timeout changed, no sleeps or retries): `e2e/gated-agent.ts`, a Node `http` pass-through proxy in front of the demo agent that can hold its calls.
+    - `04` holds the agent until the page is streaming, lets exactly one attempt through (its row must arrive over SSE while the progress bar reads 1), then opens the gate.
+    - `07` holds the agent from clicking Run until the progress bar shows.
+  - The product behaved correctly throughout: a run that has already ended is read straight from the API, with no stream.
+
 ## Next
 - **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
 - **E3 (rest)**: MCP agent config, auth-header UI, suite versioning and a case browser, delete confirmations.
@@ -550,6 +571,7 @@ A phase is complete only when every task in it is done.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
 ## Decisions
+- e2e specs that watch a run while it's live hold its agent behind `e2e/gated-agent.ts`, never a wider timeout or a slower agent: on CI a mock-LLM run ends in under 0.5 s (2026-09-29 entry above).
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
 - The user approved PLAN.md §2 items 1–6 and 8 (immutable case rows, ingest/baseline endpoints, same-origin cookie auth, signup allowlist + budget guard, case-level judgments, share links, separate judge cost).
 - TypeScript 5.9 / ESLint 9 instead of 7 / 10 ([ADR 0002](decisions/0002-web-toolchain-versions.md)).

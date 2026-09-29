@@ -1,6 +1,7 @@
 import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
 import { cleanupE2eAccount } from "./cleanup";
 import { DEMO_AGENTS_URL, E2E_EMAIL, E2E_PASSWORD } from "./fixtures";
+import { gatedAgent } from "./gated-agent";
 
 // Setup goes through the API (via the same /api rewrite the app uses); what's under test is
 // the run page following a live run over SSE and the trace viewer.
@@ -48,13 +49,13 @@ async function post(request: APIRequestContext, baseURL: string, path: string, d
   return response.json();
 }
 
-async function projectWithRun(page: Page, baseURL: string, agent: { name: string; path: string }, yaml: string) {
+async function projectWithRun(page: Page, baseURL: string, agent: { name: string; url: string }, yaml: string) {
   const project = await post(page.request, baseURL, "/projects", { name: `e2e-${agent.name}` });
   await post(page.request, baseURL, `/projects/${project.id}/agents`, {
     name: agent.name,
     config: {
       adapter_type: "http",
-      url: `${DEMO_AGENTS_URL}${agent.path}`,
+      url: agent.url,
       allow_private: true,
       response: { tool_calls: "$.tool_calls", total_tokens: "$.usage.total_tokens" },
     },
@@ -73,37 +74,49 @@ test("a live /support/v1 run streams to completion and shows a flaky case; a /vu
   });
 
   await test.step("the run page follows the live run over SSE", async () => {
-    const { projectId, runId } = await projectWithRun(page, baseURL!, { name: "support-v1", path: "/support/v1/chat" }, SUPPORT_SUITE);
-    // Straight to the API with a stream token: the /api rewrite gzips, which buffers SSE (ADR 0031).
-    const stream = page.waitForResponse((r) => r.url().includes(`/runs/${runId}/stream?token=`));
-    await page.goto(`/projects/${projectId}/runs/${runId}`);
-    const headers = (await stream).headers();
-    expect(headers["content-type"]).toContain("text/event-stream");
-    expect(headers["access-control-allow-origin"]).toBe(baseURL);
+    // Held until the page is watching: unheld, the run can end before the page's first fetch.
+    const agent = await gatedAgent(`${DEMO_AGENTS_URL}/support/v1/chat`);
+    agent.hold();
+    try {
+      const { projectId, runId } = await projectWithRun(page, baseURL!, { name: "support-v1", url: agent.url }, SUPPORT_SUITE);
+      // Straight to the API with a stream token: the /api rewrite gzips, which buffers SSE (ADR 0031).
+      const stream = page.waitForResponse((r) => r.url().includes(`/runs/${runId}/stream?token=`));
+      await page.goto(`/projects/${projectId}/runs/${runId}`);
+      const headers = (await stream).headers();
+      expect(headers["content-type"]).toContain("text/event-stream");
+      expect(headers["access-control-allow-origin"]).toBe(baseURL);
 
-    const live = page.getByRole("progressbar", { name: "Attempts finished" });
-    await expect(live).toBeVisible();
-    await expect(page.getByText("Live", { exact: true })).toBeVisible();
-    // Rows fill in while the run is still going.
-    await expect(page.getByRole("cell", { name: "greeting", exact: true })).toBeVisible();
-    expect(Number(await live.getAttribute("value"))).toBeLessThan(20);
+      const live = page.getByRole("progressbar", { name: "Attempts finished" });
+      await expect(live).toBeVisible();
+      await expect(page.getByText("Live", { exact: true })).toBeVisible();
+      // Rows fill in while the run is still going: one attempt through (attempts run in suite
+      // order, so it's a greeting), the rest still held.
+      await expect.poll(agent.held).toBeGreaterThan(0);
+      agent.releaseOne();
+      await expect(page.getByRole("cell", { name: "greeting", exact: true })).toBeVisible();
+      await expect(live).toHaveAttribute("value", "1");
 
-    await expect(page.getByText("Completed", { exact: true })).toBeVisible({ timeout: 150_000 });
-    await expect(live).toBeHidden();
-    const orderStatus = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "order-status", exact: true }) });
-    await expect(orderStatus.getByText("Flaky")).toBeVisible();
-    const greeting = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "greeting", exact: true }) });
-    await expect(greeting.getByText("Stable pass")).toBeVisible();
-    await expect(greeting).toContainText("10/10");
+      agent.open();
+      await expect(page.getByText("Completed", { exact: true })).toBeVisible({ timeout: 150_000 });
+      await expect(live).toBeHidden();
+      const orderStatus = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "order-status", exact: true }) });
+      await expect(orderStatus.getByText("Flaky")).toBeVisible();
+      const greeting = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "greeting", exact: true }) });
+      await expect(greeting.getByText("Stable pass")).toBeVisible();
+      await expect(greeting).toContainText("10/10");
 
-    // A reload after the end shows the same final state, straight from the API.
-    await page.reload();
-    await expect(orderStatus.getByText("Flaky")).toBeVisible();
-    await expect(page.getByRole("progressbar")).toHaveCount(0);
+      // A reload after the end shows the same final state, straight from the API.
+      await page.reload();
+      await expect(orderStatus.getByText("Flaky")).toBeVisible();
+      await expect(page.getByRole("progressbar")).toHaveCount(0);
+    } finally {
+      agent.open();
+      await agent.close();
+    }
   });
 
   await test.step("a /vulnerable failure: the leaked canary and its failing judge sit together", async () => {
-    const { projectId, runId } = await projectWithRun(page, baseURL!, { name: "vulnerable", path: "/vulnerable/chat" }, VULNERABLE_SUITE);
+    const { projectId, runId } = await projectWithRun(page, baseURL!, { name: "vulnerable", url: `${DEMO_AGENTS_URL}/vulnerable/chat` }, VULNERABLE_SUITE);
     await page.goto(`/projects/${projectId}/runs/${runId}`);
     await expect(page.getByText("Completed", { exact: true })).toBeVisible({ timeout: 60_000 });
 

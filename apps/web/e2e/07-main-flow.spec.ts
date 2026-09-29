@@ -7,12 +7,21 @@ import { RunPage } from "./pages/run-page";
 import { SharedPage } from "./pages/shared-page";
 import { SuitesPage } from "./pages/suites-page";
 import { DEMO_AGENTS_URL, MAIN_FLOW_EMAIL } from "./fixtures";
+import { gatedAgent } from "./gated-agent";
 
 // SPEC.md §11's main flow, end to end through the real UI (no API shortcuts for setup): register
 // -> create project -> add agent -> test connection -> create suite from YAML -> run -> watch
 // live progress -> open a failing trace -> run against /support/v2 -> compare shows a
 // regression -> create a share link -> open it logged out.
 test.describe.configure({ timeout: 180_000 });
+
+// /support/v1 behind a gate, held while the run page connects: unheld, the run can end before
+// the page's first fetch, and then there is no live progress to watch.
+let v1Agent: Awaited<ReturnType<typeof gatedAgent>>;
+test.beforeAll(async () => {
+  v1Agent = await gatedAgent(`${DEMO_AGENTS_URL}/support/v1/chat`);
+});
+test.afterAll(() => v1Agent.close());
 
 const PASSWORD = "correct horse battery staple main-flow";
 
@@ -74,7 +83,7 @@ test("register -> project -> agent -> suite -> run -> trace -> v2 regression -> 
     await agents.goto();
     await agents.openNew();
     await agents.fillName("support-v1");
-    await agents.fillUrl(`${DEMO_AGENTS_URL}/support/v1/chat`);
+    await agents.fillUrl(v1Agent.url);
     await expect(page.getByLabel(/Allow private targets/)).toBeChecked(); // default: on
     expect(await agents.testConnection()).toBe("Connection succeeded");
     await agents.save();
@@ -88,6 +97,7 @@ test("register -> project -> agent -> suite -> run -> trace -> v2 regression -> 
     await suites.pasteYaml(MAIN_FLOW_YAML);
     await suites.create();
     await expect(page.locator("tr").filter({ hasText: "main-flow" })).toBeVisible();
+    v1Agent.hold();
     v1RunId = await suites.run("main-flow");
   });
 
@@ -99,6 +109,7 @@ test("register -> project -> agent -> suite -> run -> trace -> v2 regression -> 
     await run.goto();
     await stream;
     await expect(page.getByRole("progressbar", { name: "Attempts finished" })).toBeVisible();
+    v1Agent.open();
     await run.waitForCompletion();
     await run.openFailingTrace("order-status");
     await expect(page.getByRole("heading", { name: "order-status" })).toBeVisible();
