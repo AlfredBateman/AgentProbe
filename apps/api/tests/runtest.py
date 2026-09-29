@@ -4,6 +4,7 @@ import asyncio
 import json
 import uuid
 from collections import defaultdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,8 @@ from fastapi import FastAPI
 
 from agentprobe_api.queue import Deps
 from agentprobe_api.runstore import TERMINAL
-from agentprobe_core.runner import AttemptResult
+from agentprobe_core.adapters.types import AgentResponse, MessageStep
+from agentprobe_core.runner import AttemptResult, JudgeResult
 
 SMOKE_YAML = (Path(__file__).parents[3] / "suites/examples/smoke.yaml").read_text("utf-8")
 SUPPORT_RESPONSE = {"tool_calls": "$.tool_calls", "total_tokens": "$.usage.total_tokens"}
@@ -146,3 +148,33 @@ def normalized(results: list[AttemptResult]) -> dict[str, list[str]]:
                 judgment.pop("reason")  # quotes the latency
         by_case[result.case_id].append(json.dumps(data, sort_keys=True))
     return {case: sorted(items) for case, items in by_case.items()}
+
+
+def attempt(case_id: str, attempt: int, *, passed: bool, output: str = "ok") -> dict[str, object]:
+    """One `/ci/report` result, as the CLI would send it."""
+    response = AgentResponse(
+        output=output,
+        steps=[MessageStep(role="assistant", content=output)],
+        latency_ms=10.0,
+        tool_calls_reported=True,
+    )
+    result = AttemptResult(
+        case_id=case_id,
+        attempt=attempt,
+        input="hi",
+        status="passed" if passed else "failed",
+        response=response,
+        judgments=[
+            JudgeResult(
+                judge="contains",
+                status="pass" if passed else "fail",
+                score=1.0 if passed else 0.0,
+                reason="ok" if passed else "no match",
+            )
+        ],
+        score=1.0 if passed else 0.0,
+        latency_ms=10.0,
+        started_at=datetime.now(UTC),
+        duration_ms=10.0,
+    )
+    return result.model_dump(mode="json")

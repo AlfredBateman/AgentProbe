@@ -11,13 +11,10 @@ COPY apps/web/package.json apps/web/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store \
     pnpm install --frozen-lockfile --store-dir /pnpm-store
 COPY apps/web apps/web
-# Both are fixed at build time: rewrites are compiled into the routes manifest, and NEXT_PUBLIC_*
-# is inlined into the client bundle. API_INTERNAL_URL is where the server proxies /api (the
-# compose network); NEXT_PUBLIC_API_URL is where the browser opens a run's SSE stream (ADR 0031).
-ARG API_INTERNAL_URL=http://api:8000
+# Inlined into the client bundle at build time: where the browser opens a run's SSE stream
+# (ADR 0031). API_INTERNAL_URL, where /api is forwarded, is read at runtime (src/proxy.ts).
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
-ENV NEXT_OUTPUT=standalone NEXT_TELEMETRY_DISABLED=1 \
-    API_INTERNAL_URL=${API_INTERNAL_URL} NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_OUTPUT=standalone NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN pnpm --filter web build \
     && test -f apps/web/.next/standalone/apps/web/server.js
 

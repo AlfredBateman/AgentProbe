@@ -8,7 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentprobe_api.auth import CurrentPrincipal, CurrentUser, Db, Principal
+from agentprobe_api import limits
+from agentprobe_api.auth import AppSettings, CurrentPrincipal, CurrentUser, Db, Principal
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import ApiKey, Project
 from agentprobe_api.security import new_api_key, sha256
@@ -51,7 +52,10 @@ async def list_projects(principal: CurrentPrincipal, db: Db) -> list[ProjectOut]
 
 
 @router.post("", status_code=201)
-async def create_project(body: ProjectIn, user: CurrentUser, db: Db) -> ProjectOut:
+async def create_project(
+    body: ProjectIn, user: CurrentUser, db: Db, settings: AppSettings
+) -> ProjectOut:
+    await limits.check_projects(db, settings, user.user_id)
     project = Project(user_id=user.user_id, name=body.name, description=body.description)
     db.add(project)
     await db.flush()

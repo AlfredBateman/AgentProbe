@@ -2,6 +2,8 @@
 
 Status: accepted (2026-09-24)
 
+Amended 2026-09-29 by [ADR 0035](0035-production-deploy-on-fly-and-vercel.md): when `PRIVATE_TARGET_ALLOWLIST` is set it is the whole server policy (listed private hosts only, whatever `ALLOW_PRIVATE_TARGETS` says); with no allowlist, `ALLOW_PRIVATE_TARGETS=1` allows any private host, as before. The agent's `allow_private` is still required.
+
 ## Context
 B1.4 builds `packages/core/adapters`: the `AgentAdapter` protocol, the trace step model that
 the runner, judges, storage and UI share, the HTTP adapter with an SSRF guard, and the CLI-only

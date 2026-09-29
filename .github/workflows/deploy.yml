@@ -1,0 +1,97 @@
+name: Deploy
+
+# Production deploy (ADR 0035, docs/DEPLOY.md): runs only after CI passes on a push to main,
+# on exactly the commit CI tested. Order: migrate the Neon production database, deploy the demo
+# agents, deploy the API and wait for /ready, then deploy the web app to Vercel.
+#
+# Disarmed until the repository variable DEPLOY_ENABLED is "true" (the last step of the manual
+# checklist in docs/DEPLOY.md), so pushes before the services exist don't fail here.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never interrupt a deploy halfway
+
+jobs:
+  deploy:
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      API_APP: ${{ vars.FLY_API_APP }}
+      DEMO_APP: ${{ vars.FLY_DEMO_AGENTS_APP }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: true
+      - run: uv sync --locked
+      # Before the new code ships, so it never runs against an old schema. Migrations must stay
+      # compatible with the code still running until the API deploy below finishes.
+      - name: Migrate the production database
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: uv run alembic -c apps/api/alembic.ini upgrade head
+
+      - uses: superfly/flyctl-actions/setup-flyctl@1.6
+        with:
+          version: 0.4.109
+      - run: flyctl auth docker
+      # Built here with the same Dockerfiles and contexts CI's docker job proves, tagged with the
+      # commit, and deployed by that tag; Fly's remote builder never sees the repository.
+      - name: Build and push images
+        run: |
+          docker build -f demo-agents/Dockerfile -t "registry.fly.io/$DEMO_APP:$SHA" .
+          docker build -f apps/api/Dockerfile --build-arg "API_EXTRAS=${{ vars.API_EXTRAS }}" -t "registry.fly.io/$API_APP:$SHA" .
+          docker push "registry.fly.io/$DEMO_APP:$SHA"
+          docker push "registry.fly.io/$API_APP:$SHA"
+
+      - name: Deploy the demo agents (private network only)
+        run: >-
+          flyctl deploy --config fly.demo-agents.toml --app "$DEMO_APP"
+          --image "registry.fly.io/$DEMO_APP:$SHA" --no-public-ips --ha=false
+
+      - name: Deploy the API
+        run: >-
+          flyctl deploy --config fly.api.toml --app "$API_APP"
+          --image "registry.fly.io/$API_APP:$SHA" --ha=false
+          --env "WEB_ORIGIN=${{ vars.WEB_ORIGIN }}"
+          --env "PUBLIC_WEB_URL=${{ vars.WEB_ORIGIN }}"
+          --env "PRIVATE_TARGET_ALLOWLIST=$DEMO_APP.flycast"
+      - name: Check the API is ready (starts a stopped machine if needed)
+        run: curl --fail --silent --show-error --retry 10 --retry-delay 6 --retry-all-errors "https://$API_APP.fly.dev/ready"
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Deploy the web app to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          npx --yes vercel@61.0.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@61.0.0 build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@61.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      - name: Check the web app reaches the API through /api
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 6 --retry-all-errors "${{ vars.WEB_ORIGIN }}/api/health"

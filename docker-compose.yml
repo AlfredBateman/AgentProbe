@@ -80,6 +80,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+    environment:
+      API_INTERNAL_URL: http://api:8000  # where /api is forwarded (src/proxy.ts)
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

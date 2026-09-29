@@ -14,7 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentprobe_api.auth import CurrentPrincipal, Db, Principal
+from agentprobe_api import limits
+from agentprobe_api.auth import AppSettings, CurrentPrincipal, Db, Principal
 from agentprobe_api.crypto import SecretBox
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Project, Secret
@@ -183,9 +184,15 @@ async def _store_secret(
 
 @router.post("/projects/{project_id}/agents", status_code=201)
 async def create_agent(
-    project_id: uuid.UUID, body: AgentIn, principal: CurrentPrincipal, db: Db, request: Request
+    project_id: uuid.UUID,
+    body: AgentIn,
+    principal: CurrentPrincipal,
+    db: Db,
+    request: Request,
+    settings: AppSettings,
 ) -> AgentOut:
     project = await owned_project(db, principal, project_id)
+    await limits.check_agents(db, settings, principal.user_id)
     secret_ref = None
     if body.auth_header is not None:
         secret_ref = await _store_secret(db, _secret_box(request), project.id, body.auth_header)

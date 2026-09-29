@@ -216,3 +216,12 @@ async def test_cookie_mutations_require_web_origin(
     assert (
         await alice.get("/projects", headers={"Origin": "https://evil.test"})
     ).status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/auth/register", "/auth/login"])
+async def test_register_and_login_require_web_origin(clients: ClientFactory, path: str) -> None:
+    # Login CSRF: another site signing the victim's browser into the attacker's account.
+    body = {"email": "alice@example.com", "password": PASSWORD}
+    for origin in ("https://evil.test", ""):
+        r = await clients().post(path, json=body, headers={"Origin": origin})
+        assert r.status_code == 403, (origin, r.text)

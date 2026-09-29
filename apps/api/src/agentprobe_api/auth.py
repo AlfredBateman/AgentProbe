@@ -1,6 +1,8 @@
 """Sessions, login, and the one auth dependency for users and API keys (ADR 0009)."""
 
 import asyncio
+import hmac
+import ipaddress
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -12,6 +14,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentprobe_api import limits
 from agentprobe_api.db import get_db
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import ApiKey, Project, RefreshToken, User
@@ -181,10 +184,45 @@ class UserOut(BaseModel):
     email: str
 
 
-def _client_ip(request: Request) -> str:
-    # Behind a proxy, uvicorn rewrites client from X-Forwarded-For only for
-    # FORWARDED_ALLOW_IPS peers (ADR 0009), so this is never a spoofable header.
-    return request.client.host if request.client else "unknown"
+PROXY_SECRET_HEADER = "x-agentprobe-proxy-secret"  # noqa: S105  a header name
+CLIENT_IP_HEADER = "x-agentprobe-client-ip"
+
+
+def _ip_header(request: Request, name: str) -> str | None:
+    try:
+        return str(ipaddress.ip_address(request.headers.get(name, "")))
+    except ValueError:
+        return None
+
+
+def client_ip(request: Request, settings: Settings) -> str:
+    """The IP that per-IP rate limits key on (ADR 0035). None of the three is a header a
+    client can forge:
+
+    1. The web app's server-side proxy sends the browser's IP with PROXY_SECRET. Its egress
+       IPs aren't published, so it can't be trusted by address.
+    2. The hosting platform's proxy sets CLIENT_IP_HEADER (Fly-Client-IP) itself; it's
+       trusted only from a FORWARDED_ALLOW_IPS peer.
+    3. Otherwise the TCP peer (which uvicorn rewrites from X-Forwarded-For only for its own
+       FORWARDED_ALLOW_IPS peers, when its proxy headers are on: local and compose).
+    """
+    peer = request.client.host if request.client else "unknown"
+    secret = settings.proxy_secret
+    if secret is not None and hmac.compare_digest(
+        request.headers.get(PROXY_SECRET_HEADER, "").encode(), secret.get_secret_value().encode()
+    ):
+        return _ip_header(request, CLIENT_IP_HEADER) or peer  # none sent: key on the proxy
+    if settings.client_ip_header and _from_trusted_proxy(peer, settings):
+        return _ip_header(request, settings.client_ip_header) or peer
+    return peer
+
+
+def _from_trusted_proxy(peer: str, settings: Settings) -> bool:
+    try:
+        address = ipaddress.ip_address(peer)
+    except ValueError:
+        return False
+    return any(address in network for network in settings.trusted_proxies)
 
 
 async def _start_session(
@@ -223,10 +261,14 @@ def _clear_session_cookies(response: Response, settings: Settings) -> None:
 async def register(
     body: Registration, request: Request, response: Response, db: Db, settings: AppSettings
 ) -> UserOut:
-    await _limit(request.app.state.auth_limiter, f"ip:{_client_ip(request)}")
+    _check_origin(request, settings)  # login CSRF matters once signup is open (ADR 0035)
+    ip = client_ip(request, settings)
+    await _limit(request.app.state.auth_limiter, f"ip:{ip}")
+    await _limit(request.app.state.register_limiter, f"ip:{ip}")
     email = body.email.lower()
-    if email not in settings.signup_allowlist:
+    if not settings.signup_open and email not in settings.signup_allowlist:
         raise ApiError(403, "Registration is closed for this email")
+    await limits.check_signups(db, settings)
     # argon2 is ~50 ms of CPU: keep it off the event loop.
     password_hash = await asyncio.to_thread(hash_password, body.password)
     user_id = await db.scalar(  # one round trip; the unique index decides duplicates
@@ -245,7 +287,8 @@ async def register(
 async def login(
     body: Login, request: Request, response: Response, db: Db, settings: AppSettings
 ) -> UserOut:
-    await _limit(request.app.state.auth_limiter, f"ip:{_client_ip(request)}")
+    _check_origin(request, settings)
+    await _limit(request.app.state.auth_limiter, f"ip:{client_ip(request, settings)}")
     user = await db.scalar(select(User).where(User.email == body.email.lower()))
     # verify first: an unknown email still pays for one argon2 verify (no timing oracle).
     stored = user.password_hash if user else None

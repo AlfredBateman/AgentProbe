@@ -10,8 +10,10 @@ and certificate verification use the name, not the pinned address.
 Address classes:
 - public: allowed.
 - private (loopback, RFC 1918, CGNAT, IPv6 unique-local): allowed only when the agent's config
-  sets allow_private AND the server sets ALLOW_PRIVATE_TARGETS=1 AND, if
-  PRIVATE_TARGET_ALLOWLIST is set, the host is on it.
+  sets allow_private AND the server allows the host: when PRIVATE_TARGET_ALLOWLIST is set, only
+  the hosts on it (ALLOW_PRIVATE_TARGETS then doesn't matter); otherwise any private host if
+  ALLOW_PRIVATE_TARGETS=1. A production server keeps ALLOW_PRIVATE_TARGETS off and lists only
+  the demo agents' host (ADR 0035).
 - blocked (cloud metadata, link-local, unspecified, multicast, reserved and documentation
   ranges, IPv4-mapped/-compatible, 6to4 and Teredo): never allowed.
 """
@@ -128,11 +130,11 @@ class TargetPolicy:
         )
 
     def permits_private(self, host: str, *, agent_allows: bool) -> bool:
-        return (
-            agent_allows
-            and self.allow_private
-            and (not self.private_allowlist or _normalize_host(host) in self.private_allowlist)
-        )
+        if not agent_allows:
+            return False
+        if self.private_allowlist:  # set: the whole policy, with or without allow_private
+            return _normalize_host(host) in self.private_allowlist
+        return self.allow_private
 
 
 class TargetBlocked(Exception):
@@ -182,8 +184,8 @@ async def resolve_target(
         if verdict is AddressClass.PRIVATE:
             raise TargetBlocked(
                 f"{host} resolves to a private address. Private targets need allow_private "
-                "on the agent, ALLOW_PRIVATE_TARGETS=1 on the server and, if "
-                "PRIVATE_TARGET_ALLOWLIST is set, the host on that list"
+                "on the agent, and on the server either the host on PRIVATE_TARGET_ALLOWLIST "
+                "or, with no allowlist, ALLOW_PRIVATE_TARGETS=1"
             )
         raise TargetBlocked(f"{host} resolves to a reserved or internal address (never allowed)")
     return [str(ip) for ip in addresses]

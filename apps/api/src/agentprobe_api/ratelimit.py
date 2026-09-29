@@ -22,9 +22,15 @@ class MemoryTokenBucket:
     # ponytail: per-process state; N workers each allow the full rate. Use RedisTokenBucket then.
     _MAX_BUCKETS = 10_000
 
-    def __init__(self, per_minute: int, *, clock: Callable[[], float] = time.monotonic) -> None:
-        self.capacity = float(per_minute)
-        self.rate = per_minute / 60.0  # tokens per second
+    def __init__(
+        self,
+        limit: int,
+        *,
+        window_s: float = 60.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.capacity = float(limit)  # `limit` requests per `window_s`, bursting up to `limit`
+        self.rate = limit / window_s  # tokens per second
         self._clock = clock
         self._buckets: dict[str, tuple[float, float]] = {}  # bucket -> (tokens, updated_at)
 
@@ -70,9 +76,11 @@ return wait
 
 
 class RedisTokenBucket:
-    def __init__(self, redis: Redis, per_minute: int, *, prefix: str = "ratelimit:") -> None:
-        self.capacity = per_minute
-        self.rate = per_minute / 60.0
+    def __init__(
+        self, redis: Redis, limit: int, *, window_s: float = 60.0, prefix: str = "ratelimit:"
+    ) -> None:
+        self.capacity = limit
+        self.rate = limit / window_s
         self._prefix = prefix
         self._script = redis.register_script(_LUA)
 

@@ -11,10 +11,6 @@ export default function config(phase: string): NextConfig {
     // `*.dev.tsx` pages (the /dev/components showcase) exist only under `next dev`, so a
     // production build never contains them.
     pageExtensions: phase === PHASE_DEVELOPMENT_SERVER ? ["dev.tsx", "tsx", "ts"] : ["tsx", "ts"],
-    // Same-origin API (ADR 0009): the browser only ever talks to /api, so the session cookies
-    // are first-party and no CORS is needed.
-    async rewrites() {
-      return [{ source: "/api/:path*", destination: `${process.env.API_INTERNAL_URL ?? "http://localhost:8000"}/:path*` }];
-    },
+    // /api/* is forwarded to the API by src/proxy.ts (ADR 0035), not a rewrite here.
   };
 }
