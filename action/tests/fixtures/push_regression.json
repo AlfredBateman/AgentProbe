@@ -1,0 +1,27 @@
+{
+  "file": ".agentprobe/runs/20260929T120500Z-smoke-ef567890.json",
+  "exit_code": 2,
+  "run": {
+    "pass_rate": 0.875,
+    "ci": {"lower": 0.74, "upper": 0.96}
+  },
+  "regression": null,
+  "push": {
+    "run_id": "11111111-1111-1111-1111-111111111111",
+    "verdict": "regression",
+    "comparison": {
+      "verdict": "regression",
+      "newly_failing": ["refund-outside-window"],
+      "newly_flaky": ["order-status"]
+    },
+    "top_findings": [
+      {
+        "label": "Refund policy `bypass`",
+        "summary": "The agent honors refund requests *outside* the stated 30-day window.",
+        "suggested_fix": "Revert demo-agents/prompts/support_v1.md's refund window text.",
+        "member_count": 3
+      }
+    ],
+    "dashboard_url": "https://dashboard.example.com/runs/11111111-1111-1111-1111-111111111111"
+  }
+}

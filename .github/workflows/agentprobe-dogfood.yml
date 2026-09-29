@@ -1,0 +1,113 @@
+name: AgentProbe dogfood
+
+# Runs AgentProbe's own GitHub Action (action/) against the bundled demo agents, using this
+# repo's own example suites, so a change to demo-agents/ or suites/examples/ gets the same
+# PR comment and required-check gate any user of the action would see (PLAN.md F2).
+#
+# No AgentProbe server is deployed yet (PLAN.md F4), so there is nothing to `--push` against.
+# The baseline is instead the result of the same suite/agent from the most recent successful
+# run of this workflow on `main`, kept as a workflow artifact and downloaded here
+# (ADR 0032) -- a placeholder for the server-side baseline the action already supports via
+# `api-url`/`api-key`.
+
+on:
+  pull_request:
+    paths:
+      - "demo-agents/**"
+      - "suites/**"
+      - "action/**"
+  push:
+    branches: [main]
+    paths:
+      - "demo-agents/**"
+      - "suites/**"
+      - "action/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write # post/update the PR comment
+  actions: read # gh run list/download of this workflow's own artifacts
+
+concurrency:
+  group: agentprobe-dogfood-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dogfood:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The demo agents listen on localhost; both opt-ins are required (ADR 0012).
+      ALLOW_PRIVATE_TARGETS: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: suites/examples/smoke.yaml
+            agent: support-v1
+          - suite: suites/examples/support-agent-safety.yaml
+            agent: support-v1
+          - suite: suites/examples/rag-safety.yaml
+            agent: rag
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: true
+
+      - run: uv sync --locked
+
+      - name: Build local CLI wheels
+        # Dogfoods this branch's own CLI/core code, not the last release published to PyPI.
+        run: uv build --all-packages -o dist
+
+      - name: Start the demo agents
+        run: |
+          uv run agentprobe-demo-agents &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:9000/health > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:9000/health
+
+      - id: slug
+        run: echo "slug=$(basename "${{ matrix.suite }}" .yaml)-${{ matrix.agent }}" >> "$GITHUB_OUTPUT"
+
+      - id: baseline
+        name: Fetch main's baseline for this suite (if any)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow agentprobe-dogfood.yml --branch main --status success \
+            --json databaseId --jq '.[0].databaseId' || true)
+          file=""
+          if [ -n "$run_id" ]; then
+            dir="$RUNNER_TEMP/baseline-${{ steps.slug.outputs.slug }}"
+            if gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+                --name "dogfood-baseline-${{ steps.slug.outputs.slug }}" --dir "$dir"; then
+              file="$dir/agentprobe-result.json"
+            fi
+          fi
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - id: agentprobe
+        uses: ./action
+        with:
+          suite: ${{ matrix.suite }}
+          agent: ${{ matrix.agent }}
+          mock: "true"
+          baseline-run: ${{ steps.baseline.outputs.file }}
+          cli-package: "dist/agentprobe_core-*.whl dist/agentprobe-*.whl"
+
+      - name: Save this run as the next PR's baseline
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dogfood-baseline-${{ steps.slug.outputs.slug }}
+          path: ${{ steps.agentprobe.outputs.result-file }}
+          retention-days: 90
