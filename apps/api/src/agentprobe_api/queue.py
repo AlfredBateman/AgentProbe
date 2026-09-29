@@ -31,6 +31,12 @@ from agentprobe_core.runner import INFRA_ERRORS, AttemptResult, finalize_run, ru
 log = logging.getLogger("agentprobe.runs")
 
 
+def _t(stage: str, run_id: uuid.UUID, **kw: object) -> None:  # DIAG: e2e timing, not for main
+    import time
+
+    log.warning("TIMING %s", {"stage": stage, "run": str(run_id)[:8], "t": round(time.time(), 3), **kw})
+
+
 @dataclass(frozen=True)
 class Deps:
     settings: Settings
@@ -60,6 +66,7 @@ class QueueBackend(Protocol):
 
 async def publish_status(deps: Deps, run_id: uuid.UUID) -> None:
     if (event := await runstore.status_event(deps.sessions, run_id)) is not None:
+        _t("publish_status", run_id, status=event["status"])
         await deps.bus.publish(run_id, event)
 
 
@@ -81,6 +88,7 @@ async def record_attempt(deps: Deps, plan: Plan, result: AttemptResult) -> Outco
     if saved is None:
         return "dropped"
     done, result_id = saved
+    _t("attempt_saved", plan.run_id, done=done, case=result.case_id, latency_ms=result.latency_ms)
     await deps.bus.publish(
         plan.run_id,
         {
@@ -144,8 +152,10 @@ async def cluster_findings(deps: Deps, plan: Plan) -> None:
 
 async def execute_inline(deps: Deps, run_id: uuid.UUID, cancel: asyncio.Event) -> None:
     """One whole run through core's `run_suite`, resuming from saved attempts."""
+    _t("worker_start", run_id)
     if not await runstore.claim(deps.sessions, run_id):
         return  # finished (e.g. cancelled while queued) or gone
+    _t("claimed", run_id)
     try:
         plan = await runstore.load_plan(deps.sessions, run_id, deps.secret_box)
         if plan is None:
@@ -174,10 +184,13 @@ async def execute_inline(deps: Deps, run_id: uuid.UUID, cancel: asyncio.Event) -
         )
     finally:
         await runstore.close_adapter(adapter)
+    _t("run_suite_done", run_id)
     if summary.status == "completed":
         status = await runstore.save_summary(deps.sessions, plan, summary)
+        _t("summary_saved", run_id)
         if status == "completed":
             await cluster_findings(deps, plan)
+            _t("findings_clustered", run_id)
         await publish_status(deps, run_id)
     else:  # cancelled or failed: summarize exactly what was saved
         await finalize(deps, plan)
@@ -194,6 +207,7 @@ class InlineQueue:
         pass
 
     async def enqueue(self, run_id: uuid.UUID) -> None:
+        _t("enqueued", run_id)
         cancel = self._cancels.setdefault(run_id, asyncio.Event())
         task = asyncio.create_task(self._run(run_id, cancel), name=f"run-{run_id}")
         self._tasks.add(task)

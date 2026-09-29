@@ -316,6 +316,9 @@ async def stream_run(
     try:
         run = await owned_run(db, principal, run_id)
         snapshot = runstore.run_event(run, "snapshot")
+        from agentprobe_api.queue import _t
+
+        _t("sse_open", run_id, snapshot=snapshot["status"])
     except BaseException:
         await stack.aclose()
         raise
@@ -326,7 +329,7 @@ async def stream_run(
         # credentials are involved, the token is the whole authorization.
         headers |= {"Access-Control-Allow-Origin": settings.web_origin, "Vary": "Origin"}
     return StreamingResponse(
-        _events(snapshot, subscription, stack), media_type="text/event-stream", headers=headers
+        _events(snapshot, subscription, stack, run_id), media_type="text/event-stream", headers=headers
     )
 
 
@@ -335,7 +338,7 @@ def _sse(event: dict[str, Any]) -> str:
 
 
 async def _events(
-    snapshot: dict[str, Any], subscription: Subscription, stack: AsyncExitStack
+    snapshot: dict[str, Any], subscription: Subscription, stack: AsyncExitStack, run_id: uuid.UUID
 ) -> AsyncIterator[str]:
     try:
         yield _sse(snapshot)
@@ -347,6 +350,10 @@ async def _events(
                 yield ": keep-alive\n\n"
                 continue
             yield _sse(event)
+            if event["type"] == "status":
+                from agentprobe_api.queue import _t
+
+                _t("sse_emit_status", run_id, status=event["status"])
             if event["type"] == "status" and event["status"] in TERMINAL:
                 return
     finally:

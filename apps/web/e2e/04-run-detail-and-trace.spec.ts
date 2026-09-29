@@ -73,11 +73,25 @@ test("a live /support/v1 run streams to completion and shows a flaky case; a /vu
   });
 
   await test.step("the run page follows the live run over SSE", async () => {
+    const T = (stage: string, extra: object = {}) => console.log("TIMING", JSON.stringify({ stage, t: Date.now() / 1000, ...extra }));
+    T("test_post_run_start");
     const { projectId, runId } = await projectWithRun(page, baseURL!, { name: "support-v1", path: "/support/v1/chat" }, SUPPORT_SUITE);
+    T("test_post_run_done", { run: runId.slice(0, 8) });
+    page.on("request", (r) => r.url().includes(runId) && T("browser_request", { url: r.url().split(runId)[1].slice(0, 30) }));
+    page.on("response", async (r) => {
+      if (!r.url().includes(runId)) return;
+      const tail = r.url().split(runId)[1].slice(0, 30);
+      let status: unknown = null;
+      if (tail === "" && r.request().method() === "GET") status = (await r.json().catch(() => ({}))).status;
+      T("browser_response", { url: tail, http: r.status(), status });
+    });
     // Straight to the API with a stream token: the /api rewrite gzips, which buffers SSE (ADR 0031).
-    const stream = page.waitForResponse((r) => r.url().includes(`/runs/${runId}/stream?token=`));
+    const stream = page.waitForResponse((r) => r.url().includes(`/runs/${runId}/stream?token=`), { timeout: 20_000 });
+    T("test_goto_start");
     await page.goto(`/projects/${projectId}/runs/${runId}`);
+    T("test_goto_done");
     const headers = (await stream).headers();
+    T("test_stream_seen");
     expect(headers["content-type"]).toContain("text/event-stream");
     expect(headers["access-control-allow-origin"]).toBe(baseURL);
 
@@ -89,6 +103,7 @@ test("a live /support/v1 run streams to completion and shows a flaky case; a /vu
     expect(Number(await live.getAttribute("value"))).toBeLessThan(20);
 
     await expect(page.getByText("Completed", { exact: true })).toBeVisible({ timeout: 150_000 });
+    T("test_completed_visible");
     await expect(live).toBeHidden();
     const orderStatus = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "order-status", exact: true }) });
     await expect(orderStatus.getByText("Flaky")).toBeVisible();
