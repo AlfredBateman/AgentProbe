@@ -1,0 +1,90 @@
+# The whole stack on this machine with no API keys: README "Run the whole stack with Docker".
+# CI's docker job runs the same commands.
+#
+# LOCAL ONLY. The secrets below are committed, so they are public: never deploy this file.
+# Published ports bind to 127.0.0.1, and the deliberately vulnerable demo agents publish none.
+name: agentprobe
+
+x-api-env: &api-env
+  # sslmode=disable: the app adds sslmode=require for any host but localhost (db.py).
+  DATABASE_URL: postgresql://agentprobe:agentprobe@db:5432/agentprobe?sslmode=disable
+  REDIS_URL: redis://redis:6379/0
+  QUEUE_BACKEND: redis
+  RATE_LIMIT_BACKEND: redis
+  LLM_PROVIDER: mock
+  JWT_SECRET: local-compose-only-this-value-is-public-never-deploy-it
+  ENCRYPTION_KEY: xi0TfQGY5qT7R3LE-654K4C8msrPIYW-hrBdzOBVrzI=
+  SIGNUP_ALLOWED_EMAILS: demo@example.com,smoke@example.com
+  WEB_ORIGIN: http://localhost:3000
+  # The demo agents are on a private address: both opt-ins, limited to that host (ADR 0012).
+  ALLOW_PRIVATE_TARGETS: "1"
+  PRIVATE_TARGET_ALLOWLIST: demo-agents
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.6-pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+    environment:
+      POSTGRES_USER: agentprobe
+      POSTGRES_PASSWORD: agentprobe
+      POSTGRES_DB: agentprobe
+    volumes:
+      - pgdata:/var/lib/postgresql  # Postgres 18 images keep versioned data dirs under here
+    healthcheck:
+      # Over TCP: during first-run init the entrypoint's temporary server listens on the unix
+      # socket only, so a socket check would pass before the real server is up.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "agentprobe", "-d", "agentprobe"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8.8.3-alpine@sha256:0b2b77d3ea5078274795e3177cdbdada8b96316684a38911d528534ed679b5ec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: agentprobe-api:local
+    environment: *api-env
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: agentprobe-api:local  # the api service builds it
+    command: ["taskiq", "worker", "agentprobe_api.worker:broker"]
+    environment: *api-env
+    healthcheck:
+      disable: true  # no HTTP port; the image's own check is the API's
+    depends_on:
+      api:
+        condition: service_healthy  # so migrations have run
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  demo-agents:
+    build:
+      context: .
+      dockerfile: demo-agents/Dockerfile
+    environment:
+      AGENT_MODE: mock
+
+volumes:
+  pgdata:

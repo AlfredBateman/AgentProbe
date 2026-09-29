@@ -1,0 +1,12 @@
+# The build context is the repo root; send only what apps/web/Dockerfile copies.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!apps/web
+apps/web/node_modules
+apps/web/.next
+apps/web/playwright-report
+apps/web/test-results
+apps/web/*.tsbuildinfo
+apps/web/next-env.d.ts
