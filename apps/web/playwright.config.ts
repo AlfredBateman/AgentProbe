@@ -40,6 +40,11 @@ const apiEnv = {
   JWT_SECRET: process.env.JWT_SECRET || FALLBACK_JWT_SECRET,
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || FALLBACK_ENCRYPTION_KEY,
   COOKIE_SECURE: "1", // Chrome treats http://localhost as a secure context
+  // Every spec signs in from 127.0.0.1: 13 register/login calls in about half a minute, right at
+  // the production default's edge (10 per minute per IP, refilling one per 6 s), so the last
+  // spec's login got a 429 depending on timing. The limiter has its own API tests; no spec here
+  // tests it.
+  AUTH_RATE_LIMIT_PER_MINUTE: "1000",
   LOG_LEVEL: "WARNING",
 };
 
