@@ -634,8 +634,30 @@ A phase is complete only when every task in it is done.
     The `/ci/report` `attempt()` test helper moved to `runtest.py`.
   - Not deployed yet: the manual checklist (docs/DEPLOY.md §Manual steps) creates the Neon project, the Fly apps and secrets, the Vercel project and the GitHub secrets and variables. Its step 9 is the first end-to-end check of what can't be tested here (below).
 
+- 2026-09-30 **F4: production smoke script and the allowlist SSRF check** (go-live itself still blocked, below):
+  - `scripts/smoke_prod.py` (docs/DEPLOY.md step 9). Everything goes through the web's `/api` proxy:
+    - registers a throwaway `smoke-<time>-<hex>@example.com`;
+    - adds an HTTP agent on `http://<DEMO_AGENTS_HOST>/support/v1/chat` and runs its connection test (the SSRF allowlist path);
+    - runs a 3-case × 2 mock suite, one case failing on purpose so findings exist;
+    - checks the results per case, a trace (steps and judgments), that the findings cover exactly the failed attempts, and the share link: its URL, the page and the anonymous JSON, then 404 once revoked.
+
+    The API has no account delete, so cleanup deletes the user from `PRODUCTION_DATABASE_URL` (the cascade `scripts/cleanup_e2e_account.py` already used, now a reusable `delete_user`). It runs in `finally`, and the script fails if the user isn't found there.
+  - Verified locally (not production) against the dev stack with production's SSRF shape (`ALLOW_PRIVATE_TARGETS=0`, `PRIVATE_TARGET_ALLOWLIST=localhost`, `SIGNUP_OPEN=1`):
+    - `PASS`;
+    - the failure path (a non-allowlisted `127.0.0.1`) is refused, still deletes the user, and exits 1;
+    - 0 smoke users were left on the dev database afterwards.
+  - SSRF (ADR 0012/0035): the allowlist only changes `TargetPolicy.permits_private`, which `resolve_target` consults for addresses already classified PRIVATE. Every connection still goes through `GuardedBackend.connect_tcp`: resolve once, classify every address, connect to exactly the validated one. Metadata, link-local and the other BLOCKED addresses are refused before the policy is consulted. The HTTP adapter, the MCP adapter (`GuardedBackend2`), the API's connection test and the runner all build their clients that way.
+
+    New test `test_allowlisted_host_still_resolves_validates_and_pins`: production's `from_env` policy, a `.flycast` host whose DNS answers a Fly ULA address and then rebinds to metadata, link-local or unspecified. Asserts one lookup per connection, a connect only to the validated address, and the rebind refused. A planted "allowlisted hosts skip resolution" bypass fails all 4 cases.
+
 ## Next
-- **F4 go-live** (user): the numbered checklist in docs/DEPLOY.md, then step 9's checks. Record the measured cold starts and anything the unverified items below turn up.
+- **F4 go-live** (user): the numbered checklist in docs/DEPLOY.md, then step 9's checks, including `scripts/smoke_prod.py`. As of 2026-09-30 GitHub showed none of it:
+  - no repository variables (so `DEPLOY_ENABLED` is unset and deploy.yml's job is skipped);
+  - no `production` environment;
+  - one Deploy run, skipped;
+  - `agentprobe-api.fly.dev` doesn't resolve.
+
+  Once it's live: run the smoke script, add the live URLs to the README and here, and record the cold starts and anything the unverified items below turn up.
 - **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
 - **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
 - **E3 (rest)**: MCP agent config, auth-header UI, suite versioning and a case browser, delete confirmations.

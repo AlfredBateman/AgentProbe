@@ -238,6 +238,43 @@ async def test_opt_in_never_opens_metadata_or_link_local(
     assert backend.connects == []
 
 
+@pytest.mark.parametrize("rebound", ["169.254.169.254", "fd00:ec2::254", "0.0.0.0", "fe80::1"])  # noqa: S104
+async def test_allowlisted_host_still_resolves_validates_and_pins(
+    make_adapter: MakeAdapter, rebound: str
+) -> None:
+    """Production's policy (ADR 0035: flag off, only the demo agents' host allowlisted). The
+    allowlist only lets that host's *private* addresses through; its connections take the same
+    path as any other host's: one lookup per connection, every address validated, and the
+    connect goes to exactly the validated address. A rebind to metadata is refused."""
+    host = "agentprobe-demo-agents.flycast"
+    flycast_ip = "fdaa:0:1a2b:a7b:1::2"  # Fly's private network is unique-local (fc00::/7)
+    answers = iter([[flycast_ip], [rebound]])
+    lookups: list[str] = []
+
+    async def rebinding_resolver(name: str, port: int) -> list[str]:
+        lookups.append(name)
+        return next(answers)
+
+    policy = TargetPolicy.from_env({"ALLOW_PRIVATE_TARGETS": "0", "PRIVATE_TARGET_ALLOWLIST": host})
+    backend = FakeBackend(http_response(), http_response())
+    async with make_adapter(
+        backend,
+        url=f"http://{host}/support/v1/chat",
+        resolver=rebinding_resolver,
+        policy=policy,
+        allow_private=True,
+        max_retries=0,
+    ) as adapter:
+        first = await adapter.invoke("hi")
+        second = await adapter.invoke("hi")  # a new connection (the fake closes each one)
+    assert first.error is None
+    assert second.error is not None
+    assert "never allowed" in second.error
+    assert rebound not in second.error
+    assert backend.connects == [(flycast_ip, 80)]  # the validated address, never the rebind
+    assert lookups == [host, host]  # resolved per connection, not skipped for the allowlist
+
+
 def test_policy_from_env() -> None:
     assert TargetPolicy.from_env({}) == TargetPolicy()
     assert not TargetPolicy.from_env({"ALLOW_PRIVATE_TARGETS": "true"}).allow_private
