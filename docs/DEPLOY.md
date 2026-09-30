@@ -189,4 +189,10 @@ Do these in order. Replace `agentprobe-api`, `agentprobe-demo-agents` and the Ve
 9. **Check.**
    - `fly ips list -a agentprobe-demo-agents` shows only a private IPv6.
    - `curl https://agentprobe-api.fly.dev/ready` returns `{"status":"ready"}`.
-   - Open `WEB_ORIGIN` and register. Add an agent named `support-v1` (the smoke suite's `agent:`) at `http://agentprobe-demo-agents.flycast/support/v1/chat` with "Allow private targets" checked, upload `suites/examples/smoke.yaml` and run it.
+   - Run the production smoke test from the repo root. It registers a throwaway user through the web proxy, adds an agent on the demo agents over `.flycast`, runs a 6-attempt mock suite, checks results, a trace, findings and a share link (then revokes it), and deletes the user from the production database afterwards, even when a check fails:
+     ```bash
+     WEB_ORIGIN=<step 6 URL> API_URL=https://agentprobe-api.fly.dev \
+     DEMO_AGENTS_HOST=agentprobe-demo-agents.flycast PRODUCTION_DATABASE_URL='<step 1 string>' \
+     uv run python scripts/smoke_prod.py
+     ```
+     It ends with `PASS production smoke test`. It uses one of the IP's hourly registrations (`REGISTER_RATE_LIMIT_PER_HOUR=5`).
