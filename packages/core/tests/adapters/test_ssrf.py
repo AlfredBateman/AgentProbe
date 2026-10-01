@@ -18,7 +18,7 @@ from adapterfakes import (
     static_resolver,
 )
 from agentprobe_core.adapters import HttpAdapterConfig, TargetPolicy
-from agentprobe_core.adapters.ssrf import AddressClass, classify
+from agentprobe_core.adapters.ssrf import AddressClass, Resolver, classify
 
 BLOCKED_CLASSES = {
     "unspecified": ["0.0.0.0", "0.1.2.3", "::"],  # noqa: S104
@@ -204,7 +204,7 @@ async def test_dns_rebinding_cannot_swap_in_an_internal_address(
         (True, TargetPolicy(allow_private=True, private_allowlist=frozenset({HOST})), True),
         (True, TargetPolicy(allow_private=True, private_allowlist=frozenset({"other"})), False),
         (False, TargetPolicy(allow_private=True, private_allowlist=frozenset({HOST})), False),
-        # An allowlist is the whole server policy: production keeps the flag off (ADR 0035).
+        # An allowlist is the whole server policy, with or without the flag (ADR 0012).
         (True, TargetPolicy(private_allowlist=frozenset({HOST})), True),
         (True, TargetPolicy(private_allowlist=frozenset({"other"})), False),
         (False, TargetPolicy(private_allowlist=frozenset({HOST})), False),
@@ -238,29 +238,39 @@ async def test_opt_in_never_opens_metadata_or_link_local(
     assert backend.connects == []
 
 
-@pytest.mark.parametrize("rebound", ["169.254.169.254", "fd00:ec2::254", "0.0.0.0", "fe80::1"])  # noqa: S104
-async def test_allowlisted_host_still_resolves_validates_and_pins(
-    make_adapter: MakeAdapter, rebound: str
-) -> None:
-    """Production's policy (ADR 0035: flag off, only the demo agents' host allowlisted). The
-    allowlist only lets that host's *private* addresses through; its connections take the same
-    path as any other host's: one lookup per connection, every address validated, and the
-    connect goes to exactly the validated address. A rebind to metadata is refused."""
-    host = "agentprobe-demo-agents.flycast"
-    flycast_ip = "fdaa:0:1a2b:a7b:1::2"  # Fly's private network is unique-local (fc00::/7)
-    answers = iter([[flycast_ip], [rebound]])
+def rebinding(host: str, first: str, then: str) -> tuple[Resolver, list[str]]:
+    """A resolver that answers `first` for the first lookup and `then` afterwards."""
+    answers = iter([[first], [then]])
     lookups: list[str] = []
 
-    async def rebinding_resolver(name: str, port: int) -> list[str]:
+    async def resolve(name: str, port: int) -> list[str]:
+        assert name == host
         lookups.append(name)
         return next(answers)
 
-    policy = TargetPolicy.from_env({"ALLOW_PRIVATE_TARGETS": "0", "PRIVATE_TARGET_ALLOWLIST": host})
+    return resolve, lookups
+
+
+@pytest.mark.parametrize(
+    "rebound",
+    ["10.0.0.5", "127.0.0.1", "fd12::5", "169.254.169.254", "fd00:ec2::254", "0.0.0.0", "fe80::1"],  # noqa: S104
+)
+async def test_production_demo_host_is_public_with_no_private_exception(
+    make_adapter: MakeAdapter, rebound: str
+) -> None:
+    """Production's policy (ADR 0036): ALLOW_PRIVATE_TARGETS off and no allowlist. The demo
+    agents are a public service, admitted as any public host is: one lookup per connection,
+    every address validated, the connect pinned to the validated one. Nothing about that host
+    opens a private address, not even with the agent's own allow_private set, so a rebind to a
+    private, metadata or link-local address is refused."""
+    host = "agentprobe-demo-agents.onrender.com"
+    resolver, lookups = rebinding(host, PUBLIC_IP, rebound)
+    policy = TargetPolicy.from_env({"ALLOW_PRIVATE_TARGETS": "0", "PRIVATE_TARGET_ALLOWLIST": ""})
     backend = FakeBackend(http_response(), http_response())
     async with make_adapter(
         backend,
-        url=f"http://{host}/support/v1/chat",
-        resolver=rebinding_resolver,
+        url=f"https://{host}/support/v1/chat",
+        resolver=resolver,
         policy=policy,
         allow_private=True,
         max_retries=0,
@@ -269,9 +279,40 @@ async def test_allowlisted_host_still_resolves_validates_and_pins(
         second = await adapter.invoke("hi")  # a new connection (the fake closes each one)
     assert first.error is None
     assert second.error is not None
+    assert rebound not in second.error
+    assert backend.connects == [(PUBLIC_IP, 443)]  # the validated address, never the rebind
+    assert lookups == [host, host]  # resolved per connection
+
+
+@pytest.mark.parametrize("rebound", ["169.254.169.254", "fd00:ec2::254", "0.0.0.0", "fe80::1"])  # noqa: S104
+async def test_allowlisted_host_still_resolves_validates_and_pins(
+    make_adapter: MakeAdapter, rebound: str
+) -> None:
+    """An allowlist entry (ADR 0012, for self-hosted private agents) only lets that host's
+    *private* addresses through. Its connections take the same path as any other host's: one
+    lookup per connection, every address validated, and the connect goes to exactly the
+    validated address. A rebind to metadata is refused. A planted "allowlisted hosts skip
+    resolution" bypass fails every case."""
+    host = "agents.internal"
+    private_ip = "fd12:3456:789a::2"
+    resolver, lookups = rebinding(host, private_ip, rebound)
+    policy = TargetPolicy.from_env({"ALLOW_PRIVATE_TARGETS": "0", "PRIVATE_TARGET_ALLOWLIST": host})
+    backend = FakeBackend(http_response(), http_response())
+    async with make_adapter(
+        backend,
+        url=f"http://{host}/chat",
+        resolver=resolver,
+        policy=policy,
+        allow_private=True,
+        max_retries=0,
+    ) as adapter:
+        first = await adapter.invoke("hi")
+        second = await adapter.invoke("hi")
+    assert first.error is None
+    assert second.error is not None
     assert "never allowed" in second.error
     assert rebound not in second.error
-    assert backend.connects == [(flycast_ip, 80)]  # the validated address, never the rebind
+    assert backend.connects == [(private_ip, 80)]
     assert lookups == [host, host]  # resolved per connection, not skipped for the allowlist
 
 

@@ -1,17 +1,18 @@
-"""Smoke-tests the production deploy (ADR 0035, docs/DEPLOY.md) end to end, then deletes what
+"""Smoke-tests the production deploy (ADR 0036, docs/DEPLOY.md) end to end, then deletes what
 it created.
 
-Through the web app's /api proxy, as a browser would: registers a throwaway user, creates a
-project, an HTTP agent on the deployed demo agents (over Fly's private network, so it also
-proves the SSRF allowlist admits them) and a small suite, runs it in mock mode, and checks the
-run's results, a trace, its findings and a share link, both anonymously and after revoking.
-The API has no account delete, so cleanup deletes the user from the production database,
-cascading to everything it owns (scripts/cleanup_e2e_account.py). It runs even when a check
-fails.
+First it wakes the API and the demo agents (free services sleep when idle) and reports how
+long each took. Then, through the web app's /api proxy, as a browser would: registers a
+throwaway user, creates a project, an HTTP agent on the public demo agents (so it also proves
+the SSRF guard admits them as an ordinary public host, with no private-address opt-in) and a
+small suite, runs it in mock mode, and checks the run's results, a trace, its findings and a
+share link, both anonymously and after revoking. The API has no account delete, so cleanup
+deletes the user from the production database, cascading to everything it owns
+(scripts/cleanup_e2e_account.py). It runs even when a check fails.
 
-    WEB_ORIGIN=https://<web> API_URL=https://<api app>.fly.dev \\
-    DEMO_AGENTS_HOST=<demo app>.flycast PRODUCTION_DATABASE_URL='<Neon direct string>' \\
-    uv run python scripts/smoke_prod.py
+    WEB_ORIGIN=https://<project>.vercel.app API_URL=https://<api>.onrender.com \\
+    DEMO_AGENTS_URL=https://<demo agents>.onrender.com \\
+    PRODUCTION_DATABASE_URL='<Neon direct string>' uv run python scripts/smoke_prod.py
 
 It uses one registration of the per-IP hourly limit (REGISTER_RATE_LIMIT_PER_HOUR), one run of
 the new user's daily cap, and 6 attempts. Nothing calls an LLM: the run is mock and the demo
@@ -25,12 +26,18 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from cleanup_e2e_account import delete_user, run_async
 
-RUN_TIMEOUT_S = 180
-COLD_START_S = 90  # a stopped Fly machine starts on the first request
+RUN_TIMEOUT_S = 240
+# A sleeping free service takes about a minute to wake; the platform holds the first request
+# meanwhile, so one request can take that long.
+COLD_START_S = 180
+FIRST_REQUEST_TIMEOUT_S = 120
+REQUEST_TIMEOUT_S = 60
+DEMO_NOTICE = "Deliberately vulnerable demo"
 FAILS_ON_PURPOSE = "SMOKE-NEVER-IN-ANY-OUTPUT"
 SUITE = f"""\
 suite: prod-smoke
@@ -68,8 +75,28 @@ class Client:
         self.cookies: dict[str, str] = {}
 
     def request(
-        self, method: str, url: str, body: Any = None, *, anonymous: bool = False
+        self,
+        method: str,
+        url: str,
+        body: Any = None,
+        *,
+        anonymous: bool = False,
+        timeout: float = REQUEST_TIMEOUT_S,
     ) -> tuple[int, Any]:
+        status, payload, _ = self.request_with_headers(
+            method, url, body, anonymous=anonymous, timeout=timeout
+        )
+        return status, payload
+
+    def request_with_headers(
+        self,
+        method: str,
+        url: str,
+        body: Any = None,
+        *,
+        anonymous: bool = False,
+        timeout: float = REQUEST_TIMEOUT_S,
+    ) -> tuple[int, Any, Any]:
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(url, data=data, method=method)  # noqa: S310  https URLs
         req.add_header("Origin", self.web)  # the API's CSRF check (ADR 0009, ADR 0035)
@@ -78,7 +105,7 @@ class Client:
         if self.cookies and not anonymous:
             req.add_header("Cookie", "; ".join(f"{k}={v}" for k, v in self.cookies.items()))
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
                 status, raw, headers = resp.status, resp.read(), resp.headers
         except urllib.error.HTTPError as exc:
             status, raw, headers = exc.code, exc.read(), exc.headers
@@ -89,9 +116,9 @@ class Client:
                 name, _, rest = cookie.partition("=")
                 self.cookies[name.strip()] = rest.split(";", 1)[0]
         try:
-            return status, json.loads(raw) if raw else None
+            return status, json.loads(raw) if raw else None, headers
         except ValueError:
-            return status, raw.decode(errors="replace")[:500]
+            return status, raw.decode(errors="replace")[:500], headers
 
     def api(self, method: str, path: str, body: Any = None, *, expect: int | None = None) -> Any:
         status, payload = self.request(method, f"{self.web}/api{path}", body)
@@ -109,24 +136,38 @@ def check(condition: bool, message: str) -> None:
         raise SmokeFailure(message)
 
 
-def wait_ready(client: Client, url: str) -> None:
-    deadline = time.monotonic() + COLD_START_S
+def wake(client: Client, url: str) -> float:
+    """Polls `url` until it answers 200; returns how long that took, in seconds."""
+    started = time.monotonic()
+    deadline = started + COLD_START_S
     while True:
         try:
-            status, _ = client.request("GET", url, anonymous=True)
+            status, _ = client.request("GET", url, anonymous=True, timeout=FIRST_REQUEST_TIMEOUT_S)
         except SmokeFailure:
             status = 0
         if status == 200:
-            return
+            return time.monotonic() - started
         if time.monotonic() > deadline:
             raise SmokeFailure(f"GET {url}: {status} after {COLD_START_S} s")
         time.sleep(3)
 
 
-def smoke(client: Client, api_url: str, demo_host: str, email: str) -> None:
+def warm_up(client: Client, api_url: str, demo_url: str) -> None:
+    """Wakes both services at once (each sleeps on its own), so the timed checks after this
+    measure the app rather than a cold start."""
+    urls = (f"{api_url}/ready", f"{demo_url}/health")
+    with ThreadPoolExecutor(len(urls)) as pool:
+        for url, took in zip(urls, pool.map(lambda u: wake(client, u), urls), strict=True):
+            ok(f"GET {url} answered after {took:.0f} s (a cold start if well over 1 s)")
+    status, about, headers = client.request_with_headers("GET", f"{demo_url}/", anonymous=True)
+    check(status == 200 and DEMO_NOTICE in str(about), f"demo agents' root page: {status} {about}")
+    check(DEMO_NOTICE in (headers.get("X-AgentProbe-Demo") or ""), "no X-AgentProbe-Demo header")
+    ok("demo agents label themselves deliberately vulnerable (root page and header)")
+
+
+def smoke(client: Client, api_url: str, demo_url: str, email: str) -> None:
     web = client.web
-    wait_ready(client, f"{api_url}/ready")
-    ok(f"GET {api_url}/ready")
+    warm_up(client, api_url, demo_url)
     for url in (f"{web}/api/health", f"{web}/login"):
         status, _ = client.request("GET", url, anonymous=True)
         check(status == 200, f"GET {url}: {status}")
@@ -145,8 +186,7 @@ def smoke(client: Client, api_url: str, demo_host: str, email: str) -> None:
             "name": "smoke-support-v1",
             "config": {
                 "adapter_type": "http",
-                "url": f"http://{demo_host}/support/v1/chat",
-                "allow_private": True,  # the agent's half; the server's is the allowlist
+                "url": f"{demo_url}/support/v1/chat",  # public: no allow_private needed
                 "response": {
                     "output": "$.output",
                     "tool_calls": "$.tool_calls",
@@ -157,7 +197,7 @@ def smoke(client: Client, api_url: str, demo_host: str, email: str) -> None:
     )
     probe = client.api("POST", f"/agents/{agent['id']}/test")
     check(probe["success"], f"agent connection test: {probe['message']}")
-    ok(f"agent reaches http://{demo_host} through the SSRF guard")
+    ok(f"agent reaches {demo_url} through the SSRF guard as a public host")
 
     suite = client.api("POST", f"/projects/{project['id']}/suites", {"yaml": SUITE})
     run = client.api("POST", f"/suites/{suite['id']}/runs", {"mock": True})
@@ -211,7 +251,7 @@ def main() -> None:
     try:
         web = os.environ["WEB_ORIGIN"].rstrip("/")
         api_url = os.environ["API_URL"].rstrip("/")
-        demo_host = os.environ["DEMO_AGENTS_HOST"]
+        demo_url = os.environ["DEMO_AGENTS_URL"].rstrip("/")
         database_url = os.environ["PRODUCTION_DATABASE_URL"]
     except KeyError as exc:
         sys.exit(f"{exc.args[0]} is not set (see this script's docstring)")
@@ -219,7 +259,7 @@ def main() -> None:
     client = Client(web)
     failure: SmokeFailure | None = None
     try:
-        smoke(client, api_url, demo_host, email)
+        smoke(client, api_url, demo_url, email)
     except SmokeFailure as exc:
         failure = exc
     finally:

@@ -275,6 +275,36 @@ def _origin(url: httpx.URL) -> tuple[str, str, int]:
     return url.scheme, url.host, url.port or _DEFAULT_PORT.get(url.scheme, 0)
 
 
+def guarded_client(
+    *,
+    policy: TargetPolicy,
+    allow_private: bool,
+    timeout_s: float,
+    ssl_context: ssl.SSLContext | None = None,
+    resolver: Resolver = system_resolver,
+    network_backend: httpcore.AsyncNetworkBackend | None = None,
+) -> httpx.AsyncClient:
+    """An httpx client whose every connection goes through the SSRF guard: resolved once,
+    every address validated, connected to exactly the validated address. Redirects are off.
+    """
+    ssl_context = ssl_context or httpx.create_ssl_context()
+    transport = httpx.AsyncHTTPTransport(verify=ssl_context, trust_env=False)
+    # httpx has no network_backend option, so swap in a pool whose every connection goes
+    # through the guard. The tests drive this exact path, so an httpx change fails loudly.
+    transport._pool = httpcore.AsyncConnectionPool(
+        ssl_context=ssl_context,
+        network_backend=GuardedBackend(
+            policy=policy,
+            agent_allows_private=allow_private,
+            resolver=resolver,
+            inner=network_backend,
+        ),
+    )
+    # trust_env=False: with HTTP(S)_PROXY set, the proxy would connect to the target itself,
+    # past the guard.
+    return httpx.AsyncClient(transport=transport, trust_env=False, timeout=timeout_s)
+
+
 class HttpAdapter:
     """Calls an agent over HTTP. `invoke` never raises for agent-side failures: they come
     back as an `AgentResponse` with `error` set. Use as an async context manager, or call
@@ -307,23 +337,13 @@ class HttpAdapter:
         }
         self._clock = clock or SystemClock()
         self._rng = random.Random()  # noqa: S311 (jitter, not crypto)
-        ssl_context = ssl_context or httpx.create_ssl_context()
-        transport = httpx.AsyncHTTPTransport(verify=ssl_context, trust_env=False)
-        # httpx has no network_backend option, so swap in a pool whose every connection goes
-        # through the guard. The tests drive this exact path, so an httpx change fails loudly.
-        transport._pool = httpcore.AsyncConnectionPool(
+        self._client = guarded_client(
+            policy=policy or TargetPolicy.from_env(),
+            allow_private=config.allow_private,
+            timeout_s=config.timeout_ms / 1000,
             ssl_context=ssl_context,
-            network_backend=GuardedBackend(
-                policy=policy or TargetPolicy.from_env(),
-                agent_allows_private=config.allow_private,
-                resolver=resolver,
-                inner=network_backend,
-            ),
-        )
-        # trust_env=False: with HTTP(S)_PROXY set, the proxy would connect to the target
-        # itself, past the guard.
-        self._client = httpx.AsyncClient(
-            transport=transport, trust_env=False, timeout=config.timeout_ms / 1000
+            resolver=resolver,
+            network_backend=network_backend,
         )
 
     async def __aenter__(self) -> "HttpAdapter":

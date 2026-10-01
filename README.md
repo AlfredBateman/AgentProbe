@@ -32,7 +32,7 @@ The compose file is for local use only. Its secrets are committed, so they're pu
 
 ## Deploy
 
-The production demo runs on Vercel (web), Fly.io (API and demo agents) and Neon (Postgres). [docs/DEPLOY.md](docs/DEPLOY.md) lists every environment variable per service and the one-time manual steps. After that, every push to `main` that passes CI deploys through `.github/workflows/deploy.yml`.
+The production demo runs on free tiers that need no card: Vercel Hobby (web), two Render free web services (the API and the demo agents) and Neon Free (Postgres). Free services sleep when idle, so the first visit after a quiet spell waits about a minute while the API wakes. [docs/DEPLOY.md](docs/DEPLOY.md) lists every environment variable and dashboard setting per service, and the one-time manual steps. After that, every push to `main` that passes CI deploys through `.github/workflows/deploy.yml`.
 
 ## Database
 

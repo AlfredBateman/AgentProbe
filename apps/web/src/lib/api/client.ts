@@ -1,6 +1,7 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
 import { createSessionFetch } from "./session";
+import { awakeFetch } from "./wake";
 
 function toLogin() {
   const next = window.location.pathname + window.location.search;
@@ -11,7 +12,8 @@ function toLogin() {
 
 /**
  * The typed API client for client components. Requests go to /api, which Next rewrites to the
- * API, so cookies are first-party (ADR 0009). Types come from the API's OpenAPI schema:
+ * API, so cookies are first-party (ADR 0009). Every request waits for a sleeping API to wake
+ * first (ADR 0036). Types come from the API's OpenAPI schema:
  * `uv run python scripts/export_openapi.py && pnpm --filter web gen:api`.
  */
-export const api = createClient<paths>({ baseUrl: "/api", fetch: createSessionFetch(toLogin) });
+export const api = createClient<paths>({ baseUrl: "/api", fetch: createSessionFetch(toLogin, awakeFetch) });

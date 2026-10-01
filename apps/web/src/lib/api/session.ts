@@ -13,8 +13,10 @@ const NO_REFRESH = new Set(["/api/auth/login", "/api/auth/register", "/api/auth/
  * - Across tabs, a Web Lock serializes refreshes, and a probe of /auth/me inside the lock
  *   skips the refresh when another tab already rotated the cookies.
  * - login/register/refresh/logout pass through untouched; a retry that still fails is returned as is.
+ *
+ * `send` makes the requests themselves (lib/api/wake.ts's awakeFetch in the app).
  */
-export function createSessionFetch(onExpired: () => void) {
+export function createSessionFetch(onExpired: () => void, send: (request: Request) => Promise<Response> = (r) => fetch(r)) {
   let inflight: Promise<boolean> | null = null;
 
   async function refresh(base: string): Promise<boolean> {
@@ -30,11 +32,11 @@ export function createSessionFetch(onExpired: () => void) {
 
   return async function sessionFetch(request: Request): Promise<Response> {
     const retry = request.clone(); // the body can only be read once
-    const response = await fetch(request);
+    const response = await send(request);
     if (response.status !== 401 || NO_REFRESH.has(new URL(request.url).pathname)) return response;
     inflight ??= refresh(request.url).finally(() => {
       inflight = null;
     });
-    return (await inflight) ? fetch(retry) : response;
+    return (await inflight) ? send(retry) : response;
   };
 }

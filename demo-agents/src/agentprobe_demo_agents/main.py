@@ -13,8 +13,9 @@ from fastapi import FastAPI, Request, Response
 from agentprobe_demo_agents import routes_rag, routes_support, routes_vulnerable
 from agentprobe_demo_agents.mcp_server import MCP_ROUTE, build_mcp_server
 
-# On every response, so a deployed copy is labelled wherever it's reached from (ADR 0035).
-WARNING = "Deliberately vulnerable test targets with planted flaws. Fake data only."
+# On every response, so the public deployed copy is labelled wherever it's reached from
+# (ADR 0036).
+WARNING = "Deliberately vulnerable demo with planted flaws. No real data: fake data only."
 
 
 def create_app() -> FastAPI:

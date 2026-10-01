@@ -10,6 +10,7 @@ import { PlainText } from "@/components/ui/code";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
 import type { components } from "@/lib/api/schema";
+import { awakeFetch } from "@/lib/api/wake";
 import { date, pct, score } from "@/lib/format";
 
 type Shared = components["schemas"]["SharedRunOut"];
@@ -21,8 +22,9 @@ export default function SharedRunPage() {
   const [run, setRun] = useState<Shared | "loading" | "missing">("loading");
 
   useEffect(() => {
-    // A plain fetch: this page has no session to refresh.
-    fetch(`/api/shared/${encodeURIComponent(token)}`)
+    // No session to refresh, but a shared link is often the first visit in a while: wait for a
+    // sleeping API to wake (ADR 0036).
+    awakeFetch(new Request(new URL(`/api/shared/${encodeURIComponent(token)}`, window.location.origin)))
       .then(async (r): Promise<Shared | "missing"> => (r.ok ? ((await r.json()) as Shared) : "missing"))
       .then(setRun, () => setRun("missing"));
   }, [token]);

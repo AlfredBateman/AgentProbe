@@ -21,6 +21,8 @@ from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Project, Secret
 from agentprobe_api.projects import owned_project
 from agentprobe_api.runstore import close_adapter
+from agentprobe_api.settings import Settings
+from agentprobe_api.wake import wake_target
 from agentprobe_core.adapters import (
     AdapterNotAllowed,
     HttpAdapterConfig,
@@ -121,8 +123,12 @@ class AgentTestDraft(BaseModel):
 
 
 async def _test_connection(
-    adapter_type: str, config: dict[str, Any], secret_headers: dict[str, SecretStr]
+    adapter_type: str,
+    config: dict[str, Any],
+    secret_headers: dict[str, SecretStr],
+    settings: Settings,
 ) -> AgentTestOut:
+    await wake_target(config, settings)
     try:
         adapter = build_adapter(
             adapter_type, config, secret_headers=secret_headers, policy=TargetPolicy.from_env()
@@ -262,7 +268,11 @@ async def delete_agent(agent_id: uuid.UUID, principal: CurrentPrincipal, db: Db)
 
 @router.post("/agents/{agent_id}/test")
 async def test_agent(
-    agent_id: uuid.UUID, principal: CurrentPrincipal, db: Db, request: Request
+    agent_id: uuid.UUID,
+    principal: CurrentPrincipal,
+    db: Db,
+    request: Request,
+    settings: AppSettings,
 ) -> AgentTestOut:
     """One probe request against a saved agent's stored config, no retries."""
     agent = await owned_agent(db, principal, agent_id)
@@ -276,12 +286,16 @@ async def test_agent(
         except InvalidToken:
             return AgentTestOut(success=False, message="the agent's auth header can't be decrypted")
         secret_headers = {header["name"]: SecretStr(header["value"])}
-    return await _test_connection(agent.adapter_type, agent.config, secret_headers)
+    return await _test_connection(agent.adapter_type, agent.config, secret_headers, settings)
 
 
 @router.post("/projects/{project_id}/agents/test")
 async def test_draft_agent(
-    project_id: uuid.UUID, body: AgentTestDraft, principal: CurrentPrincipal, db: Db
+    project_id: uuid.UUID,
+    body: AgentTestDraft,
+    principal: CurrentPrincipal,
+    db: Db,
+    settings: AppSettings,
 ) -> AgentTestOut:
     """The same probe, for a not-yet-saved config (the add-agent form's "Test connection").
     The project id only scopes access; nothing about the draft is stored.
@@ -291,4 +305,4 @@ async def test_draft_agent(
         {body.auth_header.name: SecretStr(body.auth_header.value)} if body.auth_header else {}
     )
     config = body.config.model_dump(mode="json", exclude={"adapter_type"})
-    return await _test_connection(body.config.adapter_type, config, secret_headers)
+    return await _test_connection(body.config.adapter_type, config, secret_headers, settings)

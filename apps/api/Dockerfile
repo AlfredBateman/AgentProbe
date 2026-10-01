@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # One image for the API (default command: migrate, then serve) and the Redis worker
-# (docker-compose.yml overrides the command). Build context is the repo root.
+# (docker-compose.yml overrides the command). Build context is the repo root. Render overrides
+# the command to serve only, since deploy.yml migrates first (docs/DEPLOY.md).
 ARG PYTHON_IMAGE=python:3.12.14-slim-trixie@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
 
 FROM ghcr.io/astral-sh/uv:0.12.18@sha256:3adc3706091ce7c2fe595e669628caedd6d951551b92b258b7e7dbe06d9440bc AS uv
