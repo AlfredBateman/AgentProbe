@@ -32,6 +32,14 @@ The compose file is for local use only. Its secrets are committed, so they're pu
 
 ## Deploy
 
+Live (the first request after a quiet spell takes about a minute while the free services wake):
+
+| | URL |
+|---|---|
+| Web app | https://agent-probe-umber.vercel.app |
+| API (`/ready`, `/docs`) | https://agentprobe-api-1uno.onrender.com |
+| Demo agents (deliberately vulnerable, fake data only) | https://agentprobe-1r00.onrender.com |
+
 The production demo runs on free tiers that need no card: Vercel Hobby (web), two Render free web services (the API and the demo agents) and Neon Free (Postgres). Free services sleep when idle, so the first visit after a quiet spell waits about a minute while the API wakes. [docs/DEPLOY.md](docs/DEPLOY.md) lists every environment variable and dashboard setting per service, and the one-time manual steps. After that, every push to `main` that passes CI deploys through `.github/workflows/deploy.yml`.
 
 ## Database
