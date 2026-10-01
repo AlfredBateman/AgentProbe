@@ -12,7 +12,7 @@ A phase is complete only when every task in it is done.
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
 | E: dashboard | E0, E1, E4, E5, E6, E7 **complete**; E3 done as a minimal agents/suites slice (below); E2 (project overview charts) not built. |
-| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **config complete, reworked on 2026-10-01 for free, no-card tiers (Render, Vercel Hobby, Neon; ADR 0036); the first deploy waits on the manual checklist in docs/DEPLOY.md**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
+| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **live (Render, Vercel Hobby, Neon; ADR 0036), deployed by deploy.yml after CI and smoke-tested by `scripts/smoke_prod.py`; ADR 0036's unverified list and cold-start timings remain**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
 
 ## Done
 - 2026-09-24 **Bootstrap**:
@@ -698,10 +698,16 @@ A phase is complete only when every task in it is done.
   - The GitHub variable `WEB_ORIGIN` also has the trailing slash, so deploy.yml's check hits `//api/health`.
   - Gate: `pnpm check` green (945 Python, 160 Vitest).
 
-## Next
-- **F4 go-live** (user): the numbered no-card checklist in docs/DEPLOY.md §Manual steps (Neon, Render via GitHub login, the two Render services, the deploy hooks as GitHub secrets, Vercel, GitHub variables), then its step 10 checks, including `scripts/smoke_prod.py`. As of 2026-09-30 GitHub had no repository variables (so `DEPLOY_ENABLED` is unset and deploy.yml's job is skipped) and no `production` environment.
+- 2026-10-02 **F4 live: production smoke passes, deploys run after CI**:
+  - Live URLs: web https://agent-probe-umber.vercel.app, API https://agentprobe-api-1uno.onrender.com, demo agents https://agentprobe-1r00.onrender.com (also in the README).
+  - Cause of the failed Deploy runs: the Vercel step died with "Could not retrieve Project Settings" on both runs after the Render steps had succeeded. A throwaway workflow showed the token and both IDs were fine (the project API call returned 200), and that `vercel@61.0.0` calls `GET /teams/<org>`, gets 403 for this token, and treats it as fatal. 61.1.0 and 62.1.0 pull with the same token; 55, 50 and 45 fail like 61.0.0. Fix: pin `vercel@61.1.0` in deploy.yml. The diagnostic branch is deleted.
+  - deploy.yml now ends with `scripts/smoke_prod.py` (new repo variable `DEMO_AGENTS_URL`; `PRODUCTION_DATABASE_URL` comes from the `production` environment, so the credential never leaves GitHub). A green Deploy run is the production smoke test.
+  - Verified: pushing `4eca0bb` to main ran CI (green, 6m20s), then Deploy by itself (green, 2m39s, every step). `/ready` reports `4eca0bb`. The smoke run registered a throwaway user, ran 6 mock attempts (pass rate 0.67 by design: one case fails on purpose), and checked per-case results, a trace (2 steps, 1 judgment), findings (1 cluster over the 2 failures), the share link (anonymous 200, then 404 once revoked), and the SSRF guard admitting the public demo agents. It then deleted the user from the production database.
+  - Not measured: cold starts. Both services were already awake from the deploy (answers took 0 s and 1 s). Measure on a quiet day by running the script after 15+ idle minutes (docs/DEPLOY.md step 10).
+  - Known: the smoke's registration counts against `REGISTER_RATE_LIMIT_PER_HOUR` (5 per IP) and `MAX_SIGNUPS_PER_DAY`; each deploy uses one.
 
-  Once it's live: run the smoke script, add the live URLs to the README and here, record the cold starts it prints, and work through ADR 0036's unverified list.
+## Next
+- **F4 follow-ups**: record real cold starts (see the F4 live entry), and work through ADR 0036's "Unverified until the first live deploy" list, starting with the `X-Forwarded-For` check.
 - **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
 - **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
 - **E3 (rest)**: MCP agent config, auth-header UI, suite versioning and a case browser, delete confirmations.
