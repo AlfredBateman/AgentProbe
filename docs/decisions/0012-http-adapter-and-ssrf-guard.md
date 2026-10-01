@@ -2,7 +2,9 @@
 
 Status: accepted (2026-09-24)
 
-Amended 2026-09-29 by [ADR 0035](0035-production-deploy-on-fly-and-vercel.md): when `PRIVATE_TARGET_ALLOWLIST` is set it is the whole server policy (listed private hosts only, whatever `ALLOW_PRIVATE_TARGETS` says); with no allowlist, `ALLOW_PRIVATE_TARGETS=1` allows any private host, as before. The agent's `allow_private` is still required.
+Amended 2026-09-29 by [ADR 0035](0035-production-deploy-and-public-abuse-limits.md): when `PRIVATE_TARGET_ALLOWLIST` is set it is the whole server policy (listed private hosts only, whatever `ALLOW_PRIVATE_TARGETS` says); with no allowlist, `ALLOW_PRIVATE_TARGETS=1` allows any private host, as before. The agent's `allow_private` is still required.
+
+Amended 2026-10-01 by [ADR 0036](0036-free-tier-deploy-on-render.md): production allows no private targets (`ALLOW_PRIVATE_TARGETS=0`, no allowlist); the demo agents are a public host. The guarded httpx client is now `guarded_client()`, which the HTTP adapter and the API's wake-up of sleeping agent hosts share.
 
 ## Context
 B1.4 builds `packages/core/adapters`: the `AgentAdapter` protocol, the trace step model that

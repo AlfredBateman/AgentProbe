@@ -1,8 +1,9 @@
 name: Deploy
 
-# Production deploy (ADR 0035, docs/DEPLOY.md): runs only after CI passes on a push to main,
-# on exactly the commit CI tested. Order: migrate the Neon production database, deploy the demo
-# agents, deploy the API and wait for /ready, then deploy the web app to Vercel.
+# Production deploy (ADR 0036, docs/DEPLOY.md): runs only after CI passes on a push to main,
+# on exactly the commit CI tested. Order: migrate the Neon production database, trigger the
+# Render deploy hooks of the demo agents and the API for that commit, wait until the API
+# reports that commit, then deploy the web app to Vercel.
 #
 # Disarmed until the repository variable DEPLOY_ENABLED is "true" (the last step of the manual
 # checklist in docs/DEPLOY.md), so pushes before the services exist don't fail here.
@@ -27,13 +28,11 @@ jobs:
       vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     environment: production
     env:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      API_APP: ${{ vars.FLY_API_APP }}
-      DEMO_APP: ${{ vars.FLY_DEMO_AGENTS_APP }}
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      API_URL: ${{ vars.API_URL }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,33 +50,30 @@ jobs:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: uv run alembic -c apps/api/alembic.ini upgrade head
 
-      - uses: superfly/flyctl-actions/setup-flyctl@1.6
-        with:
-          version: 0.4.109
-      - run: flyctl auth docker
-      # Built here with the same Dockerfiles and contexts CI's docker job proves, tagged with the
-      # commit, and deployed by that tag; Fly's remote builder never sees the repository.
-      - name: Build and push images
+      # Render builds each image from the repository itself (Docker runtime, auto-deploy off).
+      # A hook URL is a credential (its `key` parameter), so it's never echoed; `ref` pins the
+      # build to the commit CI tested rather than whatever main is by then.
+      - name: Trigger the Render deploys
+        env:
+          DEMO_HOOK: ${{ secrets.RENDER_DEMO_DEPLOY_HOOK }}
+          API_HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
         run: |
-          docker build -f demo-agents/Dockerfile -t "registry.fly.io/$DEMO_APP:$SHA" .
-          docker build -f apps/api/Dockerfile --build-arg "API_EXTRAS=${{ vars.API_EXTRAS }}" -t "registry.fly.io/$API_APP:$SHA" .
-          docker push "registry.fly.io/$DEMO_APP:$SHA"
-          docker push "registry.fly.io/$API_APP:$SHA"
+          curl --fail --silent --show-error --output /dev/null -X POST "$DEMO_HOOK&ref=$SHA"
+          curl --fail --silent --show-error --output /dev/null -X POST "$API_HOOK&ref=$SHA"
 
-      - name: Deploy the demo agents (private network only)
-        run: >-
-          flyctl deploy --config fly.demo-agents.toml --app "$DEMO_APP"
-          --image "registry.fly.io/$DEMO_APP:$SHA" --no-public-ips --ha=false
-
-      - name: Deploy the API
-        run: >-
-          flyctl deploy --config fly.api.toml --app "$API_APP"
-          --image "registry.fly.io/$API_APP:$SHA" --ha=false
-          --env "WEB_ORIGIN=${{ vars.WEB_ORIGIN }}"
-          --env "PUBLIC_WEB_URL=${{ vars.WEB_ORIGIN }}"
-          --env "PRIVATE_TARGET_ALLOWLIST=$DEMO_APP.flycast"
-      - name: Check the API is ready (starts a stopped machine if needed)
-        run: curl --fail --silent --show-error --retry 10 --retry-delay 6 --retry-all-errors "https://$API_APP.fly.dev/ready"
+      # /ready reports RENDER_GIT_COMMIT, so this waits for the new build to be live and its
+      # database to answer, not just for the old instance to keep answering. A free build takes
+      # minutes; each probe also keeps the instance awake.
+      - name: Wait for the API to serve this commit
+        run: |
+          deadline=$((SECONDS + 1800))
+          until [ "$(curl --silent --max-time 90 "$API_URL/ready" | jq -r '.commit // empty' 2>/dev/null)" = "$SHA" ]; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$API_URL/ready did not report $SHA within 30 minutes (check the Render deploy log)"
+              exit 1
+            fi
+            sleep 20
+          done
 
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7

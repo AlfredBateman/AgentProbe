@@ -1,18 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 const PUBLIC = [/^\/$/, /^\/login$/, /^\/register$/, /^\/shared\//, /^\/dev\//];
-// Headers the API trusts only from this server (ADR 0035); a browser's own copies are dropped.
+// The API trusts X-Forwarded-For only on requests carrying this secret (ADR 0036); a
+// browser's own copy is dropped.
 const PROXY_SECRET_HEADER = "x-agentprobe-proxy-secret";
-const CLIENT_IP_HEADER = "x-agentprobe-client-ip";
 
 /**
  * Same-origin API (ADR 0009): /api/* is forwarded to the API, so the session cookies are
  * first-party and no CORS is needed. API_INTERNAL_URL is read per request, not at build time.
  *
- * With PROXY_SECRET set (production), each request also carries the secret and the browser's
- * IP, so the API's per-IP limits see the browser rather than this server. The IP is the first
- * X-Forwarded-For entry, which Vercel overwrites with the real client: only set PROXY_SECRET
- * behind a proxy that does the same.
+ * With PROXY_SECRET set (production), each request also carries the secret, and
+ * X-Forwarded-For is replaced with exactly the browser's IP, so the API's per-IP limits see
+ * the browser rather than this server. Hops after this one only append, so the API reads the
+ * leftmost entry. The IP is the first X-Forwarded-For entry this server received, which Vercel
+ * overwrites with the real client: only set PROXY_SECRET behind a proxy that does the same.
  */
 function forwardToApi(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -20,12 +21,12 @@ function forwardToApi(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.delete("host"); // the proxy sets the API's own host
   headers.delete(PROXY_SECRET_HEADER);
-  headers.delete(CLIENT_IP_HEADER);
   const secret = process.env.PROXY_SECRET;
   if (secret) {
     headers.set(PROXY_SECRET_HEADER, secret);
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-    if (ip) headers.set(CLIENT_IP_HEADER, ip);
+    if (ip) headers.set("x-forwarded-for", ip);
+    else headers.delete("x-forwarded-for"); // the API then keys on this server's address
   }
   return NextResponse.rewrite(target, { request: { headers } });
 }

@@ -676,7 +676,8 @@ export interface paths {
         };
         /**
          * Ready
-         * @description Readiness: the database answers too. The deploy checks it (docs/DEPLOY.md).
+         * @description Readiness: the database answers too. `commit` is the deployed commit, which the
+         *     deploy workflow waits for (ADR 0036); None when the platform doesn't set it.
          */
         get: operations["ready_ready_get"];
         put?: never;

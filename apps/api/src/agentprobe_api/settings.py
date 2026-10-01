@@ -1,5 +1,4 @@
 from functools import cache
-from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Literal
 
 from pydantic import SecretStr
@@ -20,14 +19,15 @@ class Settings(BaseSettings):
     signup_open: bool = False  # true: any email may register (a public demo, ADR 0035)
     web_origin: str = "http://localhost:3000"
     cookie_secure: bool = True  # browsers accept Secure cookies on http://localhost
-    # The web app's server-side proxy sends this with the browser's IP (ADR 0035). Only a
-    # request carrying it has that IP trusted; everything else is keyed by the TCP peer.
+    # The web app's server-side proxy sends this along with the browser's IP in
+    # X-Forwarded-For (ADR 0036). Only a request carrying it has that IP trusted; everything
+    # else is keyed by the connecting address.
     proxy_secret: SecretStr | None = None
-    # A header the hosting platform's own proxy sets to the client it accepted the connection
-    # from (Fly-Client-IP on Fly.io), trusted only from FORWARDED_ALLOW_IPS peers. Run uvicorn
-    # with --no-proxy-headers then, so the peer checked here is the real TCP peer (ADR 0035).
-    client_ip_header: str | None = None
-    forwarded_allow_ips: str = "127.0.0.1"  # comma-separated IPs or CIDRs, as uvicorn reads it
+    # Hosts that sleep when idle and expose GET /health (the demo agents on a free tier,
+    # ADR 0036): a run or connection test against one wakes it first. Comma-separated.
+    wake_target_hosts: str = ""
+    # Set by Render to the deployed commit; /ready reports it for the deploy workflow.
+    render_git_commit: str | None = None
 
     # Public-deploy caps (docs/DEPLOY.md). None = unlimited, for local and self-hosted use.
     max_signups_per_day: int | None = None  # all users, rolling 24 h
@@ -66,11 +66,8 @@ class Settings(BaseSettings):
         return {e.strip().lower() for e in self.signup_allowed_emails.split(",") if e.strip()}
 
     @property
-    def trusted_proxies(self) -> list[IPv4Network | IPv6Network]:
-        entries = [n.strip() for n in self.forwarded_allow_ips.split(",") if n.strip()]
-        if "*" in entries:  # uvicorn's "trust everyone"
-            return [ip_network("0.0.0.0/0"), ip_network("::/0")]
-        return [ip_network(n) for n in entries]
+    def wake_hosts(self) -> set[str]:
+        return {h.strip().lower() for h in self.wake_target_hosts.split(",") if h.strip()}
 
 
 @cache

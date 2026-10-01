@@ -1,9 +1,13 @@
-"""Offline checks for the public-deploy guards (ADR 0035): the trusted client IP, startup
-refusals, readiness, and the caps that need no database.
+"""Offline checks for the public-deploy guards (ADR 0035, ADR 0036): the trusted client IP,
+argon2's memory bound, startup refusals, readiness, and the caps that need no database.
 """
 
+import asyncio
+import threading
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -11,84 +15,91 @@ from pydantic import SecretStr
 from starlette.requests import Request
 
 from agentprobe_api import limits
-from agentprobe_api.auth import CLIENT_IP_HEADER, PROXY_SECRET_HEADER, client_ip
+from agentprobe_api.auth import ARGON2_SLOTS, PROXY_SECRET_HEADER, _argon2, client_ip
 from agentprobe_api.errors import ApiError
 from agentprobe_api.main import check_production_settings, create_app
 from apitest import make_settings
 
 SECRET = "s" * 40
+PEER = "10.214.3.4"  # Render's proxy, the connecting address
+XFF = "x-forwarded-for"
+# What the API sees through the web proxy: its browser entry, then Vercel's and Render's hops.
+VIA_PROXY = "203.0.113.5, 76.76.21.21, 10.214.0.1"
 
 
-def request(headers: dict[str, str], peer: str = "198.51.100.9") -> Request:
-    raw = [(k.lower().encode(), v.encode()) for k, v in headers.items()]
+def request(headers: list[tuple[str, str]] | dict[str, str], peer: str = PEER) -> Request:
+    pairs = headers.items() if isinstance(headers, dict) else headers
+    raw = [(k.lower().encode(), v.encode()) for k, v in pairs]
     return Request({"type": "http", "headers": raw, "client": (peer, 1234)})
 
 
 @pytest.mark.parametrize(
     ("configured", "headers", "expected"),
     [
-        # The web proxy's secret: its forwarded browser IP is the one limits key on.
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, CLIENT_IP_HEADER: "203.0.113.5"}, "203.0.113.5"),
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, CLIENT_IP_HEADER: "2001:db8::1"}, "2001:db8::1"),
-        # A wrong or missing secret: the forwarded IP is ignored, whatever it says.
-        (SECRET, {PROXY_SECRET_HEADER: "guess", CLIENT_IP_HEADER: "203.0.113.5"}, "198.51.100.9"),
-        (SECRET, {CLIENT_IP_HEADER: "203.0.113.5"}, "198.51.100.9"),
-        # No secret configured (local, compose, e2e): never trusted.
-        (None, {PROXY_SECRET_HEADER: "", CLIENT_IP_HEADER: "203.0.113.5"}, "198.51.100.9"),
-        # The right secret with a malformed IP falls back to the peer, not the header text.
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, CLIENT_IP_HEADER: "evil, 1.2.3.4"}, "198.51.100.9"),
+        # Through the web proxy: the leftmost entry is the browser, the rest are hops.
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: VIA_PROXY}, "203.0.113.5"),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: "2001:db8::1, 10.214.0.1"}, "2001:db8::1"),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: " 203.0.113.5 "}, "203.0.113.5"),
+        # Spoofed without the secret: a caller's X-Forwarded-For is ignored, whatever it says.
+        (SECRET, {XFF: "203.0.113.5"}, PEER),
+        (SECRET, {XFF: VIA_PROXY}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: "guess", XFF: "203.0.113.5"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET[:-1], XFF: "203.0.113.5"}, PEER),  # a prefix
+        (SECRET, {PROXY_SECRET_HEADER: SECRET + "s", XFF: "203.0.113.5"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: "", XFF: "203.0.113.5"}, PEER),
+        # No secret configured (local, compose, e2e): never trusted, not even an empty match.
+        (None, {PROXY_SECRET_HEADER: "", XFF: "203.0.113.5"}, PEER),
+        (None, {PROXY_SECRET_HEADER: SECRET, XFF: "203.0.113.5"}, PEER),
+        # The right secret but nothing usable: the proxy's address, never the header text.
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: "evil, 1.2.3.4"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: ""}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET}, PEER),
+        # The retired x-agentprobe-client-ip header means nothing now, secret or not.
+        (
+            SECRET,
+            {PROXY_SECRET_HEADER: SECRET, "x-agentprobe-client-ip": "1.2.3.4", XFF: VIA_PROXY},
+            "203.0.113.5",
+        ),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, "x-agentprobe-client-ip": "1.2.3.4"}, PEER),
+        # Platform client-IP headers aren't trusted either: only the secret proves a hop.
+        (SECRET, {"true-client-ip": "1.2.3.4", "cf-connecting-ip": "1.2.3.4"}, PEER),
     ],
 )
-def test_client_ip_trusts_the_forwarded_ip_only_with_the_proxy_secret(
+def test_client_ip_trusts_x_forwarded_for_only_with_the_proxy_secret(
     configured: str | None, headers: dict[str, str], expected: str
 ) -> None:
     settings = make_settings(proxy_secret=SecretStr(configured) if configured else None)
     assert client_ip(request(headers), settings) == expected
 
 
-FLY = {"client_ip_header": "fly-client-ip", "forwarded_allow_ips": "172.16.0.0/12"}
+def test_a_second_x_forwarded_for_header_line_cannot_take_the_lead() -> None:
+    # Only the first line is read: a hop that adds its own line after the web proxy's,
+    # instead of appending to it, doesn't change which entry is the browser.
+    headers = [(PROXY_SECRET_HEADER, SECRET), (XFF, "203.0.113.5"), (XFF, "1.2.3.4")]
+    assert client_ip(request(headers), make_settings(proxy_secret=SecretStr(SECRET))) == (
+        "203.0.113.5"
+    )
 
 
-@pytest.mark.parametrize(
-    ("peer", "overrides", "headers", "expected"),
-    [
-        # Fly's proxy (a 172.16/12 peer) sets Fly-Client-IP: a direct caller's real address.
-        ("172.19.3.4", FLY, {"fly-client-ip": "203.0.113.5"}, "203.0.113.5"),
-        # From any other peer the header is just text a client sent.
-        ("198.51.100.9", FLY, {"fly-client-ip": "203.0.113.5"}, "198.51.100.9"),
-        # Not configured: ignored even from a trusted peer.
-        (
-            "172.19.3.4",
-            {"forwarded_allow_ips": "172.16.0.0/12"},
-            {"fly-client-ip": "1.2.3.4"},
-            "172.19.3.4",
-        ),
-        # Missing or malformed: key on the proxy rather than on header text.
-        ("172.19.3.4", FLY, {"fly-client-ip": "not an ip"}, "172.19.3.4"),
-        ("172.19.3.4", FLY, {}, "172.19.3.4"),
-        # The web proxy's secret wins over the platform header (the browser, not the web server).
-        (
-            "172.19.3.4",
-            {**FLY, "proxy_secret": SecretStr(SECRET)},
-            {
-                PROXY_SECRET_HEADER: SECRET,
-                CLIENT_IP_HEADER: "203.0.113.7",
-                "fly-client-ip": "3.3.3.3",
-            },
-            "203.0.113.7",
-        ),
-        (
-            "10.0.0.1",
-            {**FLY, "forwarded_allow_ips": "*"},
-            {"fly-client-ip": "203.0.113.5"},
-            "203.0.113.5",
-        ),
-    ],
-)
-def test_client_ip_trusts_the_platform_header_only_from_its_proxy(
-    peer: str, overrides: dict[str, object], headers: dict[str, str], expected: str
-) -> None:
-    assert client_ip(request(headers, peer), make_settings(**overrides)) == expected
+async def test_argon2_runs_at_most_two_at_a_time() -> None:
+    app = create_app(make_settings())
+    fake = SimpleNamespace(app=app)
+    lock = threading.Lock()
+    active, peak = 0, 0
+
+    def slow_hash(_: str) -> str:
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.05)
+        with lock:
+            active -= 1
+        return "hash"
+
+    results = await asyncio.gather(*(_argon2(fake, slow_hash, "pw") for _ in range(8)))  # type: ignore[arg-type]
+    assert results == ["hash"] * 8
+    assert peak == ARGON2_SLOTS == 2
 
 
 @pytest.mark.parametrize(
@@ -96,7 +107,6 @@ def test_client_ip_trusts_the_platform_header_only_from_its_proxy(
     [
         ({"web_origin": "https://agentprobe.example", "cookie_secure": False}, "COOKIE_SECURE"),
         ({"proxy_secret": SecretStr("short")}, "PROXY_SECRET"),
-        ({"forwarded_allow_ips": "172.16.0.0/12, fly-proxy"}, "FORWARDED_ALLOW_IPS"),
     ],
 )
 def test_unsafe_production_settings_refuse_to_start(
@@ -125,12 +135,16 @@ class FakeSession:
 
 
 @pytest.mark.parametrize(
-    ("fail", "status", "body"), [(False, 200, "ready"), (True, 503, "unavailable")]
+    ("fail", "status", "body"),
+    [
+        (False, 200, {"status": "ready", "commit": "abc123"}),
+        (True, 503, {"status": "unavailable"}),
+    ],
 )
-async def test_ready_reports_whether_the_database_answers(
-    fail: bool, status: int, body: str
+async def test_ready_reports_whether_the_database_answers_and_the_commit(
+    fail: bool, status: int, body: dict[str, str]
 ) -> None:
-    app = create_app(make_settings())
+    app = create_app(make_settings(render_git_commit="abc123"))
 
     @asynccontextmanager
     async def sessions() -> AsyncIterator[FakeSession]:
@@ -140,7 +154,7 @@ async def test_ready_reports_whether_the_database_answers(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="https://api.test") as client:
         r = await client.get("/ready")
-    assert (r.status_code, r.json()) == (status, {"status": body})
+    assert (r.status_code, r.json()) == (status, body)
 
 
 def test_case_cap() -> None:

@@ -12,7 +12,7 @@ A phase is complete only when every task in it is done.
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
 | E: dashboard | E0, E1, E4, E5, E6, E7 **complete**; E3 done as a minimal agents/suites slice (below); E2 (project overview charts) not built. |
-| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **config complete; the first deploy waits on the manual checklist in docs/DEPLOY.md**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
+| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **config complete, reworked on 2026-10-01 for free, no-card tiers (Render, Vercel Hobby, Neon; ADR 0036); the first deploy waits on the manual checklist in docs/DEPLOY.md**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
 
 ## Done
 - 2026-09-24 **Bootstrap**:
@@ -599,29 +599,27 @@ A phase is complete only when every task in it is done.
     - Inside pytest, `test_family_wise_error.py` alone takes 85–114 s under coverage tracing, against about 21 s without. The four stats files take 2–2.7 minutes, and `apps/api/tests` 105–131 s.
     - Coverage's low-overhead `sysmon` core refuses `concurrency=greenlet`, so it isn't a drop-in fix.
 
-- 2026-09-29 **F4: production deploy config** (Fly.io + Vercel + Neon, [ADR 0035](decisions/0035-production-deploy-on-fly-and-vercel.md), [docs/DEPLOY.md](DEPLOY.md)). Hosting was researched and decided with the user:
+- 2026-09-29 **F4: production deploy config** ([ADR 0035](decisions/0035-production-deploy-and-public-abuse-limits.md), [docs/DEPLOY.md](DEPLOY.md)). Hosting was researched and decided with the user. The host chosen then needed a card and was replaced on 2026-10-01 (entry below, ADR 0036):
   - Findings (2026-09-29):
     - Render: free web services sleep after 15 min and take about a minute to wake; workers cost $7/month.
-    - Fly: no free tier; stopped machines bill only their disk; a worker can never stop.
     - Upstash: 500K commands a month. Our idle taskiq polling is about 2.6M a month, so the free tier dies in about 6 days.
-  - User decisions: Fly, scale to zero (about $1–5/month, inline queue, no Redis); a shared-secret header for the web proxy; open signup with caps.
+  - User decisions: a paid scale-to-zero host (inline queue, no Redis); a shared-secret header for the web proxy; open signup with caps.
   - Deploy files:
-    - `fly.api.toml` and `fly.demo-agents.toml`: one scale-to-zero machine each in `sin`; the demo agents are private-only (`.flycast`, `--no-public-ips`).
     - `apps/web/vercel.json` turns Vercel's Git deploys off.
-    - `.github/workflows/deploy.yml`: after CI passes on main, on that commit: migrate, build and push both images to Fly's registry, deploy the demo agents, then the API, check `/ready`, `vercel build` + `deploy --prebuilt --prod`, then check `<web>/api/health`. Disarmed until `DEPLOY_ENABLED=true`.
+    - `.github/workflows/deploy.yml` runs after CI passes on main, on that commit: migrate, deploy the demo agents and the API, check `/ready`, `vercel build` + `deploy --prebuilt --prod`, then check `<web>/api/health`. Disarmed until `DEPLOY_ENABLED=true`.
   - API:
-    - `GET /ready` (`SELECT 1`, 200 or 503) is Fly's health check.
-    - `client_ip()` trusts the web proxy's `x-agentprobe-client-ip` only with `PROXY_SECRET`, and the platform's `CLIENT_IP_HEADER` (Fly-Client-IP) only from `FORWARDED_ALLOW_IPS` peers (uvicorn `--no-proxy-headers` on Fly, because Fly appends to X-Forwarded-For).
-    - Startup refuses `COOKIE_SECURE=0` with an https origin, a short `PROXY_SECRET`, or a malformed `FORWARDED_ALLOW_IPS`.
+    - `GET /ready` (`SELECT 1`, 200 or 503) is the platform's health check.
+    - `client_ip()` trusted a forwarded IP only with `PROXY_SECRET` (reworked in ADR 0036).
+    - Startup refuses `COOKIE_SECURE=0` with an https origin, or a short `PROXY_SECRET`.
     - Register and login now require the web Origin: login CSRF is closed, since signup can be open (ADR 0009 amended).
-  - Public-abuse limits (`limits.py`; every setting defaults to unlimited, production values in `fly.api.toml`):
+  - Public-abuse limits (`limits.py`; every setting defaults to unlimited, production values in docs/DEPLOY.md):
     - `SIGNUP_OPEN`, `REGISTER_RATE_LIMIT_PER_HOUR` (token buckets gained a window), `MAX_SIGNUPS_PER_DAY`;
     - per-user caps on projects, agents, cases per suite, and runs per day (server runs and CI reports);
     - `LLM_GLOBAL_USD_PER_DAY`, which reserves 2 x `LLM_BUDGET_USD_PER_RUN` per non-mock run in the last 24 h and covers `/ci/report`'s live clustering too.
   - Mock LLM by default. Live Gemini is an opt-in: `API_EXTRAS=live` builds LiteLLM into the image (a new `live` extra on `agentprobe-api`; CI builds and import-checks that variant), and the image now carries `config/`.
-  - Private targets: an allowlist is now the whole server policy (ADR 0012 amended), so production runs `ALLOW_PRIVATE_TARGETS=0` with `PRIVATE_TARGET_ALLOWLIST=<demo app>.flycast`.
+  - Private targets: an allowlist is now the whole server policy (ADR 0012 amended).
   - Demo agents label every response (`X-AgentProbe-Demo`, and `GET /`).
-  - Web: `src/proxy.ts` forwards `/api/*` itself (the `next.config.ts` rewrite is gone), reads `API_INTERNAL_URL` per request, and adds the secret and the browser's IP when `PROXY_SECRET` is set. Compose now passes `API_INTERNAL_URL` to the web container at runtime (ADR 0033 amended).
+  - Web: `src/proxy.ts` forwards `/api/*` itself (the `next.config.ts` rewrite is gone), reads `API_INTERNAL_URL` per request, and adds the secret when `PROXY_SECRET` is set. Compose now passes `API_INTERNAL_URL` to the web container at runtime (ADR 0033 amended).
   - Tests:
     - `test_deploy_guards.py` (client-IP truth tables, startup refusals, `/ready`, caps without a database);
     - `test_limits.py` (every cap and signup rule through the endpoints: 8 integration tests);
@@ -632,32 +630,69 @@ A phase is complete only when every task in it is done.
     - a demo-agent label test.
 
     The `/ci/report` `attempt()` test helper moved to `runtest.py`.
-  - Not deployed yet: the manual checklist (docs/DEPLOY.md §Manual steps) creates the Neon project, the Fly apps and secrets, the Vercel project and the GitHub secrets and variables. Its step 9 is the first end-to-end check of what can't be tested here (below).
 
-- 2026-09-30 **F4: production smoke script and the allowlist SSRF check** (go-live itself still blocked, below):
-  - `scripts/smoke_prod.py` (docs/DEPLOY.md step 9). Everything goes through the web's `/api` proxy:
+- 2026-09-30 **F4: production smoke script and the allowlist SSRF check**:
+  - `scripts/smoke_prod.py` (docs/DEPLOY.md's last step). Everything goes through the web's `/api` proxy:
     - registers a throwaway `smoke-<time>-<hex>@example.com`;
-    - adds an HTTP agent on `http://<DEMO_AGENTS_HOST>/support/v1/chat` and runs its connection test (the SSRF allowlist path);
+    - adds an HTTP agent on the demo agents' `/support/v1/chat` and runs its connection test (the SSRF path);
     - runs a 3-case × 2 mock suite, one case failing on purpose so findings exist;
     - checks the results per case, a trace (steps and judgments), that the findings cover exactly the failed attempts, and the share link: its URL, the page and the anonymous JSON, then 404 once revoked.
 
     The API has no account delete, so cleanup deletes the user from `PRODUCTION_DATABASE_URL` (the cascade `scripts/cleanup_e2e_account.py` already used, now a reusable `delete_user`). It runs in `finally`, and the script fails if the user isn't found there.
-  - Verified locally (not production) against the dev stack with production's SSRF shape (`ALLOW_PRIVATE_TARGETS=0`, `PRIVATE_TARGET_ALLOWLIST=localhost`, `SIGNUP_OPEN=1`):
+  - Verified locally (not production) against the dev stack with `ALLOW_PRIVATE_TARGETS=0`, `PRIVATE_TARGET_ALLOWLIST=localhost` and `SIGNUP_OPEN=1`:
     - `PASS`;
     - the failure path (a non-allowlisted `127.0.0.1`) is refused, still deletes the user, and exits 1;
     - 0 smoke users were left on the dev database afterwards.
   - SSRF (ADR 0012/0035): the allowlist only changes `TargetPolicy.permits_private`, which `resolve_target` consults for addresses already classified PRIVATE. Every connection still goes through `GuardedBackend.connect_tcp`: resolve once, classify every address, connect to exactly the validated one. Metadata, link-local and the other BLOCKED addresses are refused before the policy is consulted. The HTTP adapter, the MCP adapter (`GuardedBackend2`), the API's connection test and the runner all build their clients that way.
 
-    New test `test_allowlisted_host_still_resolves_validates_and_pins`: production's `from_env` policy, a `.flycast` host whose DNS answers a Fly ULA address and then rebinds to metadata, link-local or unspecified. Asserts one lookup per connection, a connect only to the validated address, and the rebind refused. A planted "allowlisted hosts skip resolution" bypass fails all 4 cases.
+    New test `test_allowlisted_host_still_resolves_validates_and_pins`. A planted "allowlisted hosts skip resolution" bypass fails all 4 cases.
+
+- 2026-10-01 **F4 reworked for free, no-card tiers** ([ADR 0036](decisions/0036-free-tier-deploy-on-render.md); user constraint: no credit or debit card). Production is now Vercel Hobby, two Render free web services (Docker runtime: the API, and the demo agents as a second, public service) and Neon Free. Everything platform-neutral from ADR 0035 is kept.
+  - Deploy:
+    - The earlier host's config files and deploy steps are gone.
+    - `deploy.yml` migrates, POSTs `RENDER_DEMO_DEPLOY_HOOK` and `RENDER_API_DEPLOY_HOOK` with `&ref=<sha>`, waits up to 30 min for `/ready` to report that commit (`RENDER_GIT_COMMIT`, new in `/ready`'s body), then deploys to Vercel. The `DEPLOY_ENABLED` gate is kept.
+    - No `render.yaml`: Render reads one only through a Blueprint, so DEPLOY.md is the reference for the hand-made services.
+  - Sleeping services, and no keep-alive (750 shared hours a month):
+    - `lib/api/wake.ts` gates every `/api` call made after 10 quiet minutes on `/api/health`. It backs off 1, 2, 4, then 5 s, with a 30 s probe timeout and a 150 s budget.
+    - It shows `WakingNotice` ("Waking the server, about a minute") after 1.5 s, never resends a mutation, and retries a GET once after a gateway error. The share page uses it too.
+    - SSE already reconnected and fell back to polling (ADR 0031).
+  - API → demo agents: `wake.py` polls `GET /health` on `WAKE_TARGET_HOSTS` for up to 120 s before a run's first attempt and before a connection test. It goes through the SSRF guard (`guarded_client()`, factored out of the HTTP adapter).
+  - The demo agents are public:
+    - The notice now reads "Deliberately vulnerable demo with planted flaws. No real data: fake data only." (header and `GET /`).
+    - Production allows no private targets (`ALLOW_PRIVATE_TARGETS=0`, allowlist empty).
+    - The smoke test's agent no longer sets `allow_private`.
+  - Client IP:
+    - `src/proxy.ts` sets `X-Forwarded-For` to exactly the browser's IP.
+    - The API trusts the leftmost entry only with a valid `PROXY_SECRET`, and otherwise keys on the connecting address.
+    - `CLIENT_IP_HEADER`, the API's `FORWARDED_ALLOW_IPS` trust and `x-agentprobe-client-ip` are removed.
+  - Memory, measured on Windows with production-like settings against Neon dev:
+
+    | State | Working set |
+    |---|---|
+    | Idle | 130 MiB |
+    | Two concurrent 100-attempt runs, 16 polling clients, 6 SSE streams | 147 MiB peak |
+    | One registration | 194 MiB peak |
+
+    argon2 allocates 64 MiB per hash and ran unbounded on the thread pool, so `ARGON2_SLOTS=2` now bounds it. Unchanged: `mcp` costs 21 MiB at import (kept eager), LiteLLM isn't loaded in mock mode, and the production image has no `live` extra.
+  - `scripts/smoke_prod.py`:
+    - `WEB_ORIGIN`, `API_URL` and `DEMO_AGENTS_URL`;
+    - a warm-up that wakes both services in parallel and prints each one's wake time;
+    - a 120 s first-request timeout (180 s wake budget);
+    - a check for the demo agents' notice on `/` and in the header.
+  - Tests:
+    - the client-IP truth table: spoofed `X-Forwarded-For` without the secret, wrong, prefix and empty secrets, malformed entries, a second header line, retired headers;
+    - the argon2 bound and `/ready`'s commit;
+    - `test_wake.py`: polling, giving up, other hosts untouched, the SSRF guard on the wake call;
+    - SSRF `test_production_demo_host_is_public_with_no_private_exception` (planted bypasses fail 11 of 11 cases across both SSRF tests);
+    - `wake.test.ts`, `waking-notice.test.tsx`, and `proxy.test.ts` for the new header.
+  - Gates: `pnpm check` green; `pnpm verify` green (1100 passed against the Neon test branch in 31 min, core and api over the 80% coverage gate, API 92%), including the updated `test_limits.py`.
+  - UI check: `next dev` with `API_INTERNAL_URL` on a dead port, `/login` at 1440, 810 and 390 px. The notice appears bottom-left from tablet up and full width at 390, with no horizontal scroll (`docs/screenshots/waking-notice-*.png`, with Next's dev overlay removed).
+  - Not done here: the deploy itself waits on docs/DEPLOY.md's checklist.
 
 ## Next
-- **F4 go-live** (user): the numbered checklist in docs/DEPLOY.md, then step 9's checks, including `scripts/smoke_prod.py`. As of 2026-09-30 GitHub showed none of it:
-  - no repository variables (so `DEPLOY_ENABLED` is unset and deploy.yml's job is skipped);
-  - no `production` environment;
-  - one Deploy run, skipped;
-  - `agentprobe-api.fly.dev` doesn't resolve.
+- **F4 go-live** (user): the numbered no-card checklist in docs/DEPLOY.md §Manual steps (Neon, Render via GitHub login, the two Render services, the deploy hooks as GitHub secrets, Vercel, GitHub variables), then its step 10 checks, including `scripts/smoke_prod.py`. As of 2026-09-30 GitHub had no repository variables (so `DEPLOY_ENABLED` is unset and deploy.yml's job is skipped) and no `production` environment.
 
-  Once it's live: run the smoke script, add the live URLs to the README and here, and record the cold starts and anything the unverified items below turn up.
+  Once it's live: run the smoke script, add the live URLs to the README and here, record the cold starts it prints, and work through ADR 0036's unverified list.
 - **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
 - **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
 - **E3 (rest)**: MCP agent config, auth-header UI, suite versioning and a case browser, delete confirmations.
@@ -665,7 +700,8 @@ A phase is complete only when every task in it is done.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
 ## Decisions
-- Production deploy ([ADR 0035](decisions/0035-production-deploy-on-fly-and-vercel.md), user decisions 2026-09-29): Vercel + two scale-to-zero Fly apps (API inline, private demo agents) + a separate Neon project; deploy.yml after CI, migrations first; client IPs trusted only via the web proxy's secret or Fly-Client-IP from Fly's proxy; open signup with per-user caps, an hourly registration limit and a worst-case global live-LLM budget; an allowlist is the whole private-target policy.
+- Production deploy on free, no-card tiers ([ADR 0036](decisions/0036-free-tier-deploy-on-render.md), user constraint 2026-10-01): Vercel Hobby + two Render free web services (the API inline; the demo agents public, fake data only, labelled) + a separate Neon project. deploy.yml after CI: migrations, Render deploy hooks pinned to the commit, wait for `/ready` to report it, then Vercel. No keep-alive (750 shared hours); the web waits for a sleeping API with a visible notice and never resends a mutation; the API wakes the demo agents before a run. Client IP: the leftmost `X-Forwarded-For` entry, only with the web proxy's secret. No private targets in production. argon2 limited to two at a time for the 512 MB limit.
+- Public-abuse limits ([ADR 0035](decisions/0035-production-deploy-and-public-abuse-limits.md), user decisions 2026-09-29): open signup with per-user caps, an hourly registration limit and a worst-case global live-LLM budget; register/login need the web Origin; an allowlist is the whole private-target policy.
 - Docker and CI completion: three pinned, non-root, multi-stage images (one for the API and the worker); a local-only compose stack with committed dev secrets, 127.0.0.1 ports, no `${}` interpolation, the Redis queue and the mock LLM by default, and migrations on API start; a CI `docker` job that runs the README quick start command for command ([ADR 0033](decisions/0033-docker-images-and-compose.md)). Dependency audits cover every locked package, dev and `live` included, and fail on any finding; findings are fixed, pinned, or accepted in ADR 0034 ([ADR 0034](decisions/0034-dependency-audits.md)).
 - e2e specs that watch a run while it's live hold its agent behind `e2e/gated-agent.ts`, never a wider timeout or a slower agent: on CI a mock-LLM run ends in under 0.5 s (2026-09-29 entry above).
 - Session scheme: an httpOnly access cookie (not a JS token) behind the Next.js `/api` rewrite; a rotating refresh cookie; an SSE stream-token fallback; API keys only in `Authorization`; token-bucket rate limits with memory/Redis backends ([ADR 0009](decisions/0009-session-scheme.md)). Amends PLAN §2 #3 and supersedes #20.
@@ -681,7 +717,7 @@ A phase is complete only when every task in it is done.
 - Trace timeline: plain HTML/CSS, no React Flow ([ADR 0005](decisions/0005-trace-timeline-no-react-flow.md)).
 - Run detail and trace viewer ([ADR 0031](decisions/0031-run-detail-and-trace-viewer.md)): the browser opens a run's SSE stream on the API with a stream token, because the `/api` rewrite gzips and so buffers it (measured); the page owns the state and resyncs on every (re)connect; judgments are anchored to steps by core's `judgment_steps`; `/runs/{id}/verdict` compares against the run's branch baseline, `main` for a run without a branch; long step lists use `content-visibility`, not windowing (user decision); rule vs LLM verdicts differ by border style plus label.
 - Regression statistics: Fisher exact (one-sided) + Holm (per case), paired sign-flip permutation (suite), case-level bootstrap CI; α=0.05, min_drop=0.05, all configurable via suite YAML and CLI flags ([ADR 0006](decisions/0006-statistics-methodology.md)). The per-case correction was later amended to Tarone–Holm (user decision, ADR 0014).
-- Hosting for the API/worker (Q2) is deliberately deferred to Phase F4; the only binding constraint now is that the worker stays behind the `QueueBackend` interface with `inline` as the local default. Decided 2026-09-29 (user): Fly.io, scale to zero, inline queue, no Redis in production ([ADR 0035](decisions/0035-production-deploy-on-fly-and-vercel.md)).
+- Hosting for the API/worker (Q2) is deliberately deferred to Phase F4; the only binding constraint now is that the worker stays behind the `QueueBackend` interface with `inline` as the local default. Decided 2026-09-29 (user): inline queue, no Redis in production ([ADR 0035](decisions/0035-production-deploy-and-public-abuse-limits.md)); hosted on Render's free tier since 2026-10-01 ([ADR 0036](decisions/0036-free-tier-deploy-on-render.md)).
 - `packages/core` must contain exactly one run-execution implementation (`execute_attempt` / `finalize_run` / `run_suite`), shared by the CLI's local run and the server runner — no duplicate run loops (Q6 requirement, tracked at B1.7).
 - Share links store only `runs.share_token_hash` (SHA-256), not a plaintext token. The Fernet key env var stays `ENCRYPTION_KEY` (user decisions, 2026-09-25).
 - Data model conventions: UUID PKs, text+CHECK instead of PG enums, `NUMERIC(12,6)` costs, CASCADE along ownership, and every FK covered by a leading index ([ADR 0007](decisions/0007-data-model-additions.md)).
@@ -791,8 +827,9 @@ A phase is complete only when every task in it is done.
 - The dogfood matrix posts one PR comment per suite/agent pair (three, currently), not one combined comment, since a composite action step can't easily merge results across parallel matrix jobs (ADR 0032).
 - The Docker images, compose file and smoke script are only verified by CI's `docker` job (Docker can't run on the development machine).
 - The compose worker has no healthcheck (no port). `up --wait` counts it ready once it's running, and a hung worker would only show up as runs that never finish. ADR 0033 notes a liveness check (its Redis consumer's idle time) for F4.
-- Through the compose web app, the API sees every browser's requests as coming from the web container, so the per-IP auth limit is shared by everyone using that stack. That's fine for one local user; a deploy must set `FORWARDED_ALLOW_IPS` (known issue above, ADR 0009 §9).
+- Through the compose web app, the API sees every browser's requests as coming from the web container, so the per-IP auth limit is shared by everyone using that stack. That's fine for one local user; a public deploy sets `PROXY_SECRET` on both sides instead (ADR 0036).
 - `pnpm/action-setup@v6` warns about a "pnpm v10 installation layout at PNPM_HOME" in every job that uses it (runner image vs pnpm 11). It's harmless, and it predates F3.
-- Unverified until the first real deploy (ADR 0035 §Consequences): that Vercel forwards `src/proxy.ts`'s request headers on an external rewrite; Fly's proxy source range (`172.16.0.0/12`, from Fly community reports, not its docs; if wrong, direct callers key on the proxy's address, which isn't spoofable); whether an open SSE stream keeps a Fly machine running; cold-start times; and the demo agents' MCP route behind a `.flycast` Host header.
+- Unverified until the first real deploy (ADR 0036 §Unverified): that Vercel's rewrite keeps the middleware's `X-Forwarded-For` and Render appends to it (if not, everyone shares one per-IP bucket; nothing becomes spoofable); that a deploy hook's `ref` builds that commit and `RENDER_GIT_COMMIT` is set at runtime (if not, deploy.yml's wait fails loudly); that Render passes env vars as Docker build args; wake and cold-start times; whether an open SSE stream counts as activity; Render's free build allowance against two builds per push; memory in the Linux image; the demo agents' MCP route behind Render's proxy.
+- The API's wake-up of sleeping agent hosts (`wake.py`) runs on the inline queue and the connection test only, not on the Redis worker path (production is inline).
 - The per-user caps count, then insert, so two concurrent creates can each pass a cap by one (`ponytail:` in `limits.py`). A resumed live run builds fresh LLM clients and can exceed its budget reservation (ADR 0035).
-- Production rate limits are in memory in one Fly machine. They reset when it stops, which happens only after it's idle.
+- Production rate limits are in memory in the one API instance. They reset when it sleeps, which happens only after 15 idle minutes.

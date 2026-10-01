@@ -13,3 +13,5 @@ def test_every_response_is_labelled_deliberately_vulnerable() -> None:
         ):
             assert response.headers["X-AgentProbe-Demo"] == WARNING
         assert client.get("/").json()["warning"] == WARNING
+    assert "Deliberately vulnerable demo" in WARNING
+    assert "No real data" in WARNING

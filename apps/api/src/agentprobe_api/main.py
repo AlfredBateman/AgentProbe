@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -107,10 +108,6 @@ def check_production_settings(settings: Settings) -> None:
         raise RuntimeError("COOKIE_SECURE must stay on when WEB_ORIGIN is https (ADR 0009)")
     if settings.proxy_secret is not None and len(settings.proxy_secret.get_secret_value()) < 32:
         raise RuntimeError("PROXY_SECRET must be at least 32 characters")
-    try:
-        settings.trusted_proxies  # noqa: B018  parsed now, not on the first request
-    except ValueError as exc:
-        raise RuntimeError(f"FORWARDED_ALLOW_IPS: {exc}") from None
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -146,6 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.register_limiter = _limiter(
         redis, settings.register_rate_limit_per_hour, "rl:reg:", window_s=3600
     )
+    app.state.argon2_slots = asyncio.Semaphore(auth.ARGON2_SLOTS)
     bus: ProgressBus = (
         RedisBus(Redis.from_url(settings.redis_url))
         if settings.queue_backend == "redis"
@@ -179,15 +177,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/ready", response_model=None)
-    async def ready() -> dict[str, str] | JSONResponse:
-        """Readiness: the database answers too. The deploy checks it (docs/DEPLOY.md)."""
+    async def ready() -> dict[str, str | None] | JSONResponse:
+        """Readiness: the database answers too. `commit` is the deployed commit, which the
+        deploy workflow waits for (ADR 0036); None when the platform doesn't set it.
+        """
         try:
             async with app.state.sessionmaker() as session:
                 await session.execute(text("SELECT 1"))
         except Exception:
             log.exception("readiness check failed")
             return JSONResponse({"status": "unavailable"}, status_code=503)
-        return {"status": "ready"}
+        return {"status": "ready", "commit": settings.render_git_commit}
 
     return app
 

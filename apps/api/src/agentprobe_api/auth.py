@@ -4,6 +4,7 @@ import asyncio
 import hmac
 import ipaddress
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -185,44 +186,40 @@ class UserOut(BaseModel):
 
 
 PROXY_SECRET_HEADER = "x-agentprobe-proxy-secret"  # noqa: S105  a header name
-CLIENT_IP_HEADER = "x-agentprobe-client-ip"
-
-
-def _ip_header(request: Request, name: str) -> str | None:
-    try:
-        return str(ipaddress.ip_address(request.headers.get(name, "")))
-    except ValueError:
-        return None
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """The IP that per-IP rate limits key on (ADR 0035). None of the three is a header a
-    client can forge:
+    """The IP that per-IP rate limits key on (ADR 0036).
 
-    1. The web app's server-side proxy sends the browser's IP with PROXY_SECRET. Its egress
-       IPs aren't published, so it can't be trusted by address.
-    2. The hosting platform's proxy sets CLIENT_IP_HEADER (Fly-Client-IP) itself; it's
-       trusted only from a FORWARDED_ALLOW_IPS peer.
-    3. Otherwise the TCP peer (which uvicorn rewrites from X-Forwarded-For only for its own
-       FORWARDED_ALLOW_IPS peers, when its proxy headers are on: local and compose).
+    The web app's server-side proxy replaces X-Forwarded-For with exactly the browser's
+    address and adds PROXY_SECRET. The hops after it (Vercel's rewrite, Render's edge) only
+    append, so on a request with the right secret the leftmost entry is the browser. Without
+    the secret X-Forwarded-For is text the caller chose, so it keys on the connecting address
+    (uvicorn rewrites that from X-Forwarded-For only for its own FORWARDED_ALLOW_IPS peers:
+    local and compose; on Render it's Render's proxy).
     """
     peer = request.client.host if request.client else "unknown"
     secret = settings.proxy_secret
-    if secret is not None and hmac.compare_digest(
+    if secret is None or not hmac.compare_digest(
         request.headers.get(PROXY_SECRET_HEADER, "").encode(), secret.get_secret_value().encode()
     ):
-        return _ip_header(request, CLIENT_IP_HEADER) or peer  # none sent: key on the proxy
-    if settings.client_ip_header and _from_trusted_proxy(peer, settings):
-        return _ip_header(request, settings.client_ip_header) or peer
-    return peer
-
-
-def _from_trusted_proxy(peer: str, settings: Settings) -> bool:
+        return peer
+    leftmost = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
     try:
-        address = ipaddress.ip_address(peer)
+        return str(ipaddress.ip_address(leftmost))
     except ValueError:
-        return False
-    return any(address in network for network in settings.trusted_proxies)
+        return peer  # none or malformed: key on the proxy, never on header text
+
+
+# Each argon2 hash or verify allocates 64 MiB (argon2-cffi's RFC 9106 low-memory profile), and
+# the default thread pool would run a dozen at once: past a 512 MB service (ADR 0036).
+ARGON2_SLOTS = 2
+
+
+async def _argon2[T](request: Request, fn: Callable[..., T], *args: object) -> T:
+    """argon2 off the event loop, at most ARGON2_SLOTS at a time."""
+    async with request.app.state.argon2_slots:
+        return await asyncio.to_thread(fn, *args)
 
 
 async def _start_session(
@@ -269,8 +266,7 @@ async def register(
     if not settings.signup_open and email not in settings.signup_allowlist:
         raise ApiError(403, "Registration is closed for this email")
     await limits.check_signups(db, settings)
-    # argon2 is ~50 ms of CPU: keep it off the event loop.
-    password_hash = await asyncio.to_thread(hash_password, body.password)
+    password_hash = await _argon2(request, hash_password, body.password)
     user_id = await db.scalar(  # one round trip; the unique index decides duplicates
         insert(User)
         .values(id=uuid.uuid4(), email=email, password_hash=password_hash)
@@ -292,10 +288,10 @@ async def login(
     user = await db.scalar(select(User).where(User.email == body.email.lower()))
     # verify first: an unknown email still pays for one argon2 verify (no timing oracle).
     stored = user.password_hash if user else None
-    if not await asyncio.to_thread(verify_password, stored, body.password) or user is None:
+    if not await _argon2(request, verify_password, stored, body.password) or user is None:
         raise _unauthenticated("Invalid email or password")
     if needs_rehash(user.password_hash):
-        user.password_hash = await asyncio.to_thread(hash_password, body.password)
+        user.password_hash = await _argon2(request, hash_password, body.password)
     await _start_session(db, response, settings, user.id)
     return UserOut(id=user.id, email=user.email)
 

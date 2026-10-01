@@ -12,8 +12,8 @@ Address classes:
 - private (loopback, RFC 1918, CGNAT, IPv6 unique-local): allowed only when the agent's config
   sets allow_private AND the server allows the host: when PRIVATE_TARGET_ALLOWLIST is set, only
   the hosts on it (ALLOW_PRIVATE_TARGETS then doesn't matter); otherwise any private host if
-  ALLOW_PRIVATE_TARGETS=1. A production server keeps ALLOW_PRIVATE_TARGETS off and lists only
-  the demo agents' host (ADR 0035).
+  ALLOW_PRIVATE_TARGETS=1. The production server allows no private targets at all: the demo
+  agents are a public service (ADR 0036).
 - blocked (cloud metadata, link-local, unspecified, multicast, reserved and documentation
   ranges, IPv4-mapped/-compatible, 6to4 and Teredo): never allowed.
 """

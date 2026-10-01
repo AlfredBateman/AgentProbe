@@ -2040,7 +2040,7 @@
     "/ready": {
       "get": {
         "summary": "Ready",
-        "description": "Readiness: the database answers too. The deploy checks it (docs/DEPLOY.md).",
+        "description": "Readiness: the database answers too. `commit` is the deployed commit, which the\ndeploy workflow waits for (ADR 0036); None when the platform doesn't set it.",
         "operationId": "ready_ready_get",
         "responses": {
           "200": {

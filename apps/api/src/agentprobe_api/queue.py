@@ -26,6 +26,7 @@ from agentprobe_api.crypto import SecretBox
 from agentprobe_api.progress import ProgressBus
 from agentprobe_api.runstore import Plan, Sessions, Unrecoverable
 from agentprobe_api.settings import Settings
+from agentprobe_api.wake import wake_target
 from agentprobe_core.runner import INFRA_ERRORS, AttemptResult, finalize_run, run_suite
 
 log = logging.getLogger("agentprobe.runs")
@@ -162,6 +163,7 @@ async def execute_inline(deps: Deps, run_id: uuid.UUID, cancel: asyncio.Event) -
             cancel.set()
 
     try:
+        await wake_target(plan.agent_config, deps.settings)
         summary = await run_suite(
             plan.suite,
             adapter,

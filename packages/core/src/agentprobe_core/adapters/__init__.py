@@ -11,7 +11,12 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from agentprobe_core.adapters.http import HttpAdapter, HttpAdapterConfig, check_header
+from agentprobe_core.adapters.http import (
+    HttpAdapter,
+    HttpAdapterConfig,
+    check_header,
+    guarded_client,
+)
 from agentprobe_core.adapters.mcp import McpAdapter, McpHttpConfig
 from agentprobe_core.adapters.ssrf import TargetPolicy
 from agentprobe_core.adapters.types import AdapterNotAllowed
@@ -54,4 +59,5 @@ __all__ = [
     "TargetPolicy",
     "build_adapter",
     "check_header",
+    "guarded_client",
 ]

@@ -199,7 +199,7 @@ Exit code is non-zero when the threshold is missed or a regression is detected.
 | Auth | JWT/session auth, API keys for CLI and CI |
 | Testing | pytest, pytest-asyncio, Playwright (e2e), Vitest |
 | Infra | Docker, Docker Compose, GitHub Actions |
-| Hosting | Vercel (web), Render/Fly.io (API + worker), Neon (Postgres), Upstash (Redis) |
+| Hosting | Vercel (web), Render (API + worker), Neon (Postgres), Upstash (Redis). Production runs on free, no-card tiers with the inline queue and no Redis (ADR 0036). |
 
 Model names must live in config/env, never hardcoded.
 
