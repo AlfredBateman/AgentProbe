@@ -3,11 +3,13 @@
 import asyncio
 import hmac
 import ipaddress
+import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field, SecretStr
@@ -33,6 +35,7 @@ from agentprobe_api.security import (
 )
 from agentprobe_api.settings import Settings
 
+log = logging.getLogger("agentprobe.auth")
 ACCESS_COOKIE = "access_token"
 REFRESH_COOKIE = "refresh_token"
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -58,10 +61,31 @@ async def _limit(limiter: RateLimiter, bucket: str) -> None:
         raise ApiError(429, "Too many requests", headers={"Retry-After": retry_after_header(retry)})
 
 
+def _origin_of(url: str | None) -> str | None:
+    """scheme://host of a URL: a Referer's path and query can carry tokens."""
+    parts = urlsplit(url or "")
+    return f"{parts.scheme}://{parts.netloc}" if parts.netloc else None
+
+
 def _check_origin(request: Request, settings: Settings) -> None:
     """CSRF defence for cookie-authenticated mutations, on top of SameSite (ADR 0009)."""
-    if request.method not in _SAFE_METHODS and request.headers.get("origin") != settings.web_origin:
-        raise ApiError(403, "Cross-origin request rejected")
+    origin = request.headers.get("origin")
+    if request.method in _SAFE_METHODS or origin == settings.web_origin:
+        return
+    # What a 403 needs to be diagnosed from the logs (ADR 0036): never cookies or secrets.
+    log.warning(
+        "cross-origin request rejected",
+        extra={
+            "reason": "origin missing" if origin is None else "origin != WEB_ORIGIN",
+            "origin": origin,
+            "web_origin": settings.web_origin,
+            "method": request.method,
+            "path": request.url.path,
+            "sec_fetch_site": request.headers.get("sec-fetch-site"),
+            "referer_origin": _origin_of(request.headers.get("referer")),
+        },
+    )
+    raise ApiError(403, "Cross-origin request rejected")
 
 
 @dataclass(frozen=True)

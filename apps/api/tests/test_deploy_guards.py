@@ -3,6 +3,7 @@ argon2's memory bound, startup refusals, readiness, and the caps that need no da
 """
 
 import asyncio
+import logging
 import threading
 import time
 from collections.abc import AsyncIterator
@@ -11,13 +12,16 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from pydantic import SecretStr
+from fastapi import FastAPI
+from httpx import Response
+from pydantic import SecretStr, ValidationError
 from starlette.requests import Request
 
 from agentprobe_api import limits
 from agentprobe_api.auth import ARGON2_SLOTS, PROXY_SECRET_HEADER, _argon2, client_ip
 from agentprobe_api.errors import ApiError
 from agentprobe_api.main import check_production_settings, create_app
+from agentprobe_api.settings import Settings
 from apitest import make_settings
 
 SECRET = "s" * 40
@@ -133,6 +137,9 @@ class FakeSession:
         if self.fail:
             raise OSError("connection refused")
 
+    async def commit(self) -> None:
+        pass
+
 
 @pytest.mark.parametrize(
     ("fail", "status", "body"),
@@ -155,6 +162,114 @@ async def test_ready_reports_whether_the_database_answers_and_the_commit(
     async with httpx.AsyncClient(transport=transport, base_url="https://api.test") as client:
         r = await client.get("/ready")
     assert (r.status_code, r.json()) == (status, body)
+
+
+WEB = "https://agent-probe-umber.vercel.app"
+COOKIE = "refresh_token=fake-refresh-value"
+
+
+def production_headers(origin: str, site: str = "same-origin") -> dict[str, str]:
+    """What the container receives for a browser's fetch: browser → Vercel's edge →
+    src/proxy.ts → Vercel's rewrite → Render's edge (ADR 0036).
+    """
+    return {
+        "host": "agentprobe-api-1uno.onrender.com",
+        "origin": origin,
+        "referer": f"{WEB}/register?next=/projects",
+        "sec-fetch-site": site,
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
+        "content-type": "application/json",
+        "cookie": COOKIE,
+        "x-forwarded-for": VIA_PROXY,
+        "x-forwarded-host": "agent-probe-umber.vercel.app",
+        "x-forwarded-proto": "https",
+        PROXY_SECRET_HEADER: SECRET,
+        "x-vercel-id": "fra1::abcde-1234",
+        "rndr-id": "0123456789abcdef",
+        "cf-connecting-ip": "76.76.21.21",
+    }
+
+
+async def post(app: FastAPI, path: str, headers: dict[str, str], body: object = None) -> Response:
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[FakeSession]:
+        yield FakeSession(fail=False)
+
+    app.state.sessionmaker = sessions
+    transport = httpx.ASGITransport(app=app, client=("10.214.0.1", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="https://api.test") as client:
+        return await client.post(path, headers=headers, json=body)
+
+
+@pytest.mark.parametrize("configured", [WEB, f"{WEB}/", f" {WEB.upper()}/ "])
+async def test_same_origin_browser_request_passes_through_vercel_and_render(
+    configured: str,
+) -> None:
+    # The first deploy's 403: Render had WEB_ORIGIN with a trailing slash, and a browser's
+    # Origin never has one. Register is closed for this email, so its 403 here comes after
+    # the Origin check, and the database is never reached.
+    app = create_app(make_settings(web_origin=configured, proxy_secret=SecretStr(SECRET)))
+    headers = production_headers(WEB)
+    r = await post(app, "/auth/register", headers, {"email": "x@example.com", "password": "p" * 12})
+    assert (r.status_code, r.json()["error"]["message"]) == (
+        403,
+        "Registration is closed for this email",
+    )
+    assert (await post(app, "/auth/logout", headers)).status_code == 204
+
+
+def test_web_origin_from_the_environment_is_reduced_to_a_bare_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WEB_ORIGIN", f"{WEB}/")
+    assert Settings().web_origin == WEB
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        f"{WEB}/app",
+        f"{WEB}?x=1",
+        f"{WEB}/#top",
+        "agent-probe-umber.vercel.app",
+        "https://u:p@x.test",
+    ],
+)
+def test_web_origin_with_more_than_an_origin_refuses_to_load(configured: str) -> None:
+    with pytest.raises(ValidationError, match="WEB_ORIGIN"):
+        make_settings(web_origin=configured)
+
+
+@pytest.mark.parametrize(
+    ("origin", "reason"),
+    [("https://evil.test", "origin != WEB_ORIGIN"), (None, "origin missing")],
+)
+async def test_rejection_logs_why_but_no_cookie_or_secret(
+    caplog: pytest.LogCaptureFixture, origin: str | None, reason: str
+) -> None:
+    app = create_app(make_settings(web_origin=WEB, proxy_secret=SecretStr(SECRET)))
+    headers = production_headers(origin or "", site="cross-site")
+    if origin is None:
+        del headers["origin"]
+    with caplog.at_level(logging.WARNING, logger="agentprobe.auth"):
+        r = await post(app, "/auth/logout", headers)
+    assert r.status_code == 403
+    [record] = [rec for rec in caplog.records if rec.name == "agentprobe.auth"]
+    assert {
+        k: getattr(record, k)
+        for k in ("reason", "origin", "web_origin", "method", "path", "sec_fetch_site")
+    } == {
+        "reason": reason,
+        "origin": origin,
+        "web_origin": WEB,
+        "method": "POST",
+        "path": "/auth/logout",
+        "sec_fetch_site": "cross-site",
+    }
+    assert record.referer_origin == WEB  # its path and query are dropped
+    logged = str(vars(record))
+    assert "fake-refresh-value" not in logged and SECRET not in logged and "next=" not in logged
 
 
 def test_case_cap() -> None:

@@ -116,6 +116,40 @@ becomes spoofable: the secret never reaches a browser. Tests cover spoofed heade
 secret, wrong, prefixed and empty secrets, a malformed entry, a second header line, and the
 retired header.
 
+### The Origin check behind the proxies (first deploy, 2026-10-02)
+The first deploy's registrations got 403 "Cross-origin request rejected".
+- **The check.** `auth._check_origin` tests one condition: for any method except
+  GET/HEAD/OPTIONS, the `Origin` header must equal `WEB_ORIGIN` exactly. It runs on
+  register, login, refresh and logout, and on every cookie-authenticated request (an API
+  key skips it). It ignores `Referer`, `Sec-Fetch-Site`, `Host`, `X-Forwarded-Host` and
+  cookies.
+- **The cause.** Render's `WEB_ORIGIN` was `https://agent-probe-umber.vercel.app/`, with
+  the trailing slash the browser's address bar shows. A browser's `Origin` never has one.
+  Reproduced with curl:
+  - The browser's headers made no difference through the Vercel proxy, added one at a
+    time: `Sec-Fetch-*`, `Referer`, `Content-Type`, a cookie. All got 403.
+  - An `Origin` with the slash got 204, through the proxy and directly against Render. So
+    `src/proxy.ts`, Vercel's rewrite and Render's edge pass `Origin` through unchanged.
+- **Why curl looked fine.** curl with an empty `{}` body got a 422, but FastAPI validates
+  the body before the endpoint runs, so the Origin check never ran. Probe with
+  `POST /auth/logout`, which has no body.
+- **Fix.** `Settings` reduces `WEB_ORIGIN` to `scheme://host[:port]`: a trailing slash is
+  dropped, and scheme and host are lowercased. A path, query, fragment or credentials refuse
+  to load. The comparison is still exact, against that one origin. The same value is the SSE
+  route's `Access-Control-Allow-Origin`, which the slash had broken as well.
+- **Diagnosis.** A rejection logs `cross-origin request rejected` (logger `agentprobe.auth`)
+  with:
+  - `reason`: `origin missing` or `origin != WEB_ORIGIN`;
+  - `origin`, `web_origin`, `method` and `path`;
+  - `sec_fetch_site`;
+  - `referer_origin`: the Referer's scheme and host only, since its path or query can carry a
+    share token.
+
+  Cookies and the proxy secret are never logged.
+- **Test.** `test_same_origin_browser_request_passes_through_vercel_and_render` sends the
+  header set the container receives with `WEB_ORIGIN` configured with and without the slash.
+  It fails on the old settings.
+
 ### Memory (512 MB per service)
 Measured 2026-10-01 on the development machine: Windows, Python 3.12, the API's locked
 dependencies without the `live` extra, production-like settings (inline queue, mock LLM,

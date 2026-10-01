@@ -689,6 +689,15 @@ A phase is complete only when every task in it is done.
   - UI check: `next dev` with `API_INTERNAL_URL` on a dead port, `/login` at 1440, 810 and 390 px. The notice appears bottom-left from tablet up and full width at 390, with no horizontal scroll (`docs/screenshots/waking-notice-*.png`, with Next's dev overlay removed).
   - Not done here: the deploy itself waits on docs/DEPLOY.md's checklist.
 
+- 2026-10-02 **F4 first deploy: registration 403 "Cross-origin request rejected"** ([ADR 0036 §The Origin check behind the proxies](decisions/0036-free-tier-deploy-on-render.md)):
+  - Cause: Render's `WEB_ORIGIN` was `https://agent-probe-umber.vercel.app/`, with a trailing slash; a browser's `Origin` never has one. The check compares `Origin` only, exactly.
+  - Reproduced with curl against production. Through the Vercel proxy, adding the browser's headers one at a time (`Sec-Fetch-*`, `Referer`, `Content-Type`, a cookie) still got 403 each time. An `Origin` with the slash got 204 both through the proxy and directly on Render, so the proxies forward `Origin` untouched. The earlier "curl works" was a 422 from body validation, which runs before the check.
+  - Fix: `Settings` reduces `WEB_ORIGIN` to `scheme://host[:port]` and refuses a path, query, fragment or credentials. The live-progress CORS header (`runs.py`) uses the same value and was broken by the slash too.
+  - A rejection now logs `cross-origin request rejected` with `reason`, `origin`, `web_origin`, method, path, `sec_fetch_site` and the Referer's origin only; never cookies or the proxy secret.
+  - Tests (`test_deploy_guards.py`, offline): register and logout with the header set the container receives behind Vercel and Render, `WEB_ORIGIN` with and without the slash (fails on the old settings); env normalization; refused values; the log line's fields and the absence of the cookie, the secret and the Referer's query.
+  - The GitHub variable `WEB_ORIGIN` also has the trailing slash, so deploy.yml's check hits `//api/health`.
+  - Gate: `pnpm check` green (945 Python, 160 Vitest).
+
 ## Next
 - **F4 go-live** (user): the numbered no-card checklist in docs/DEPLOY.md §Manual steps (Neon, Render via GitHub login, the two Render services, the deploy hooks as GitHub secrets, Vercel, GitHub variables), then its step 10 checks, including `scripts/smoke_prod.py`. As of 2026-09-30 GitHub had no repository variables (so `DEPLOY_ENABLED` is unset and deploy.yml's job is skipped) and no `production` environment.
 
