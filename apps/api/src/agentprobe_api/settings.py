@@ -1,7 +1,8 @@
 from functools import cache
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -60,6 +61,26 @@ class Settings(BaseSettings):
     public_web_url: str | None = None
 
     log_level: str = "INFO"
+
+    @field_validator("web_origin")
+    @classmethod
+    def _bare_origin(cls, value: str) -> str:
+        """Browsers send Origin as exactly scheme://host[:port], never with a trailing slash,
+        and the Origin check and the SSE CORS header compare to it exactly. So a URL copied
+        with its trailing slash is reduced to that form, and one with a path, query, fragment
+        or credentials refuses to load.
+        """
+        url = urlsplit(value.strip())
+        if (
+            url.scheme not in ("http", "https")
+            or not url.hostname
+            or url.username is not None
+            or url.path not in ("", "/")
+            or url.query
+            or url.fragment
+        ):
+            raise ValueError(f"WEB_ORIGIN must be scheme://host[:port], got {value!r}")
+        return f"{url.scheme}://{url.netloc.lower()}"
 
     @property
     def signup_allowlist(self) -> set[str]:
