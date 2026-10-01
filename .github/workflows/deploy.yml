@@ -3,7 +3,7 @@ name: Deploy
 # Production deploy (ADR 0036, docs/DEPLOY.md): runs only after CI passes on a push to main,
 # on exactly the commit CI tested. Order: migrate the Neon production database, trigger the
 # Render deploy hooks of the demo agents and the API for that commit, wait until the API
-# reports that commit, then deploy the web app to Vercel.
+# reports that commit, deploy the web app to Vercel, then smoke-test the live stack.
 #
 # Disarmed until the repository variable DEPLOY_ENABLED is "true" (the last step of the manual
 # checklist in docs/DEPLOY.md), so pushes before the services exist don't fail here.
@@ -86,8 +86,16 @@ jobs:
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
-          npx --yes vercel@61.0.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes vercel@61.0.0 build --prod --token="$VERCEL_TOKEN"
-          npx --yes vercel@61.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@61.1.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@61.1.0 build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@61.1.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
       - name: Check the web app reaches the API through /api
         run: curl --fail --silent --show-error --retry 5 --retry-delay 6 --retry-all-errors "${{ vars.WEB_ORIGIN }}/api/health"
+      # End to end through the web proxy on the live services; deletes the throwaway user from
+      # the production database afterwards, even when a check fails (scripts/smoke_prod.py).
+      - name: Smoke-test production
+        env:
+          WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
+          DEMO_AGENTS_URL: ${{ vars.DEMO_AGENTS_URL }}
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: uv run python scripts/smoke_prod.py

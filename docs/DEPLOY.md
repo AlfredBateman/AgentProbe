@@ -16,7 +16,8 @@ There's no Redis in production. CI's `docker` job proves the Redis queue path in
 2. it calls both Render deploy hooks for that commit;
 3. it waits until the API's `/ready` reports that commit;
 4. it deploys the web app;
-5. it checks that `https://<web>/api/health` reaches the API.
+5. it checks that `https://<web>/api/health` reaches the API;
+6. it runs `scripts/smoke_prod.py` against the live services (below).
 
 It does nothing until the repository variable `DEPLOY_ENABLED` is `true`. Render's own auto-deploy stays off.
 
@@ -137,6 +138,7 @@ These are **repository variables** (Settings > Secrets and variables > Actions >
 | `DEPLOY_ENABLED` | `true` arms deploy.yml. It has to be a repository variable: the job's `if` is evaluated before the environment is loaded. |
 | `API_URL` | The API's Render URL, no trailing slash. deploy.yml waits on its `/ready`. |
 | `WEB_ORIGIN` | The Vercel production URL, no trailing slash. |
+| `DEMO_AGENTS_URL` | The demo agents' Render URL, no trailing slash. deploy.yml's smoke test points its agent at it. |
 | `VERCEL_ORG_ID` | The Vercel team or account ID. |
 | `VERCEL_PROJECT_ID` | The Vercel project ID. |
 
@@ -193,7 +195,7 @@ Do these in order. None of them asks for a card. Where a name is taken, use the 
 7. **Point the API at the web app.** In Render, on the API's Environment, set `WEB_ORIGIN=<WEB_ORIGIN>` and `PUBLIC_WEB_URL=<WEB_ORIGIN>`, then Save, rebuild and deploy.
 8. **GitHub secrets and variables.**
    - Settings > Environments > New environment `production`, with the secrets `PRODUCTION_DATABASE_URL=<NEON_URL>`, `RENDER_API_DEPLOY_HOOK=<API_HOOK>`, `RENDER_DEMO_DEPLOY_HOOK=<DEMO_HOOK>` and `VERCEL_TOKEN=<from step 6>`.
-   - Settings > Secrets and variables > Actions > Variables: `API_URL=<API_URL>`, `WEB_ORIGIN=<WEB_ORIGIN>`, `VERCEL_ORG_ID=<from step 6>` and `VERCEL_PROJECT_ID=<from step 6>`.
+   - Settings > Secrets and variables > Actions > Variables: `API_URL=<API_URL>`, `WEB_ORIGIN=<WEB_ORIGIN>`, `DEMO_AGENTS_URL=<DEMO_URL>`, `VERCEL_ORG_ID=<from step 6>` and `VERCEL_PROJECT_ID=<from step 6>`.
 9. **Arm and run.** Add the repository variable `DEPLOY_ENABLED=true`, then Actions > Deploy > Run workflow on `main`. It migrates, deploys both services, waits for `<API_URL>/ready` to report the commit, and deploys the web app. From then on, every push to `main` that passes CI deploys.
 10. **Check.**
     - Run `curl <API_URL>/ready`. It returns `{"status":"ready","commit":"<sha>"}`, after up to a minute if the API was asleep.
@@ -203,5 +205,5 @@ Do these in order. None of them asks for a card. Where a name is taken, use the 
       WEB_ORIGIN=<WEB_ORIGIN> API_URL=<API_URL> DEMO_AGENTS_URL=<DEMO_URL> \
       PRODUCTION_DATABASE_URL='<NEON_URL>' uv run python scripts/smoke_prod.py
       ```
-      It ends with `PASS production smoke test`, and uses one of your IP's five hourly registrations.
+      It ends with `PASS production smoke test`, and uses one of your IP's five hourly registrations. deploy.yml runs the same script as its last step on every deploy, so a green Deploy run is this check.
     - Then work through ADR 0036's "Unverified until the first live deploy" list, starting with the `X-Forwarded-For` check.
