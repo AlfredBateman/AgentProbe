@@ -11,7 +11,7 @@ import uvicorn
 from fastapi import FastAPI, Request, Response
 
 from agentprobe_demo_agents import routes_rag, routes_support, routes_vulnerable
-from agentprobe_demo_agents.mcp_server import MCP_ROUTE, build_mcp_server
+from agentprobe_demo_agents.mcp_server import MCP_ROUTE, build_mcp_server, transport_security
 
 # On every response, so the public deployed copy is labelled wherever it's reached from
 # (ADR 0036).
@@ -46,7 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_support.build_router("v2"))
     app.include_router(routes_rag.router)
     app.include_router(routes_vulnerable.router)
-    app.mount(MCP_ROUTE, mcp_tools.streamable_http_app())
+    app.mount(MCP_ROUTE, mcp_tools.streamable_http_app(transport_security=transport_security()))
 
     @app.get("/health")
     def health() -> dict[str, str]:

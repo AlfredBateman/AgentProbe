@@ -26,7 +26,7 @@ test("a lookalike path is not public", () => {
 });
 
 const callApi = (path: string, headers: Record<string, string> = {}) =>
-  proxy(new NextRequest(`http://localhost:3000${path}`, { headers: { "x-forwarded-for": "203.0.113.5, 10.0.0.1", ...headers } }));
+  proxy(new NextRequest(`http://localhost:3000${path}`, { headers: { "x-real-ip": "203.0.113.5", ...headers } }));
 const forwarded = (response: Response, name: string) => response.headers.get(`x-middleware-request-${name}`);
 
 test("/api/* goes to the local API when API_INTERNAL_URL is unset", () => {
@@ -42,27 +42,38 @@ test("/api/* is forwarded to API_INTERNAL_URL, path and query kept, /api strippe
   vi.unstubAllEnvs();
 });
 
-test("with PROXY_SECRET, the API gets the secret and X-Forwarded-For is exactly the browser's IP", () => {
+test("with PROXY_SECRET, the API gets the secret and the client IP from x-real-ip, never from X-Forwarded-For", () => {
   vi.stubEnv("PROXY_SECRET", "s".repeat(40));
-  // Vercel's edge put the real client first; anything after it is not the browser's.
-  const response = callApi("/api/auth/login", { "x-agentprobe-proxy-secret": "forged" });
+  // A browser's own X-Forwarded-For and client-IP header: in production the former sometimes
+  // reached the API leftmost (ADR 0036).
+  const response = callApi("/api/auth/login", {
+    "x-agentprobe-proxy-secret": "forged",
+    "x-agentprobe-client-ip": "198.51.100.1",
+    "x-forwarded-for": "198.51.100.2, 203.0.113.5",
+  });
   expect(forwarded(response, "x-agentprobe-proxy-secret")).toBe("s".repeat(40));
-  expect(forwarded(response, "x-forwarded-for")).toBe("203.0.113.5");
+  expect(forwarded(response, "x-agentprobe-client-ip")).toBe("203.0.113.5");
   vi.unstubAllEnvs();
 });
 
-test("with PROXY_SECRET and no client IP, no X-Forwarded-For reaches the API", () => {
+test("with PROXY_SECRET and no x-real-ip, a browser's client-IP header still never reaches the API", () => {
   vi.stubEnv("PROXY_SECRET", "s".repeat(40));
-  const response = proxy(new NextRequest("http://localhost:3000/api/auth/login"));
+  const response = proxy(
+    new NextRequest("http://localhost:3000/api/auth/login", {
+      headers: { "x-agentprobe-client-ip": "198.51.100.1", "x-forwarded-for": "198.51.100.2" },
+    }),
+  );
   expect(forwarded(response, "x-agentprobe-proxy-secret")).toBe("s".repeat(40));
-  expect(forwarded(response, "x-forwarded-for")).toBeNull();
+  // The middleware lists every header it overrides; a deleted one is absent from the list.
+  expect(response.headers.get("x-middleware-override-headers")?.split(",")).not.toContain("x-agentprobe-client-ip");
   vi.unstubAllEnvs();
 });
 
-test("without PROXY_SECRET, a browser's forged secret never reaches the API", () => {
+test("without PROXY_SECRET, a browser's forged secret and client IP never reach the API", () => {
   vi.stubEnv("PROXY_SECRET", "");
-  const response = callApi("/api/auth/login", { "x-agentprobe-proxy-secret": "forged" });
+  const response = callApi("/api/auth/login", { "x-agentprobe-proxy-secret": "forged", "x-agentprobe-client-ip": "198.51.100.1" });
   expect(forwarded(response, "x-agentprobe-proxy-secret")).toBeNull();
+  expect(forwarded(response, "x-agentprobe-client-ip")).toBeNull();
   expect(forwarded(response, "host")).toBeNull();
   vi.unstubAllEnvs();
 });

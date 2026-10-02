@@ -18,7 +18,13 @@ from pydantic import SecretStr, ValidationError
 from starlette.requests import Request
 
 from agentprobe_api import limits
-from agentprobe_api.auth import ARGON2_SLOTS, PROXY_SECRET_HEADER, _argon2, client_ip
+from agentprobe_api.auth import (
+    ARGON2_SLOTS,
+    CLIENT_IP_HEADER,
+    PROXY_SECRET_HEADER,
+    _argon2,
+    client_ip,
+)
 from agentprobe_api.errors import ApiError
 from agentprobe_api.main import check_production_settings, create_app
 from agentprobe_api.settings import Settings
@@ -27,8 +33,9 @@ from apitest import make_settings
 SECRET = "s" * 40
 PEER = "10.214.3.4"  # Render's proxy, the connecting address
 XFF = "x-forwarded-for"
-# What the API sees through the web proxy: its browser entry, then Vercel's and Render's hops.
-VIA_PROXY = "203.0.113.5, 76.76.21.21, 10.214.0.1"
+IP = CLIENT_IP_HEADER
+# X-Forwarded-For as production delivered it: a browser's own text can come first (ADR 0036).
+VIA_PROXY = "198.51.100.66, 203.0.113.5, 76.76.21.21, 10.214.0.1"
 
 
 def request(headers: list[tuple[str, str]] | dict[str, str], peer: str = PEER) -> Request:
@@ -40,46 +47,44 @@ def request(headers: list[tuple[str, str]] | dict[str, str], peer: str = PEER) -
 @pytest.mark.parametrize(
     ("configured", "headers", "expected"),
     [
-        # Through the web proxy: the leftmost entry is the browser, the rest are hops.
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: VIA_PROXY}, "203.0.113.5"),
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: "2001:db8::1, 10.214.0.1"}, "2001:db8::1"),
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: " 203.0.113.5 "}, "203.0.113.5"),
-        # Spoofed without the secret: a caller's X-Forwarded-For is ignored, whatever it says.
+        # Through the web proxy: its client-IP header is the browser; X-Forwarded-For is noise.
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, IP: "203.0.113.5", XFF: VIA_PROXY}, "203.0.113.5"),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, IP: "2001:db8::1"}, "2001:db8::1"),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, IP: " 203.0.113.5 "}, "203.0.113.5"),
+        # Spoofed without the secret: a caller's headers are ignored, whatever they say.
+        (SECRET, {IP: "203.0.113.5"}, PEER),
         (SECRET, {XFF: "203.0.113.5"}, PEER),
-        (SECRET, {XFF: VIA_PROXY}, PEER),
-        (SECRET, {PROXY_SECRET_HEADER: "guess", XFF: "203.0.113.5"}, PEER),
-        (SECRET, {PROXY_SECRET_HEADER: SECRET[:-1], XFF: "203.0.113.5"}, PEER),  # a prefix
-        (SECRET, {PROXY_SECRET_HEADER: SECRET + "s", XFF: "203.0.113.5"}, PEER),
-        (SECRET, {PROXY_SECRET_HEADER: "", XFF: "203.0.113.5"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: "guess", IP: "203.0.113.5"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET[:-1], IP: "203.0.113.5"}, PEER),  # a prefix
+        (SECRET, {PROXY_SECRET_HEADER: SECRET + "s", IP: "203.0.113.5"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: "", IP: "203.0.113.5"}, PEER),
         # No secret configured (local, compose, e2e): never trusted, not even an empty match.
-        (None, {PROXY_SECRET_HEADER: "", XFF: "203.0.113.5"}, PEER),
-        (None, {PROXY_SECRET_HEADER: SECRET, XFF: "203.0.113.5"}, PEER),
+        (None, {PROXY_SECRET_HEADER: "", IP: "203.0.113.5"}, PEER),
+        (None, {PROXY_SECRET_HEADER: SECRET, IP: "203.0.113.5"}, PEER),
         # The right secret but nothing usable: the proxy's address, never the header text.
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: "evil, 1.2.3.4"}, PEER),
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: ""}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, IP: "evil"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, IP: "203.0.113.5, 1.2.3.4"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, IP: ""}, PEER),
         (SECRET, {PROXY_SECRET_HEADER: SECRET}, PEER),
-        # The retired x-agentprobe-client-ip header means nothing now, secret or not.
-        (
-            SECRET,
-            {PROXY_SECRET_HEADER: SECRET, "x-agentprobe-client-ip": "1.2.3.4", XFF: VIA_PROXY},
-            "203.0.113.5",
-        ),
-        (SECRET, {PROXY_SECRET_HEADER: SECRET, "x-agentprobe-client-ip": "1.2.3.4"}, PEER),
+        # With the secret, X-Forwarded-For still means nothing: production showed a browser's
+        # own entry can arrive leftmost.
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, XFF: VIA_PROXY}, PEER),
         # Platform client-IP headers aren't trusted either: only the secret proves a hop.
         (SECRET, {"true-client-ip": "1.2.3.4", "cf-connecting-ip": "1.2.3.4"}, PEER),
+        (SECRET, {PROXY_SECRET_HEADER: SECRET, "x-real-ip": "1.2.3.4"}, PEER),
     ],
 )
-def test_client_ip_trusts_x_forwarded_for_only_with_the_proxy_secret(
+def test_client_ip_trusts_the_proxy_header_only_with_the_proxy_secret(
     configured: str | None, headers: dict[str, str], expected: str
 ) -> None:
     settings = make_settings(proxy_secret=SecretStr(configured) if configured else None)
     assert client_ip(request(headers), settings) == expected
 
 
-def test_a_second_x_forwarded_for_header_line_cannot_take_the_lead() -> None:
-    # Only the first line is read: a hop that adds its own line after the web proxy's,
-    # instead of appending to it, doesn't change which entry is the browser.
-    headers = [(PROXY_SECRET_HEADER, SECRET), (XFF, "203.0.113.5"), (XFF, "1.2.3.4")]
+def test_a_second_client_ip_header_line_cannot_take_the_lead() -> None:
+    # Only the first line is read: a hop that adds its own line after the web proxy's doesn't
+    # change which address is the browser.
+    headers = [(PROXY_SECRET_HEADER, SECRET), (IP, "203.0.113.5"), (IP, "1.2.3.4")]
     assert client_ip(request(headers), make_settings(proxy_secret=SecretStr(SECRET))) == (
         "203.0.113.5"
     )
@@ -182,6 +187,7 @@ def production_headers(origin: str, site: str = "same-origin") -> dict[str, str]
         "content-type": "application/json",
         "cookie": COOKIE,
         "x-forwarded-for": VIA_PROXY,
+        IP: "203.0.113.5",
         "x-forwarded-host": "agent-probe-umber.vercel.app",
         "x-forwarded-proto": "https",
         PROXY_SECRET_HEADER: SECRET,

@@ -210,17 +210,18 @@ class UserOut(BaseModel):
 
 
 PROXY_SECRET_HEADER = "x-agentprobe-proxy-secret"  # noqa: S105  a header name
+CLIENT_IP_HEADER = "x-agentprobe-client-ip"
 
 
 def client_ip(request: Request, settings: Settings) -> str:
     """The IP that per-IP rate limits key on (ADR 0036).
 
-    The web app's server-side proxy replaces X-Forwarded-For with exactly the browser's
-    address and adds PROXY_SECRET. The hops after it (Vercel's rewrite, Render's edge) only
-    append, so on a request with the right secret the leftmost entry is the browser. Without
-    the secret X-Forwarded-For is text the caller chose, so it keys on the connecting address
-    (uvicorn rewrites that from X-Forwarded-For only for its own FORWARDED_ALLOW_IPS peers:
-    local and compose; on Render it's Render's proxy).
+    The web app's server-side proxy sets CLIENT_IP_HEADER to the browser's address (Vercel's
+    x-real-ip), overwriting any copy the browser sent, and adds PROXY_SECRET. Only with the
+    right secret is that header trusted. X-Forwarded-For is never read: in production its
+    leftmost entry was sometimes the browser's own text after Vercel's rewrite. Otherwise it
+    keys on the connecting address (uvicorn rewrites that from X-Forwarded-For only for its own
+    FORWARDED_ALLOW_IPS peers: local and compose; on Render it's Render's proxy).
     """
     peer = request.client.host if request.client else "unknown"
     secret = settings.proxy_secret
@@ -228,9 +229,8 @@ def client_ip(request: Request, settings: Settings) -> str:
         request.headers.get(PROXY_SECRET_HEADER, "").encode(), secret.get_secret_value().encode()
     ):
         return peer
-    leftmost = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
     try:
-        return str(ipaddress.ip_address(leftmost))
+        return str(ipaddress.ip_address(request.headers.get(CLIENT_IP_HEADER, "").strip()))
     except ValueError:
         return peer  # none or malformed: key on the proxy, never on header text
 
