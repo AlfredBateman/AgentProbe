@@ -11,7 +11,7 @@ A phase is complete only when every task in it is done.
 | B2: server runner and results API | **Complete** (B2.1–B2.6). B2.5's ingest is `POST /ci/report`, not the planned `runs:ingest` ([ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md)). |
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
-| E: dashboard | E0, E1, E4, E5, E6, E7 **complete**; E3 done as a minimal agents/suites slice (below); E2 (project overview charts) not built. |
+| E: dashboard | E0, E1, E2, E4, E5, E6, E7 **complete** (E2 on 2026-10-03, [ADR 0037](decisions/0037-project-overview-and-runs-page.md)); E3 done as a minimal agents/suites slice (below), the rest in progress. |
 | F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **live (Render, Vercel Hobby, Neon; ADR 0036), deployed by deploy.yml after CI and smoke-tested by `scripts/smoke_prod.py`; ADR 0036's live checks done (two bugs found and fixed), cold starts measured; three items still need the Render dashboard or a >15 min run**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
 
 ## Done
@@ -737,15 +737,42 @@ A phase is complete only when every task in it is done.
   - Gates: `pnpm check` green (952 Python, 160 Vitest), `test_limits.py` green against the Neon test branch, CI green on `7f8ac29`, and the Deploy run green including its smoke test.
   - Cleanup: the throwaway accounts (two cold-start page users, the XFF-probe user) were deleted from the production database, and the deletion was confirmed.
 
+- 2026-10-03 **User decisions: 10 runs per case, the canonical URL, dev-database cleanup** ([ADR 0022 amendment](decisions/0022-golden-tests-and-detection-measurement.md#amendment-2026-10-03-user-decision)):
+  - The four example suites run 10 attempts per case (was 5), for the regression demo, the golden tests' headline metric and the dogfood (blocked-PR) workflow. Integration and e2e flow tests keep 5 so they don't slow down. `runtest.SMOKE_YAML` pins it, and `test_golden_api.py` uses the file's own 10 (`SMOKE_FILE_YAML`). Specs 05 and 06 pass `runs_per_case: 5`.
+  - Re-measured in mock mode: 9 of 9 planted flaws detected, 9 of 9 controls passed. The v1 → v2 refund regression now has p ≈ 5.4e-06 (was 0.004); the detection table prints p with 2 significant figures, since the old 4 decimals read "0.0000". Clustering: 50 failing results collapse into 5 findings.
+  - The README and docs/metrics.md state the limit: `unauthorized-delete` and `rag-indirect-injection` are caught only because the demo agents are rule engines. In LLM mode the agents don't report tool calls or pass context, so a live run would miss both. The demo agents are unchanged, and the live Gemini run is deferred.
+  - Canonical public URL: <https://agent-probe-umber.vercel.app>. Nothing in the README, PROGRESS.md or DEPLOY.md used the branch alias. DEPLOY.md now says the alias and preview URLs are rejected by the Origin check.
+  - Dev database cleanup: deleted the demo user `demo-runner@example.com` and its project `server-runner-demo-1790279638` (1 agent, 1 suite, 1 run, from B2.3's measured run on 2026-09-24). There were no API keys to revoke. A query afterwards showed no users, projects or keys.
+  - Gates: `pnpm check` green (952 Python, 160 Vitest). The changed integration tests (golden API flow, baselines, IDOR) are green on Neon. The golden and CLI end-to-end tests are green at 10 runs.
+
+- 2026-10-03 **E2: project overview and the Runs page** ([ADR 0037](decisions/0037-project-overview-and-runs-page.md)):
+  - API: `GET /projects/{id}/baselines` lists a project's baselines with their runs. It's owner-scoped, and an IDOR probe covers it.
+  - Overview (`/projects/{id}`):
+    - a suite filter;
+    - tiles: latest pass rate with its CI, the baseline and the latest run's difference from it, and the last run;
+    - three trend charts on the chart theme: pass rate with its 95% CI band and a dashed baseline line, cost (agent and judging), and mean latency;
+    - the 10 latest runs across suites, with a "Baseline · branch" badge;
+    - "Run a suite".
+
+    A chart with no data says why (mock runs have no cost).
+  - Runs page (`/projects/{id}/runs`, the nav's Runs link): every run, a server-side suite filter, and "Load more". The run page's breadcrumb now points here.
+  - `RunSuiteDialog`: suite, attempts per case, and opt-in live judging (mock by default).
+  - `DataTable` columns take a `className`. The runs table hides cost and latency below 1199px so it fits its card at 810.
+  - Screenshots at 1440, 810 and 390 (`overview-*`, `runs-*`, `run-dialog-1440`): no horizontal scroll and no page errors. Fixed from them: same-day runs all labelled "3 Oct" (now the time of day), a $0 cost line on a made-up $0–$4 axis, a legend on an empty chart, and the runs table overflowing its card at 810.
+  - Tests: `trends.test.ts` (6); `test_baselines.py` covers the listing; new e2e `12-overview-and-runs.spec.ts`, where the first run is started from the dialog (with its attempts validation), the baseline shows in the tile, chart legend and table, and the Runs page filters and links through to a run and back. The visual-snapshot spec also covers the Runs page. Specs 05, 06, 07, 11 and 12 pass.
+
 ## Next
 - **F4 follow-ups (need the Render dashboard or the operator)**: run the `PROXY_SECRET` client-IP check in docs/DEPLOY.md step 10; read the API's memory graph around a Deploy run; optionally exercise `API_EXTRAS=live` as a build arg. Details: ADR 0036 §Still unverified.
 - **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
-- **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
-- **E3 (rest)**: MCP agent config, auth-header UI, suite versioning and a case browser, delete confirmations.
-- **Live detection run** (user decision on when, and on the three predicted misses in ADR 0022 §Consequences): at the default 3 runs per case the v2 regression can't reach significance, and in llm mode the demo agents report no tool calls and the RAG route ignores `context`, so `unauthorized-delete` and `rag-indirect-injection` can't be caught as the agents stand. Changing the demo agents or the run count is the user's decision, not a tuning step to take unasked.
+- **E3 (rest)**, scope confirmed by the user on 2026-10-03:
+  - agents: MCP config, the auth-header UI, the full HTTP config, a fix for edit wiping fields the form doesn't show, test connection on a saved agent, and a delete confirmation;
+  - suites: a detail page with a validating YAML editor, a case browser, version history with each version's YAML (migration 0005), and run options.
+- **Live detection run**: deferred (user decision, 2026-10-03). The demo agents stay as they are; the README states the two live misses.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
 ## Decisions
+- Example suites run 10 attempts per case; flow tests that only need a finished run use 5 (user decision 2026-10-03, ADR 0022 amendment). Demo agents unchanged; the two live-mode misses are documented, not fixed.
+- Project overview and Runs page ([ADR 0037](decisions/0037-project-overview-and-runs-page.md)): trends for one suite at a time; the baseline as a tile, a dashed reference line and a table badge; `GET /projects/{id}/baselines`; one "Run a suite" dialog, mock by default.
 - Production deploy on free, no-card tiers ([ADR 0036](decisions/0036-free-tier-deploy-on-render.md), user constraint 2026-10-01): Vercel Hobby + two Render free web services (the API inline; the demo agents public, fake data only, labelled) + a separate Neon project. deploy.yml after CI: migrations, Render deploy hooks pinned to the commit, wait for `/ready` to report it, then Vercel. No keep-alive (750 shared hours); the web waits for a sleeping API with a visible notice and never resends a mutation; the API wakes the demo agents before a run. Client IP: the web proxy's `x-agentprobe-client-ip` (Vercel's `x-real-ip`), only with its secret; `X-Forwarded-For` is never read (revised 2026-10-02 after the live check found it spoofable). No private targets in production. argon2 limited to two at a time for the 512 MB limit.
 - Public-abuse limits ([ADR 0035](decisions/0035-production-deploy-and-public-abuse-limits.md), user decisions 2026-09-29): open signup with per-user caps, an hourly registration limit and a worst-case global live-LLM budget; register/login need the web Origin; an allowlist is the whole private-target policy.
 - Docker and CI completion: three pinned, non-root, multi-stage images (one for the API and the worker); a local-only compose stack with committed dev secrets, 127.0.0.1 ports, no `${}` interpolation, the Redis queue and the mock LLM by default, and migrations on API start; a CI `docker` job that runs the README quick start command for command ([ADR 0033](decisions/0033-docker-images-and-compose.md)). Dependency audits cover every locked package, dev and `live` included, and fail on any finding; findings are fixed, pinned, or accepted in ADR 0034 ([ADR 0034](decisions/0034-dependency-audits.md)).

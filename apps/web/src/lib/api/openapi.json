@@ -1685,6 +1685,54 @@
         }
       }
     },
+    "/projects/{project_id}/baselines": {
+      "get": {
+        "tags": [
+          "baselines"
+        ],
+        "summary": "List Baselines",
+        "description": "Every baseline in the project, for the overview's baseline indicator (ADR 0037).",
+        "operationId": "list_baselines_projects__project_id__baselines_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BaselineOut"
+                  },
+                  "title": "Response List Baselines Projects  Project Id  Baselines Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/baselines/{branch}": {
       "get": {
         "tags": [
