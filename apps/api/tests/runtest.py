@@ -16,7 +16,11 @@ from agentprobe_api.runstore import TERMINAL
 from agentprobe_core.adapters.types import AgentResponse, MessageStep
 from agentprobe_core.runner import AttemptResult, JudgeResult
 
-SMOKE_YAML = (Path(__file__).parents[3] / "suites/examples/smoke.yaml").read_text("utf-8")
+SMOKE_FILE_YAML = (Path(__file__).parents[3] / "suites/examples/smoke.yaml").read_text("utf-8")
+# Flow tests only need a run to finish, so they keep 5 runs per case; the file's own 10 is for
+# the regression demo and the golden tests (test_golden_api.py uses SMOKE_FILE_YAML).
+SMOKE_YAML = SMOKE_FILE_YAML.replace("runs_per_case: 10", "runs_per_case: 5")
+assert SMOKE_YAML != SMOKE_FILE_YAML, "smoke.yaml no longer says runs_per_case: 10"
 SUPPORT_RESPONSE = {"tool_calls": "$.tool_calls", "total_tokens": "$.usage.total_tokens"}
 SMALL_YAML = """
 suite: small

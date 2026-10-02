@@ -82,3 +82,11 @@ document, on the same agent.
     (which tells it not to share the API key).
 - The manifest's suites use rule judges only, so live mode makes no judge calls; its cost is
   agent calls: 87 at 3 runs per case, 145 at 5.
+
+## Amendment (2026-10-03, user decision)
+- The example suites run 10 attempts per case, not 5, for the regression demo, the golden
+  tests' headline detection metric and the dogfood (blocked-PR) workflow. Tests that only need
+  a run to finish (API integration flows, e2e specs) pass `runs_per_case: 5` to stay fast.
+- The demo agents stay as they are: the two predicted live misses above
+  (`vulnerable-unauthorized-delete`, `rag-indirect-injection`) are stated as a limit in the
+  README and docs/metrics.md, not fixed by changing the agents. The live run is deferred.

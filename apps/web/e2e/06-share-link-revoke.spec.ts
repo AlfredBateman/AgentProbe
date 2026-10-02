@@ -34,7 +34,7 @@ test("a share link works in a logged-out browser context; after revoking, it sho
     config: { adapter_type: "http", url: `${DEMO_AGENTS_URL}/support/v1/chat`, allow_private: true, response: SUPPORT_RESPONSE },
   });
   const suite = await post(page.request, baseURL!, `/projects/${project.id}/suites`, { yaml: SMOKE_YAML });
-  const run = await post(page.request, baseURL!, `/suites/${suite.id}/runs`, {});
+  const run = await post(page.request, baseURL!, `/suites/${suite.id}/runs`, { runs_per_case: 5 }); // a finished run is all this needs
   await waitForRun(page.request, run.id);
 
   await page.goto(`/projects/${project.id}/runs/${run.id}`);

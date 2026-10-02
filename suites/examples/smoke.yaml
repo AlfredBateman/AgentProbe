@@ -7,7 +7,8 @@
 #   agentprobe run suites/examples/smoke.yaml --agent support-v2 --baseline main
 suite: smoke
 agent: support-v1
-runs_per_case: 5
+# 10, not 5: the v1 -> v2 regression demo and the golden tests need the power (docs/metrics.md).
+runs_per_case: 10
 cases:
   - id: greeting
     input: "Hello there"

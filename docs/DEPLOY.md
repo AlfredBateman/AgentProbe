@@ -162,7 +162,7 @@ Per-IP limits (login, registration) need the browser's real IP:
 Cookies (checked against ADR 0009):
 - `access_token` is `HttpOnly; Secure; SameSite=Lax; Path=/`, and `refresh_token` is `HttpOnly; Secure; SameSite=Strict; Path=/`.
 - Neither has a `Domain` attribute. They're set through the `/api` proxy, so they're host-only cookies on the Vercel domain and never sent to `*.onrender.com`.
-- Cookie-authenticated mutations, and register and login, need `Origin` equal to `WEB_ORIGIN`, so open the site at exactly that URL.
+- Cookie-authenticated mutations, and register and login, need `Origin` equal to `WEB_ORIGIN`, so open the site at exactly that URL. The canonical public URL is <https://agent-probe-umber.vercel.app>. Vercel's other hostnames for the same deployment (the branch alias `agent-probe-git-main-<team>.vercel.app` and per-commit preview URLs) load, but the API rejects every sign-up, login and write from them with 403. Link only the canonical URL.
 - `COOKIE_SECURE=0` with an https `WEB_ORIGIN` refuses to start.
 
 ## Live Gemini (opt-in)

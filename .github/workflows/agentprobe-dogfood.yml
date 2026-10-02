@@ -48,7 +48,8 @@ jobs:
         include:
           # fail-under matches each suite's own known, accepted ceiling -- not a blanket 1.0.
           # smoke's order-status case is seeded ~20%-flaky per attempt (demo-agents/README.md);
-          # 0.9 tolerates that flakiness (needs order-status >= 1/5) without masking a real drop.
+          # 0.9 tolerates that flakiness (needs order-status >= 1/10 at the suite's 10 runs per
+          # case) without masking a real drop.
           - suite: suites/examples/smoke.yaml
             agent: support-v1
             fail-under: "0.9"
