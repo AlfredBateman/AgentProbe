@@ -32,7 +32,7 @@ The compose file is for local use only. Its secrets are committed, so they're pu
 
 ## Deploy
 
-Live (the first request after a quiet spell takes about a minute while the free services wake):
+Live (after 15 idle minutes the free services sleep; the first page that needs the API then takes about 37 s while it wakes):
 
 | | URL |
 |---|---|
@@ -40,7 +40,7 @@ Live (the first request after a quiet spell takes about a minute while the free 
 | API (`/ready`, `/docs`) | https://agentprobe-api-1uno.onrender.com |
 | Demo agents (deliberately vulnerable, fake data only) | https://agentprobe-1r00.onrender.com |
 
-The production demo runs on free tiers that need no card: Vercel Hobby (web), two Render free web services (the API and the demo agents) and Neon Free (Postgres). Free services sleep when idle, so the first visit after a quiet spell waits about a minute while the API wakes. [docs/DEPLOY.md](docs/DEPLOY.md) lists every environment variable and dashboard setting per service, and the one-time manual steps. After that, every push to `main` that passes CI deploys through `.github/workflows/deploy.yml`.
+The production demo runs on free tiers that need no card: Vercel Hobby (web), two Render free web services (the API and the demo agents) and Neon Free (Postgres). Free services sleep after 15 idle minutes. Measured on 2026-10-02 (two samples), the API woke in 33 s and the demo agents in 23 s. The static landing page loads in about 1 s either way. A first visit from opening the sign-up page to seeing the dashboard took about 37 s, with a "Waking the server" notice from about 3 s. [docs/DEPLOY.md](docs/DEPLOY.md) lists every environment variable and dashboard setting per service, and the one-time manual steps. After that, every push to `main` that passes CI deploys through `.github/workflows/deploy.yml`.
 
 ## Database
 

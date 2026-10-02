@@ -12,7 +12,7 @@ A phase is complete only when every task in it is done.
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
 | E: dashboard | E0, E1, E4, E5, E6, E7 **complete**; E3 done as a minimal agents/suites slice (below); E2 (project overview charts) not built. |
-| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **live (Render, Vercel Hobby, Neon; ADR 0036), deployed by deploy.yml after CI and smoke-tested by `scripts/smoke_prod.py`; ADR 0036's unverified list and cold-start timings remain**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
+| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **live (Render, Vercel Hobby, Neon; ADR 0036), deployed by deploy.yml after CI and smoke-tested by `scripts/smoke_prod.py`; ADR 0036's live checks done (two bugs found and fixed), cold starts measured; three items still need the Render dashboard or a >15 min run**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
 
 ## Done
 - 2026-09-24 **Bootstrap**:
@@ -706,8 +706,39 @@ A phase is complete only when every task in it is done.
   - Not measured: cold starts. Both services were already awake from the deploy (answers took 0 s and 1 s). Measure on a quiet day by running the script after 15+ idle minutes (docs/DEPLOY.md step 10).
   - Known: the smoke's registration counts against `REGISTER_RATE_LIMIT_PER_HOUR` (5 per IP) and `MAX_SIGNUPS_PER_DAY`; each deploy uses one.
 
+- 2026-10-02 **F4: ADR 0036's live checks, two fixes, measured cold starts** ([ADR 0036 §Checked on the live deploy](decisions/0036-free-tier-deploy-on-render.md)). Probes used temporary workflows on a throwaway branch (`tmp/live-verify`, deleted afterwards), because the production DB URL and the deploy hooks live only in GitHub. Also used: curl from the dev machine, and the CLI.
+  - **Client IP was spoofable (fixed).**
+    - Probe: re-registering one existing throwaway address, so 409 means allowed and 429 limited, and nothing is created.
+    - Through the web proxy, a made-up `X-Forwarded-For` still registered once the real IP was limited, and five with the same made-up value filled a bucket of their own. The browser's own entry sometimes arrived leftmost, against Vercel's docs.
+    - Fix: `src/proxy.ts` sends Vercel's `x-real-ip` as `x-agentprobe-client-ip`, overwriting a browser's copy. The API reads only that header, only with `PROXY_SECRET`, and no longer reads `X-Forwarded-For`.
+    - After the deploy: the sixth plain registration got 429; 13 spoofed requests (every header, and all at once) got 429; direct calls with this IP but no or a wrong secret stayed out of its bucket; a GitHub runner (another network) still registered.
+  - **Demo MCP route was broken behind Render (fixed).** Every request got 421: the MCP SDK's DNS-rebinding check allowed only localhost hosts. It now also allows `RENDER_EXTERNAL_HOSTNAME`. Live `mcp-safety.yaml` now matches local: 6 pass, the 3 planted flaws fail, 0 errors.
+  - **Deploy hook `ref`:** works. `ref=4eca0bb` while `main` was `a03afcc` built `4eca0bb` (63 s to `/ready`); head was restored the same way.
+  - **`RENDER_GIT_COMMIT`:** set at runtime; `/ready` followed `a03afcc` → `4eca0bb` → `a03afcc` → `7f8ac29`.
+  - **Sleeping services:** Render holds requests while waking (no 502), and Vercel's rewrite waits too.
+  - **Cold starts** (GitHub runner, everything at once, two samples: about 19 h and 26 min idle):
+
+    | | Sample 1 | Sample 2 |
+    |---|---|---|
+    | API wake | 32.5 s | 32.9 s |
+    | Demo agents wake | 22.7 s | 22.6 s |
+    | Landing page | 0.8 s | 1.0 s |
+    | `/register` → dashboard visible | 36.9 s | 36.6 s |
+    | Waking notice shown | 3.2 s | 3.5 s |
+
+    `smoke_prod.py` passed both times. In the docs: DEPLOY.md, README, ADR 0036.
+  - **Build allowance:** Render Hobby has 500 pipeline minutes a month, and builds stop when they run out (no card). At about 1 min per image, that's roughly 150 pushes a month.
+  - Tests:
+    - `test_deploy_guards.py`'s client-IP truth table moved to the new header, keeping every spoofing case and adding XFF-with-secret, `x-real-ip` and comma cases.
+    - `test_limits.py`'s proxy test now has a shared spoofed leftmost XFF.
+    - `proxy.test.ts` covers the browser's own copies being dropped.
+    - New: `demo-agents/tests/test_mcp_host.py`.
+    - Planted checks: the old XFF logic fails 5 truth-table cases and the integration test; dropping the proxy's delete fails 2 Vitest cases; the old MCP default fails 3 host cases.
+  - Gates: `pnpm check` green (952 Python, 160 Vitest), `test_limits.py` green against the Neon test branch, CI green on `7f8ac29`, and the Deploy run green including its smoke test.
+  - Cleanup: the throwaway accounts (two cold-start page users, the XFF-probe user) were deleted from the production database, and the deletion was confirmed.
+
 ## Next
-- **F4 follow-ups**: record real cold starts (see the F4 live entry), and work through ADR 0036's "Unverified until the first live deploy" list, starting with the `X-Forwarded-For` check.
+- **F4 follow-ups (need the Render dashboard or the operator)**: run the `PROXY_SECRET` client-IP check in docs/DEPLOY.md step 10; read the API's memory graph around a Deploy run; optionally exercise `API_EXTRAS=live` as a build arg. Details: ADR 0036 §Still unverified.
 - **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
 - **E2**: project overview (pass-rate and cost trend charts, latest runs), on ADR 0030's `GET /projects/{id}/runs`. The nav's Runs link (`/projects/{id}/runs`) has no page yet; the run page's breadcrumb points at Overview until it does.
 - **E3 (rest)**: MCP agent config, auth-header UI, suite versioning and a case browser, delete confirmations.
@@ -715,7 +746,7 @@ A phase is complete only when every task in it is done.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
 ## Decisions
-- Production deploy on free, no-card tiers ([ADR 0036](decisions/0036-free-tier-deploy-on-render.md), user constraint 2026-10-01): Vercel Hobby + two Render free web services (the API inline; the demo agents public, fake data only, labelled) + a separate Neon project. deploy.yml after CI: migrations, Render deploy hooks pinned to the commit, wait for `/ready` to report it, then Vercel. No keep-alive (750 shared hours); the web waits for a sleeping API with a visible notice and never resends a mutation; the API wakes the demo agents before a run. Client IP: the leftmost `X-Forwarded-For` entry, only with the web proxy's secret. No private targets in production. argon2 limited to two at a time for the 512 MB limit.
+- Production deploy on free, no-card tiers ([ADR 0036](decisions/0036-free-tier-deploy-on-render.md), user constraint 2026-10-01): Vercel Hobby + two Render free web services (the API inline; the demo agents public, fake data only, labelled) + a separate Neon project. deploy.yml after CI: migrations, Render deploy hooks pinned to the commit, wait for `/ready` to report it, then Vercel. No keep-alive (750 shared hours); the web waits for a sleeping API with a visible notice and never resends a mutation; the API wakes the demo agents before a run. Client IP: the web proxy's `x-agentprobe-client-ip` (Vercel's `x-real-ip`), only with its secret; `X-Forwarded-For` is never read (revised 2026-10-02 after the live check found it spoofable). No private targets in production. argon2 limited to two at a time for the 512 MB limit.
 - Public-abuse limits ([ADR 0035](decisions/0035-production-deploy-and-public-abuse-limits.md), user decisions 2026-09-29): open signup with per-user caps, an hourly registration limit and a worst-case global live-LLM budget; register/login need the web Origin; an allowlist is the whole private-target policy.
 - Docker and CI completion: three pinned, non-root, multi-stage images (one for the API and the worker); a local-only compose stack with committed dev secrets, 127.0.0.1 ports, no `${}` interpolation, the Redis queue and the mock LLM by default, and migrations on API start; a CI `docker` job that runs the README quick start command for command ([ADR 0033](decisions/0033-docker-images-and-compose.md)). Dependency audits cover every locked package, dev and `live` included, and fail on any finding; findings are fixed, pinned, or accepted in ADR 0034 ([ADR 0034](decisions/0034-dependency-audits.md)).
 - e2e specs that watch a run while it's live hold its agent behind `e2e/gated-agent.ts`, never a wider timeout or a slower agent: on CI a mock-LLM run ends in under 0.5 s (2026-09-29 entry above).
@@ -844,7 +875,12 @@ A phase is complete only when every task in it is done.
 - The compose worker has no healthcheck (no port). `up --wait` counts it ready once it's running, and a hung worker would only show up as runs that never finish. ADR 0033 notes a liveness check (its Redis consumer's idle time) for F4.
 - Through the compose web app, the API sees every browser's requests as coming from the web container, so the per-IP auth limit is shared by everyone using that stack. That's fine for one local user; a public deploy sets `PROXY_SECRET` on both sides instead (ADR 0036).
 - `pnpm/action-setup@v6` warns about a "pnpm v10 installation layout at PNPM_HOME" in every job that uses it (runner image vs pnpm 11). It's harmless, and it predates F3.
-- Unverified until the first real deploy (ADR 0036 §Unverified): that Vercel's rewrite keeps the middleware's `X-Forwarded-For` and Render appends to it (if not, everyone shares one per-IP bucket; nothing becomes spoofable); that a deploy hook's `ref` builds that commit and `RENDER_GIT_COMMIT` is set at runtime (if not, deploy.yml's wait fails loudly); that Render passes env vars as Docker build args; wake and cold-start times; whether an open SSE stream counts as activity; Render's free build allowance against two builds per push; memory in the Linux image; the demo agents' MCP route behind Render's proxy.
+- Still unverified on the live deploy (ADR 0036 §Still unverified):
+  - Render passing env vars as Docker build args. Documented by Render; exercising it means switching production's image.
+  - Whether an open SSE stream counts as activity. Render's docs list only HTTP requests and WebSocket messages; a run that sleeps mid-way is resumed by crash recovery.
+  - Memory in the Linux image (Render's dashboard only).
+  - That the client-IP key is exactly the browser's address. That check needs `PROXY_SECRET`; the spoofing checks passed.
+- The waking notice says "about a minute"; the measured wake is about 35 s. It overstates the wait, never understates it.
 - The API's wake-up of sleeping agent hosts (`wake.py`) runs on the inline queue and the connection test only, not on the Redis worker path (production is inline).
 - The per-user caps count, then insert, so two concurrent creates can each pass a cap by one (`ponytail:` in `limits.py`). A resumed live run builds fresh LLM clients and can exceed its budget reservation (ADR 0035).
 - Production rate limits are in memory in the one API instance. They reset when it sleeps, which happens only after 15 idle minutes.

@@ -4,7 +4,7 @@ Status: accepted (2026-09-25). Amends PLAN.md §2 #3 (auth) and supersedes #20 (
 
 Amended 2026-09-29 by [ADR 0035](0035-production-deploy-and-public-abuse-limits.md): `/api` is forwarded by `src/proxy.ts` (not a `next.config.ts` rewrite); register and login now also require `Origin == WEB_ORIGIN` (login CSRF is closed, since signup can be open).
 
-Amended 2026-10-01 by [ADR 0036](0036-free-tier-deploy-on-render.md): the client IP for per-IP limits is the leftmost `X-Forwarded-For` entry, trusted only on requests carrying the web proxy's `PROXY_SECRET`; otherwise it's the connecting address. No platform header is trusted.
+Amended 2026-10-01 by [ADR 0036](0036-free-tier-deploy-on-render.md), revised 2026-10-02: the client IP for per-IP limits is `x-agentprobe-client-ip`, which the web proxy sets from Vercel's `x-real-ip`, trusted only on requests carrying the web proxy's `PROXY_SECRET`; otherwise it's the connecting address. `X-Forwarded-For` and platform headers sent to the API are never trusted.
 
 ## Context
 In production the web app (Vercel) and the API are on different domains. Browsers increasingly block third-party cookies, so a cookie the API sets from its own domain can't be relied on from the web app's pages. Later, live run progress uses Server-Sent Events, and not every proxy streams responses without buffering. CLI and CI clients authenticate with project API keys, and never with a browser session.
