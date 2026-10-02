@@ -12,6 +12,8 @@ export const MAIN_FLOW_EMAIL = "main-flow@example.com";
 export const SSRF_EMAIL = "ssrf@example.com";
 export const INVALID_YAML_EMAIL = "invalid-yaml@example.com";
 export const VISUAL_EMAIL = "visual@example.com";
+export const OVERVIEW_EMAIL = "overview@example.com";
+export const AGENTS_SUITES_EMAIL = "agents-suites@example.com";
 
 // playwright.config.ts starts its own demo agents here with FLAKY_RATE=0.5.
 export const DEMO_AGENTS_URL = "http://127.0.0.1:9100";

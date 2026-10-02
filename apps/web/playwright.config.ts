@@ -1,6 +1,14 @@
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_EMAIL, INVALID_YAML_EMAIL, MAIN_FLOW_EMAIL, SSRF_EMAIL, VISUAL_EMAIL } from "./e2e/fixtures";
+import {
+  AGENTS_SUITES_EMAIL,
+  E2E_EMAIL,
+  INVALID_YAML_EMAIL,
+  MAIN_FLOW_EMAIL,
+  OVERVIEW_EMAIL,
+  SSRF_EMAIL,
+  VISUAL_EMAIL,
+} from "./e2e/fixtures";
 
 // A local .env (see .env.example) supplies TEST_DATABASE_URL and friends; CI sets them directly
 // as job env vars instead, so a missing .env there is fine.
@@ -22,7 +30,15 @@ const DEMO_AGENTS_PORT = 9100;
 // Playwright globalSetup: see that script for why), so every run starts from an empty database;
 // SIGNUP_ALLOWED_EMAILS lists exactly the fixed addresses the spec files register (see
 // e2e/fixtures.ts).
-const signupAllowedEmails = [E2E_EMAIL, MAIN_FLOW_EMAIL, SSRF_EMAIL, INVALID_YAML_EMAIL, VISUAL_EMAIL].join(",");
+const signupAllowedEmails = [
+  E2E_EMAIL,
+  MAIN_FLOW_EMAIL,
+  SSRF_EMAIL,
+  INVALID_YAML_EMAIL,
+  VISUAL_EMAIL,
+  OVERVIEW_EMAIL,
+  AGENTS_SUITES_EMAIL,
+].join(",");
 
 // Fake, committed, test-only values (never used for anything real): Fernet needs a valid key
 // even for throwaway ciphertext, and JWT_SECRET just needs to be 32+ characters.

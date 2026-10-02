@@ -65,6 +65,8 @@ async def test_each_suite_keeps_its_own_baseline_on_a_branch(
         json={"yaml": SMOKE_YAML.replace("suite: smoke", "suite: smoke-2")},
     )
     assert other.status_code == 201, other.text
+    listing = f"/projects/{ids['project_id']}/baselines"
+    assert (await alice.get(listing)).json() == []
     runs = {}
     for name, suite_id in (("smoke", ids["suite_id"]), ("smoke-2", other.json()["id"])):
         runs[name] = await wait_for_run(alice, app, (await start_run(alice, suite_id))["id"])
@@ -79,6 +81,11 @@ async def test_each_suite_keeps_its_own_baseline_on_a_branch(
             params={"suite": name, "agent": "support-v1"},
         )
         assert got.json()["run_id"] == run["id"], name
+    # The project-wide listing (the overview's baseline indicator) has both.
+    listed = (await alice.get(listing)).json()
+    assert sorted((b["branch"], b["run_id"], b["run"]["pass_rate"]) for b in listed) == sorted(
+        ("main", run["id"], run["pass_rate"]) for run in runs.values()
+    )
 
 
 async def test_baseline_run_must_belong_to_the_project(

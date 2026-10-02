@@ -107,6 +107,21 @@ async def set_baseline(
     return _out(body.branch, run)
 
 
+@router.get("/projects/{project_id}/baselines")
+async def list_baselines(
+    project_id: uuid.UUID, principal: CurrentPrincipal, db: Db
+) -> list[BaselineOut]:
+    """Every baseline in the project, for the overview's baseline indicator (ADR 0037)."""
+    project = await owned_project(db, principal, project_id)
+    rows = await db.execute(
+        select(Baseline.branch, Run)
+        .join(Run, Run.id == Baseline.run_id)
+        .where(Baseline.project_id == project.id)
+        .order_by(Baseline.suite_id, Baseline.branch)
+    )
+    return [_out(branch, run) for branch, run in rows.tuples()]
+
+
 @router.get("/projects/{project_id}/baselines/{branch}")
 async def get_baseline(
     project_id: uuid.UUID,

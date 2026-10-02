@@ -71,6 +71,7 @@ test("every main page renders cleanly at desktop width", async ({ page, baseURL 
   pages.push(
     ["projects-list", "/projects"],
     ["project-overview", `/projects/${project.id}`],
+    ["runs", `/projects/${project.id}/runs`],
     ["agents", `/projects/${project.id}/agents`],
     ["suites", `/projects/${project.id}/suites`],
     ["settings", `/projects/${project.id}/settings`],

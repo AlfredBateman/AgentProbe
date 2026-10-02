@@ -12,6 +12,8 @@ export type Column<T> = {
   /** Cell content; defaults to `value`. */
   render?: (row: T) => ReactNode;
   align?: "left" | "right";
+  /** Extra classes on the column's cells, e.g. `hidden desktop:table-cell` to drop it on narrow screens. */
+  className?: string;
 };
 
 type Sort = { key: string; direction: "ascending" | "descending" };
@@ -86,7 +88,7 @@ export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empt
                   key={c.key}
                   scope="col"
                   aria-sort={direction ?? (c.value ? "none" : undefined)}
-                  className={cx(th, c.align === "right" ? "text-right" : "text-left")}
+                  className={cx(th, c.align === "right" ? "text-right" : "text-left", c.className)}
                 >
                   {c.value ? (
                     <button
@@ -134,7 +136,7 @@ export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empt
                   {columns.map((c) => (
                     <td
                       key={c.key}
-                      className={cx("px-10 py-10 whitespace-nowrap", c.align === "right" ? "text-right" : "text-left")}
+                      className={cx("px-10 py-10 whitespace-nowrap", c.align === "right" ? "text-right" : "text-left", c.className)}
                     >
                       {c.render ? c.render(row) : c.value?.(row)}
                     </td>

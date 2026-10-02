@@ -84,8 +84,8 @@ export default function RunPage() {
       <header className="flex flex-col gap-15 desktop:flex-row desktop:items-start desktop:justify-between">
         <div className="min-w-0">
           <p className="text-data-label text-ink-muted">
-            <Link href={`/projects/${projectId}`} className="rounded-xs outline-none hover:text-ink focus-visible:shadow-focus">
-              Overview
+            <Link href={`/projects/${projectId}/runs`} className="rounded-xs outline-none hover:text-ink focus-visible:shadow-focus">
+              Runs
             </Link>{" "}
             / <span className="font-mono">{run.id.slice(0, 8)}</span>
           </p>
