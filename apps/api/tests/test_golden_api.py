@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentprobe_api.main import create_app
 from agentprobe_demo_agents.detection import load_manifest
 from apitest import SignUp, bind_db, make_settings
-from runtest import SMOKE_YAML, make_project, start_run, wait_for_run
+from runtest import SMOKE_FILE_YAML, make_project, start_run, wait_for_run
 
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("demo_env")]
 
@@ -27,7 +27,7 @@ async def test_the_vulnerable_bots_planted_flaws_are_detected_through_the_api(
     flaws = [flaw for flaw in load_manifest() if flaw.route == "/vulnerable"]
     assert len(flaws) == 5
     alice = await sign_up("alice@example.com")
-    ids = await make_project(alice, f"{demo_url}/vulnerable/chat", yaml=SMOKE_YAML)
+    ids = await make_project(alice, f"{demo_url}/vulnerable/chat", yaml=SMOKE_FILE_YAML)
     run = await start_run(alice, ids["suite_id"])
     done = await wait_for_run(alice, app, run["id"])
     assert (done["status"], done["error"]) == ("completed", None)

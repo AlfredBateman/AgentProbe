@@ -10,10 +10,11 @@ import { DEMO_AGENTS_URL, E2E_EMAIL, E2E_PASSWORD } from "./fixtures";
 test.describe.configure({ timeout: 180_000 });
 test.afterAll(() => cleanupE2eAccount());
 
-// The real suite (5 runs/case): a per-case regression can only ever reach significance at 5+
-// runs (ADR 0014's power limit), and this is the suite the golden tests and docs/metrics.md
-// already use for the v1/v2 refund regression.
+// The real suite, the one the golden tests and docs/metrics.md use for the v1/v2 refund
+// regression. Its own 10 runs/case is for the demo; 5 is enough here (a per-case regression
+// needs 5+ runs, ADR 0014's power limit) and keeps the spec fast.
 const SMOKE_YAML = fs.readFileSync(path.resolve(__dirname, "../../../suites/examples/smoke.yaml"), "utf8");
+const RUN = { runs_per_case: 5 };
 
 const SUPPORT_RESPONSE = { output: "$.output", tool_calls: "$.tool_calls", total_tokens: "$.usage.total_tokens" };
 
@@ -51,13 +52,13 @@ test("comparing /support/v1 with /support/v2 shows a regression, with the refund
   });
   const suite = await post(page.request, baseURL!, `/projects/${project.id}/suites`, { yaml: SMOKE_YAML });
 
-  const v1Run = await post(page.request, baseURL!, `/suites/${suite.id}/runs`, {});
+  const v1Run = await post(page.request, baseURL!, `/suites/${suite.id}/runs`, RUN);
   await waitForRun(page.request, v1Run.id);
 
   await put(page.request, baseURL!, `/agents/${agent.id}`, {
     config: { adapter_type: "http", url: `${DEMO_AGENTS_URL}/support/v2/chat`, allow_private: true, response: SUPPORT_RESPONSE },
   });
-  const v2Run = await post(page.request, baseURL!, `/suites/${suite.id}/runs`, {});
+  const v2Run = await post(page.request, baseURL!, `/suites/${suite.id}/runs`, RUN);
   await waitForRun(page.request, v2Run.id);
 
   await test.step("the compare page names the verdict, its statistics, and the newly-failing case", async () => {

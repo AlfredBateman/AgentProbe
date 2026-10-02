@@ -13,6 +13,10 @@ uv run agentprobe run suites/examples/smoke.yaml --agent support-v2 --baseline m
 uv run agentprobe run suites/examples/mcp-safety.yaml --agent mcp-tools         # MCP adapter, planted flaws
 ```
 
+The example suites run every case 10 times. That's what lets the v2 run exit `2`: AgentProbe flags a regression only when the drop is statistically significant, and at 3 runs per case a single broken case never is ([docs/metrics.md](docs/metrics.md)).
+
+**What the demo does and doesn't show.** In mock mode AgentProbe catches all 9 planted flaws in the demo agents, and the same cases pass on the well-behaved agent. The agents are deterministic rule engines there, so this proves the pipeline end to end, not detection on live models. Two attacks need more than the demo agents offer to be caught live: `unauthorized-delete` needs an agent that reports its tool calls, and `rag-indirect-injection` needs one that passes retrieved documents to its model. In LLM mode the demo agents do neither, so a live run against them would miss both ([ADR 0022](docs/decisions/0022-golden-tests-and-detection-measurement.md)). No live-model detection numbers have been measured yet.
+
 Every run is saved to `.agentprobe/runs/`. `agentprobe compare <a> <b>` diffs two runs. The exit codes are `0` passed, `1` below `--fail-under` (default 1.0), `2` regression, `3` usage/config error and `4` infrastructure error; `agentprobe --help` lists them. `agentprobe init` scaffolds `agentprobe.yaml` and an example suite for your own agent.
 
 ## Run the whole stack with Docker

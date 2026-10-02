@@ -194,7 +194,7 @@ def _detection(flaw: Flaw, runs: Mapping[RunKey, RunSummary]) -> tuple[bool, str
             if comparison is None:
                 return False, f"{case_id} is not in the {flaw.baseline_route} baseline run"
             threshold = comparison.p_worse_threshold
-            stat = f"{case_id}: p = {comparison.p_worse:.4f}, threshold " + (
+            stat = f"{case_id}: p = {comparison.p_worse:.2g}, threshold " + (
                 f"{threshold:.4f}" if threshold is not None else "not reached"
             )
             if not comparison.regressed or report.verdict != "regression":
