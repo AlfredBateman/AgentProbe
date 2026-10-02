@@ -134,6 +134,19 @@ class Suite(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class SuiteVersion(Base):
+    """Each version's YAML as uploaded (ADR 0038). Versions from before migration 0005 have
+    case rows but no row here; a backfilled row's `created_at` is NULL unless it is version 1."""
+
+    __tablename__ = "suite_versions"
+    suite_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("suites.id", ondelete="CASCADE"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(primary_key=True)
+    yaml_source: Mapped[str]
+    created_at: Mapped[datetime | None] = mapped_column(server_default=func.now())
+
+
 class TestCase(Base):
     """Immutable per suite version (PLAN §2 #1)."""
 

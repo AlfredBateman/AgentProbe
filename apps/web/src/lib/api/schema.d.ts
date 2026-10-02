@@ -197,7 +197,10 @@ export interface paths {
         /** Update Agent */
         put: operations["update_agent_agents__agent_id__put"];
         post?: never;
-        /** Delete Agent */
+        /**
+         * Delete Agent
+         * @description Deletes the agent, its auth header, and (CASCADE) its runs; the UI warns first.
+         */
         delete: operations["delete_agent_agents__agent_id__delete"];
         options?: never;
         head?: never;
@@ -274,6 +277,63 @@ export interface paths {
         get: operations["get_suite_suites__suite_id__get"];
         /** Update Suite */
         put: operations["update_suite_suites__suite_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/suites/{suite_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Versions
+         * @description Every version, newest first, with its case and run counts.
+         */
+        get: operations["list_versions_suites__suite_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/suites/{suite_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version */
+        get: operations["get_version_suites__suite_id__versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/suites/{suite_id}/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cases
+         * @description One version's cases (default: the current one), in the YAML's order when it was kept.
+         */
+        get: operations["list_cases_suites__suite_id__cases_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -944,6 +1004,28 @@ export interface components {
              */
             run_id: string;
             run: components["schemas"]["RunOut"];
+        };
+        /**
+         * CaseOut
+         * @description A case as stored for one suite version (the suite page's case browser).
+         */
+        CaseOut: {
+            /** Id */
+            id: string;
+            /** Input */
+            input: string | null;
+            /** Call */
+            call: {
+                [key: string]: unknown;
+            } | null;
+            /** Attack */
+            attack: string | null;
+            /** Context Count */
+            context_count: number;
+            /** Judges */
+            judges: {
+                [key: string]: unknown;
+            }[];
         };
         /** CaseSummaryOut */
         CaseSummaryOut: {
@@ -1712,6 +1794,31 @@ export interface components {
             case_count?: number | null;
             /** Issues */
             issues?: components["schemas"]["SuiteIssue"][];
+        };
+        /** SuiteVersionDetailOut */
+        SuiteVersionDetailOut: {
+            /** Version */
+            version: number;
+            /** Yaml */
+            yaml: string | null;
+        };
+        /**
+         * SuiteVersionOut
+         * @description One version in a suite's history. `has_yaml` is False for versions saved before
+         *     migration 0005, whose YAML was never kept (ADR 0038); their cases still are. `created_at`
+         *     is None when the save time isn't known (those, and the backfilled current version > 1).
+         */
+        SuiteVersionOut: {
+            /** Version */
+            version: number;
+            /** Created At */
+            created_at: string | null;
+            /** Case Count */
+            case_count: number;
+            /** Run Count */
+            run_count: number;
+            /** Has Yaml */
+            has_yaml: boolean;
         };
         /**
          * TokenUsage
@@ -2502,6 +2609,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuiteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_suites__suite_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuiteVersionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_version_suites__suite_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suite_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuiteVersionDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cases_suites__suite_id__cases_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                suite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseOut"][];
                 };
             };
             /** @description Validation Error */
