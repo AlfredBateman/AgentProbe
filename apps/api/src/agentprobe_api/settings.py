@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     web_origin: str = "http://localhost:3000"
     cookie_secure: bool = True  # browsers accept Secure cookies on http://localhost
     # The web app's server-side proxy sends this along with the browser's IP in
-    # X-Forwarded-For (ADR 0036). Only a request carrying it has that IP trusted; everything
-    # else is keyed by the connecting address.
+    # x-agentprobe-client-ip (ADR 0036). Only a request carrying it has that IP trusted;
+    # everything else is keyed by the connecting address.
     proxy_secret: SecretStr | None = None
     # Hosts that sleep when idle and expose GET /health (the demo agents on a free tier,
     # ADR 0036): a run or connection test against one wakes it first. Comma-separated.

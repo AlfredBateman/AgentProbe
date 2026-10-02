@@ -7,7 +7,7 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentprobe_api.auth import PROXY_SECRET_HEADER
+from agentprobe_api.auth import CLIENT_IP_HEADER, PROXY_SECRET_HEADER
 from agentprobe_api.main import create_app
 from apitest import PASSWORD, bind_db, client_for, make_settings, signed_up
 from runtest import SMALL_YAML, attempt, make_project
@@ -63,15 +63,16 @@ async def test_the_web_proxy_secret_keys_limits_on_the_browser_ip(db: AsyncSessi
     )
     async with client_for(app, ip="198.51.100.9") as proxy:
         trusted = {PROXY_SECRET_HEADER: secret}
-        assert await register(proxy, "a@example.com", **trusted, **xff("203.0.113.1")) == 201
-        assert await register(proxy, "b@example.com", **trusted, **xff("203.0.113.2")) == 201
-        assert await register(proxy, "c@example.com", **xff("203.0.113.3")) == 201
-        assert await register(proxy, "d@example.com", **xff("203.0.113.4")) == 429
+        assert await register(proxy, "a@example.com", **trusted, **via_proxy("203.0.113.1")) == 201
+        assert await register(proxy, "b@example.com", **trusted, **via_proxy("203.0.113.2")) == 201
+        assert await register(proxy, "c@example.com", **via_proxy("203.0.113.3")) == 201
+        assert await register(proxy, "d@example.com", **via_proxy("203.0.113.4")) == 429
 
 
-def xff(browser: str) -> dict[str, str]:
-    """X-Forwarded-For as Render delivers it: the web proxy's entry, then the hops'."""
-    return {"x-forwarded-for": f"{browser}, 76.76.21.21, 10.0.0.7"}
+def via_proxy(browser: str) -> dict[str, str]:
+    """The web proxy's client-IP header, plus an X-Forwarded-For that must not matter: in
+    production a browser's own entry could come first (ADR 0036)."""
+    return {CLIENT_IP_HEADER: browser, "x-forwarded-for": f"198.51.100.66, {browser}, 10.0.0.7"}
 
 
 # --- per-user caps ---------------------------------------------------------------------------

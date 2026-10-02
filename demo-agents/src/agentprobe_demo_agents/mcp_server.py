@@ -17,12 +17,30 @@ can only be run once, so `main.create_app()` (re-callable, e.g. once per test mo
 server) needs a fresh instance every time, the same way it builds a fresh FastAPI app.
 """
 
+import os
+
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 
 from agentprobe_demo_agents.secrets import FAKE_CUSTOMERS, FAKE_ORDERS
 
 MCP_ROUTE = "/mcp-tools"  # mounted in main.py; the MCP endpoint is MCP_ROUTE + "/mcp"
+
+
+def transport_security() -> TransportSecuritySettings:
+    """The SDK's DNS-rebinding protection: its own localhost defaults, plus the public hostname
+    Render gives the deployed copy (RENDER_EXTERNAL_HOSTNAME, set by Render). With only the
+    defaults, every MCP request through Render's proxy got 421 Misdirected Request (ADR 0036).
+    """
+    hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+    if public := os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+        hosts.append(public)
+        origins.append(f"https://{public}")
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True, allowed_hosts=hosts, allowed_origins=origins
+    )
 
 
 def build_mcp_server() -> MCPServer:
