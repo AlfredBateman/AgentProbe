@@ -4,8 +4,8 @@ The production demo runs on free tiers that don't need a card ([ADR 0036](decisi
 
 | Service | Where | Notes |
 |---|---|---|
-| Web (Next.js) | Vercel, Hobby | Forwards `/api/*` to the API (`src/proxy.ts`) with the proxy secret, and sets `X-Forwarded-For` to the browser's IP. |
-| API | Render free web service, Docker runtime | `QUEUE_BACKEND=inline`, no Redis. Sleeps after about 15 idle minutes; wakes on the next request in about a minute. |
+| Web (Next.js) | Vercel, Hobby | Forwards `/api/*` to the API (`src/proxy.ts`) with the proxy secret and the browser's IP in `x-agentprobe-client-ip`. |
+| API | Render free web service, Docker runtime | `QUEUE_BACKEND=inline`, no Redis. Sleeps after about 15 idle minutes; wakes on the next request in about 33 s (measured). |
 | Demo agents | Render free web service, Docker runtime, **public** | Deliberately vulnerable, fake data only, labelled on every response. Sleeps like the API; the API wakes it before a run. |
 | Postgres | Neon Free, its own project, AWS `ap-southeast-1` | Separate from the dev and test branches' project, so it has its own compute quota. |
 
@@ -22,7 +22,17 @@ There's no Redis in production. CI's `docker` job proves the Redis queue path in
 It does nothing until the repository variable `DEPLOY_ENABLED` is `true`. Render's own auto-deploy stays off.
 
 ## Free-tier behaviour
-- **Sleeping.** Free services sleep after about 15 idle minutes and take about a minute to wake. The free plan's 750 instance hours a month are shared by the workspace, and two services awake all month would need about 1,488. So there's **no keep-alive pinger**: don't add one, or an uptime monitor that does the same.
+- **Sleeping.** Free services sleep after about 15 idle minutes. Render holds the first request while the service wakes (no 502), and Vercel's rewrite waits for it. The free plan's 750 instance hours a month are shared by the workspace, and two services awake all month would need about 1,488. So there's **no keep-alive pinger**: don't add one, or an uptime monitor that does the same.
+- **Measured cold starts** (2026-10-02, two samples; ADR 0036 §Cold starts):
+
+  | | Time |
+  |---|---|
+  | API wakes (first request held, then 200) | 32.5 s, 32.9 s |
+  | Demo agents wake | 22.7 s, 22.6 s |
+  | Landing page `/` (static, no API) | 0.8 s, 1.0 s |
+  | First page that needs the API: opening `/register` to the dashboard after "Create account" | 36.9 s, 36.6 s |
+  | "Waking the server" notice appears | 3.2 s, 3.5 s |
+
 - **The web app** waits for a sleeping API before its first request after 10 quiet minutes (`lib/api/wake.ts`). It shows "Waking the server, about a minute" if that takes more than 1.5 s, gives up after 150 s, and never sends a mutation twice. Live run progress already reconnects with backoff and falls back to polling (ADR 0031).
 - **The demo agents** are woken by the API (`WAKE_TARGET_HOSTS`). Before a run's first attempt, and before a connection test, the API polls their `/health` for up to 2 minutes.
 - **Memory:** 512 MB per service. The API measured about 130 MiB idle and 147 MiB under two concurrent runs. argon2 is limited to two hashes at a time (64 MiB each). Details are in ADR 0036.
@@ -60,7 +70,7 @@ Render names the public URL after the service (`https://<name>.onrender.com`) an
 | `DATABASE_URL` | The Neon production connection string: the **direct** host (no `-pooler`), with `sslmode=require&channel_binding=require`. Paste Neon's string as-is. | |
 | `JWT_SECRET` | 32+ random characters | The API refuses to start with less. |
 | `ENCRYPTION_KEY` | A Fernet key | Encrypts stored agent auth headers. Losing it makes them unreadable, and rotating it needs a re-encryption (ADR 0003). |
-| `PROXY_SECRET` | 32+ random characters, **the same value** as the Vercel project's | Only requests carrying it have `X-Forwarded-For` trusted. |
+| `PROXY_SECRET` | 32+ random characters, **the same value** as the Vercel project's | Only requests carrying it have `x-agentprobe-client-ip` trusted. |
 | `WEB_ORIGIN` | The Vercel production URL, e.g. `https://agentprobe.vercel.app`, no trailing slash | The Origin check and the SSE route's CORS. The API drops a trailing slash and refuses to start with a path or query. A 403 "Cross-origin request rejected" logs the `origin` it saw and the `web_origin` it expected (ADR 0036). |
 | `PUBLIC_WEB_URL` | Same as `WEB_ORIGIN` | Links in exports and PR comments. |
 | `WAKE_TARGET_HOSTS` | The demo agents' hostname, e.g. `agentprobe-demo-agents.onrender.com` | Woken before a run or connection test. |
@@ -144,9 +154,10 @@ These are **repository variables** (Settings > Secrets and variables > Actions >
 
 ## Client IPs, the proxy, and cookies
 Per-IP limits (login, registration) need the browser's real IP:
-- **Browser → Vercel → API.** Vercel's edge overwrites `X-Forwarded-For` with the real client. `src/proxy.ts` replaces it with exactly that address and adds `x-agentprobe-proxy-secret`. Vercel's rewrite and Render's edge then append their own entries, so the API takes the **leftmost** entry, and only when the secret matches (a constant-time compare). A browser's own copy of the secret header is dropped.
+- **Browser → Vercel → API.** `src/proxy.ts` drops any `x-agentprobe-client-ip` and `x-agentprobe-proxy-secret` the browser sent, then adds the secret and sets `x-agentprobe-client-ip` to Vercel's `x-real-ip`. The API uses that header only when the secret matches (a constant-time compare).
+- **`X-Forwarded-For` is never read.** On the live deploy a browser's own `X-Forwarded-For` sometimes reached the API leftmost, so it can't be trusted (ADR 0036).
 - **Everything else** (CLI, GitHub Action, the live-progress stream, a spoofed header without the secret) is keyed on the connecting address, which on Render is Render's proxy. Those callers authenticate with API keys or a 60 s stream token, and the per-IP limits only guard register and login.
-- **No platform header is trusted**, and uvicorn runs with `--no-proxy-headers`.
+- **No platform header sent to the API is trusted**, and uvicorn runs with `--no-proxy-headers`.
 
 Cookies (checked against ADR 0009):
 - `access_token` is `HttpOnly; Secure; SameSite=Lax; Path=/`, and `refresh_token` is `HttpOnly; Secure; SameSite=Strict; Path=/`.
@@ -206,4 +217,21 @@ Do these in order. None of them asks for a card. Where a name is taken, use the 
       PRODUCTION_DATABASE_URL='<NEON_URL>' uv run python scripts/smoke_prod.py
       ```
       It ends with `PASS production smoke test`, and uses one of your IP's five hourly registrations. deploy.yml runs the same script as its last step on every deploy, so a green Deploy run is this check.
-    - Then work through ADR 0036's "Unverified until the first live deploy" list, starting with the `X-Forwarded-For` check.
+    - Check that the API keys per-IP limits on exactly your address (ADR 0036 §Checked on the live deploy). In Windows PowerShell, from the repo root, first load the secret without echoing it:
+      ```powershell
+      $s = Read-Host -AsSecureString "PROXY_SECRET"; $env:PROXY_SECRET = [Net.NetworkCredential]::new("", $s).Password
+      ```
+      Then paste this block in one go. Step 2 has to run within about 6 s of step 1, before the login bucket (10 a minute) refills. It logs in as an address with no account, so nothing is created:
+      ```powershell
+      $web = "<WEB_ORIGIN>"; $api = "<API_URL>"; $ip = curl.exe -4 -s https://api.ipify.org
+      '{"email":"nobody-ip-check@example.com","password":"not-a-real-password-1"}' | Out-File -Encoding ascii login.json
+      # 1. Through the web app, 20 at once: about 10 x 401, then 429s. This empties your IP's bucket.
+      curl.exe -4 -s -Z -w "`nHTTP %{http_code}`n" -X POST -H "Origin: $web" -H "Content-Type: application/json" --data "@login.json" "$web/api/auth/login?n=[1-20]" | Select-String "^HTTP" | Group-Object | ForEach-Object { "$($_.Count) x $($_.Name)" }
+      # 2. Straight to Render with the secret and your IP: expect 429, the same bucket.
+      curl.exe -4 -s -o NUL -w "secret + your IP: HTTP %{http_code}`n" -X POST -H "Origin: $web" -H "Content-Type: application/json" -H "x-agentprobe-proxy-secret: $env:PROXY_SECRET" -H "x-agentprobe-client-ip: $ip" --data "@login.json" "$api/auth/login"
+      # 3. The same with another address: expect 401, its own bucket.
+      curl.exe -4 -s -o NUL -w "secret + other IP: HTTP %{http_code}`n" -X POST -H "Origin: $web" -H "Content-Type: application/json" -H "x-agentprobe-proxy-secret: $env:PROXY_SECRET" -H "x-agentprobe-client-ip: 198.51.100.77" --data "@login.json" "$api/auth/login"
+      Remove-Item Env:PROXY_SECRET; Remove-Item login.json
+      ```
+      Step 1 has to go through Vercel, which is IPv4-only, hence `-4` throughout.
+    - The checks that still need the dashboard are listed in ADR 0036 under "Still unverified".

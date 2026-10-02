@@ -1,6 +1,8 @@
 # 0036: Production on free, no-card tiers: Render, Vercel Hobby and Neon
 
-Status: accepted (2026-10-01). PLAN.md F4. User constraint: no credit or debit card, so
+Status: accepted (2026-10-01). PLAN.md F4. Revised 2026-10-02 after the live checks
+(§Checked on the live deploy): the client IP no longer comes from `X-Forwarded-For`, and the
+demo agents' MCP route accepts Render's hostname. User constraint: no credit or debit card, so
 production runs only on free tiers that don't ask for one. This ADR supersedes ADR 0035's
 platform-specific parts: §Topology, §Deploy pipeline, §Client IPs, the demo agents' private
 address, and its "Unverified" list. Everything else in ADR 0035 stands: `/ready`, open signup
@@ -92,29 +94,34 @@ Auto-deploy is off on both Render services, so nothing ships before CI passes.
 - The private-network hostname, its private-address exception, and the agent's
   `allow_private` in the smoke test are gone.
 
-### Client IP
+### Client IP (revised 2026-10-02 after the live check)
 The request path is browser → Vercel's edge → `src/proxy.ts` → Vercel's rewrite → Render's
 edge → the container.
-- Vercel's edge overwrites `X-Forwarded-For` with the real client.
-- `src/proxy.ts` replaces it with exactly that address and adds `x-agentprobe-proxy-secret`.
-- The hops after it append, so **the leftmost entry is the browser**. The API trusts it only
-  when the secret matches (a constant-time compare; 32+ characters, checked at startup).
+- `src/proxy.ts` deletes any `x-agentprobe-client-ip` and `x-agentprobe-proxy-secret` the
+  browser sent. With `PROXY_SECRET` set, it adds the secret and sets `x-agentprobe-client-ip`
+  to Vercel's `x-real-ip` (Vercel's documented client IP, which `@vercel/functions`'
+  `ipAddress()` also reads). Without `x-real-ip` it sends no client IP.
+- The API trusts `x-agentprobe-client-ip` only when the secret matches (a constant-time
+  compare; 32+ characters, checked at startup), and only if it parses as one IP address.
 - Otherwise the API keys on the connecting address, which on Render is Render's proxy. That
-  includes no secret, a wrong one, and a malformed or missing entry.
+  includes no secret, a wrong one, and a missing or malformed header.
+- **`X-Forwarded-For` is never read.** The first design trusted its leftmost entry, on the
+  strength of Vercel's documentation that its edge overwrites the header. The live check below
+  showed a browser's own `X-Forwarded-For` sometimes arriving leftmost, so any visitor could
+  pick their own rate-limit bucket.
 
 So callers that skip the web app (the CLI, the GitHub Action, live-progress streams) share one
 per-IP bucket. That's acceptable: they authenticate with API keys (per-key limits) or stream
 tokens, and the per-IP limits guard only register and login, which go through the web proxy.
 
-Removed: `CLIENT_IP_HEADER` (the earlier host's client-IP header), the API's own
-`FORWARDED_ALLOW_IPS` trust of that host's proxy range, and `x-agentprobe-client-ip`. uvicorn
-runs with `--no-proxy-headers`.
+Removed: the earlier host's client-IP header and the API's own `FORWARDED_ALLOW_IPS` trust of
+that host's proxy range. uvicorn runs with `--no-proxy-headers`.
 
-**Failure mode:** if a hop replaced `X-Forwarded-For` instead of appending, the leftmost entry
-would be Vercel's or Render's address. Everyone would then share one bucket, but nothing
-becomes spoofable: the secret never reaches a browser. Tests cover spoofed headers without the
-secret, wrong, prefixed and empty secrets, a malformed entry, a second header line, and the
-retired header.
+**Failure mode:** if Vercel stopped sending `x-real-ip`, everyone through the web would share
+one bucket (the proxy's address); nothing becomes spoofable, since the secret never reaches a
+browser. Tests cover spoofed headers without the secret; wrong, prefixed and empty secrets; a
+malformed or comma-separated value; a second header line; `X-Forwarded-For` with the secret;
+`x-real-ip` sent straight to the API; and the proxy dropping a browser's own copies.
 
 ### The Origin check behind the proxies (first deploy, 2026-10-02)
 The first deploy's registrations got 403 "Cross-origin request rejected".
@@ -174,30 +181,110 @@ Not changed:
   in mock mode.
 - The `mcp` SDK costs 21 MiB and 0.6 s at import. It stays eager, well inside the bound.
 
-### Unverified until the first live deploy
-- That Vercel's external rewrite keeps the middleware's `X-Forwarded-For` (or puts the client
-  first itself), and that Render's edge appends rather than replaces it. Check: six
-  registrations from one network should give a 429 on the sixth
-  (`REGISTER_RATE_LIMIT_PER_HOUR=5`), while one from another network still succeeds.
-- That a deploy hook's `ref` parameter builds that commit. If it doesn't, the `/ready` commit
-  wait fails loudly.
-- That `RENDER_GIT_COMMIT` is set at runtime for a Docker service built from the repository.
-  If it isn't, the same wait times out.
-- That Render passes service environment variables to `docker build` as build args (the
-  `API_EXTRAS=live` opt-in).
-- Wake and cold-start times on a free instance, and whether Render holds a request while a
-  service wakes or answers 502. The web and the API handle both.
-- Whether Vercel's rewrite to a sleeping API times out first. The web's probes retry through
-  it either way.
-- Whether an open SSE stream counts as activity for Render's idle timer. A run whose instance
-  sleeps or restarts mid-run is resumed by inline crash recovery on the next start.
-- Render's free build allowance. Every push to `main` builds both images.
-- Memory in the Linux image (measured on Windows).
-- The demo agents' MCP route (`/mcp`) behind Render's proxy.
+### Checked on the live deploy (2026-10-02)
+The first deploy left a list of assumptions only production could settle. Each was checked
+against the live services; two were wrong and are fixed (`7f8ac29`).
+
+**1. Client IP: was spoofable, fixed.** The probe was the hourly registration limit (5 per
+IP). Re-registering an existing throwaway address answers 409 and still spends a token, so
+nothing is created: 409 means "allowed", 429 means "limited".
+- *Before the fix.*
+  - Plain registrations from one machine through the web proxy were limited after five.
+  - Then, with that machine's bucket empty, registrations carrying a made-up
+    `X-Forwarded-For` still passed. Five sent with `198.51.100.250` filled a bucket of their
+    own, and `198.51.100.250, 10.0.0.1` then got 429 from that same bucket.
+  - So a browser's own `X-Forwarded-For` reached the API leftmost, though not every time: one
+    such request did land in the real bucket. Any visitor could choose their own rate-limit
+    bucket, contrary to Vercel's documentation.
+  - Calls straight to Render were sound: one shared bucket (Render's proxy), limited after
+    five whatever `X-Forwarded-For` said.
+- *The fix:* §Client IP above.
+- *After the fix* (fresh buckets, since the deploy restarted the API):
+  - five plain registrations passed and the sixth got 429;
+  - 13 more through the web proxy each got 429. Each carried a fresh made-up address in
+    `X-Forwarded-For`, `X-Real-IP`, `X-Vercel-Forwarded-For` or `x-agentprobe-client-ip`, or
+    in all four at once.
+  - Sent straight to Render, the machine's own IP in `x-agentprobe-client-ip` with no secret,
+    or with a wrong one, did not land in its exhausted bucket (409).
+  - A GitHub runner, on another network, still registered through the web proxy at the same
+    time (409).
+  - Still to confirm (needs `PROXY_SECRET`, so only the operator can): that the key is
+    exactly the browser's address. docs/DEPLOY.md step 10 has the commands.
+
+**2. A deploy hook's `ref` builds that commit: yes.**
+- With `main` at `a03afcc`, the API hook with `ref=4eca0bb` (code-identical, docs only)
+  answered 200 with a deploy id. `/ready` reported `4eca0bb…` 63 s later.
+- `ref=a03afcc` then restored it in 63 s.
+
+**3. `RENDER_GIT_COMMIT` is set at runtime: yes.** `/ready` reports the full SHA, and it
+followed every deploy: `a03afcc` → `4eca0bb` → `a03afcc` → `7f8ac29`.
+
+**4. Wake times, and whether Render holds or answers 502: it holds.** After 15+ idle minutes,
+every request to a sleeping service was held and answered 200 once it was up. No 502 or 503
+was seen. The wake times are in §Cold starts below.
+
+**5. Vercel's rewrite to a sleeping API: it waits.** `/api/health` through Vercel answered 200
+after the API's full wake (32.6 s), with no gateway timeout.
+
+**6. The demo agents' MCP route behind Render: was broken, fixed.**
+- Every MCP request through Render answered 421 Misdirected Request. The MCP SDK's
+  DNS-rebinding check, which `streamable_http_app()` turns on for its default host
+  `127.0.0.1`, allowed only localhost `Host` values. Reproduced locally by sending the public
+  `Host`.
+- The fix: the allowlist is now the SDK's localhost defaults plus `RENDER_EXTERNAL_HOSTNAME`,
+  which Render sets. Rebinding protection stays on, and any other host still gets 421
+  (`demo-agents/tests/test_mcp_host.py`).
+- After the fix, `suites/examples/mcp-safety.yaml` against the live route matches a local run:
+  6 cases pass and the 3 planted flaws fail, with 0 errors.
+
+**7. Render's free build allowance: 500 pipeline minutes a month (Hobby).**
+- With no card on file, builds stop when the allowance is used up.
+- An API deploy took 63 s from the hook to `/ready` (build included, with cached layers).
+  Every push builds two images, so a few minutes per push, roughly 150 pushes a month.
+- A change to `uv.lock` or a base image rebuilds more layers and costs more.
+- The exact minutes are on Render's Billing page.
+
+**Still unverified, and why:**
+- **Build args** (`API_EXTRAS=live`). Render's Docker docs say it "automatically translates"
+  service environment variables to build arguments. Exercising it means switching production
+  to a different image (a dashboard change and a rebuild); production deliberately stays
+  mock. To check: set `API_EXTRAS=live`, deploy, look for `litellm` in the build log, then
+  remove it and deploy again.
+- **An open SSE stream and Render's idle timer.** Render's free-tier docs count "HTTP requests
+  and WebSocket messages" as activity and don't mention SSE, so assume a stream alone doesn't
+  keep the API awake. Testing it needs a run lasting more than 15 minutes with only a stream
+  open. If the instance does sleep mid-run, inline crash recovery resumes the run on the next
+  start, and the stream reconnects or falls back to polling (ADR 0031).
+- **Memory in the Linux image.** Render's per-service memory graph is visible only in its
+  dashboard. The 512 MB bound in §Memory rests on the Windows measurement plus argon2's cap.
+  To check: Render → `agentprobe-api` → Metrics → Memory, around a Deploy run's smoke test.
+
+### Cold starts
+Measured 2026-10-02 from a GitHub runner, which sent every request below at the same moment to
+services that had been idle. The runner also ran `scripts/smoke_prod.py`, which passed both
+times. A headless Chromium opened `/register`, created an account, and waited for the
+dashboard; the throwaway accounts were deleted afterwards.
+
+| | Sample 1: idle about 19 h | Sample 2: idle about 26 min |
+|---|---|---|
+| API `GET /health`, direct: held, then 200 | 32.5 s | 32.9 s |
+| API through Vercel (`/api/health`): held, then 200 | 32.6 s | 32.9 s |
+| Demo agents `GET /health`: held, then 200 | 22.7 s | 22.6 s |
+| `smoke_prod.py`'s wake report (API `/ready`, demo `/health`) | 32 s, 22 s | 31 s, 21 s |
+| Landing page `/` (static, Vercel only) | 0.8 s | 1.0 s |
+| First visit: `/register` rendered | 1.4 s | 1.6 s |
+| First visit: "Waking the server" notice shown | 3.2 s | 3.5 s |
+| First visit: dashboard visible (after "Create account") | 36.9 s (35.5 s after submit) | 36.6 s (35.0 s after submit) |
+
+So a free instance wakes in about 33 s (the API) and 23 s (the demo agents), not the brief's
+"about a minute". The first page that needs the API shows about 37 s after a visitor opens
+the site, with the notice up from about 3 s. The notice still says "about a minute", which
+overstates the wait but never understates it.
 
 ## Consequences
-- The first visitor after 15 idle minutes waits about a minute, with the notice. A run against
-  sleeping demo agents waits up to 2 more minutes before its first attempt.
+- The first visitor after 15 idle minutes waits about 35 s (measured: §Cold starts), with the
+  notice. A run against sleeping demo agents waits about 23 s more before its first attempt
+  (up to 2 minutes, by `wake.py`'s budget).
 - The in-memory rate limits reset whenever the API sleeps, that is after 15 idle minutes:
   only when there's no traffic to limit.
 - Environment variables live in the Render dashboard, not in a reviewed file, so a change
