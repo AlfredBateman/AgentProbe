@@ -1,14 +1,15 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useCallback, useEffect, useState } from "react";
+import { RunSuiteDialog } from "@/components/run/run-suite-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
 import { FieldError, Label, Textarea } from "@/components/ui/field";
-import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api/client";
 import { apiErrorMessage } from "@/lib/api/errors";
 import type { components } from "@/lib/api/schema";
@@ -17,12 +18,9 @@ import { date } from "@/lib/format";
 type Suite = components["schemas"]["SuiteOut"];
 type SuiteIssue = components["schemas"]["SuiteIssue"];
 
-/** Suites CRUD (a minimal E3 slice: upload/paste YAML, create, and start a run — no versioned
- * editor or case browser yet). */
+/** Suites (SPEC.md §9.5, E3): create one from YAML, open it (editor, cases, versions), run it. */
 export default function SuitesPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const router = useRouter();
-  const toast = useToast();
   const [suites, setSuites] = useState<Suite[] | "loading" | "error">("loading");
   const [createOpen, setCreateOpen] = useState(false);
   const [dialogKey, setDialogKey] = useState(0);
@@ -38,22 +36,20 @@ export default function SuitesPage() {
     load();
   }, [load]);
 
-  async function run(suite: Suite) {
-    setRunning(suite.id);
-    const { data, error } = await api.POST("/suites/{suite_id}/runs", {
-      params: { path: { suite_id: suite.id } },
-      body: { mock: false },
-    });
-    setRunning(null);
-    if (data) {
-      router.push(`/projects/${projectId}/runs/${data.id}`);
-    } else {
-      toast({ title: apiErrorMessage(error), tone: "fail" });
-    }
-  }
-
   const columns: Column<Suite>[] = [
-    { key: "name", header: "Name", value: (s) => s.name, render: (s) => <span className="font-mono text-code">{s.name}</span> },
+    {
+      key: "name",
+      header: "Name",
+      value: (s) => s.name,
+      render: (s) => (
+        <Link
+          href={`/projects/${projectId}/suites/${s.id}`}
+          className="rounded-xs font-mono text-code text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+        >
+          {s.name}
+        </Link>
+      ),
+    },
     { key: "version", header: "Version", value: (s) => s.version, align: "right" },
     { key: "case_count", header: "Cases", value: (s) => s.case_count, align: "right" },
     { key: "created_at", header: "Created", value: (s) => s.created_at, render: (s) => date(s.created_at) },
@@ -62,8 +58,8 @@ export default function SuitesPage() {
       header: "",
       align: "right",
       render: (s) => (
-        <Button data-testid={`run-suite-${s.name}`} variant="translucent" onClick={() => void run(s)} disabled={running === s.id}>
-          {running === s.id ? "Starting…" : "Run"}
+        <Button data-testid={`run-suite-${s.name}`} variant="translucent" onClick={() => setRunning(s.id)}>
+          Run
         </Button>
       ),
     },
@@ -106,6 +102,9 @@ export default function SuitesPage() {
             load();
           }}
         />
+      )}
+      {running && Array.isArray(suites) && (
+        <RunSuiteDialog projectId={projectId} suites={suites} suiteId={running} onClose={() => setRunning(null)} />
       )}
     </>
   );

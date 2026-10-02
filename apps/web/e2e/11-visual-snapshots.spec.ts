@@ -74,6 +74,7 @@ test("every main page renders cleanly at desktop width", async ({ page, baseURL 
     ["runs", `/projects/${project.id}/runs`],
     ["agents", `/projects/${project.id}/agents`],
     ["suites", `/projects/${project.id}/suites`],
+    ["suite", `/projects/${project.id}/suites/${suite.id}`],
     ["settings", `/projects/${project.id}/settings`],
     ["run-detail", `/projects/${project.id}/runs/${run.id}`],
     ["trace", `/projects/${project.id}/runs/${run.id}/results/${resultId}`],

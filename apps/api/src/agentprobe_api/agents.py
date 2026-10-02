@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, model_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,9 +18,9 @@ from agentprobe_api import limits
 from agentprobe_api.auth import AppSettings, CurrentPrincipal, Db, Principal
 from agentprobe_api.crypto import SecretBox
 from agentprobe_api.errors import ApiError
-from agentprobe_api.models import Agent, Project, Secret
+from agentprobe_api.models import Agent, Project, Run, Secret
 from agentprobe_api.projects import owned_project
-from agentprobe_api.runstore import close_adapter
+from agentprobe_api.runstore import LIVE, close_adapter
 from agentprobe_api.settings import Settings
 from agentprobe_api.wake import wake_target
 from agentprobe_core.adapters import (
@@ -185,6 +185,22 @@ async def _store_secret(
     return secret.id
 
 
+async def _drop_secret(db: AsyncSession, secret_id: uuid.UUID) -> None:
+    """Deletes a replaced or cleared auth header, unless a queued or running run's snapshot
+    still reads it for its remaining attempts (ADR 0017). ponytail: that one stays orphaned.
+    """
+    in_use = await db.scalar(
+        select(Run.id)
+        .where(
+            Run.status.in_(LIVE),
+            Run.config_snapshot["agent"]["secret_ref"].astext == str(secret_id),
+        )
+        .limit(1)
+    )
+    if in_use is None:
+        await db.execute(delete(Secret).where(Secret.id == secret_id))
+
+
 # --- routes --------------------------------------------------------------------------
 
 
@@ -245,9 +261,8 @@ async def update_agent(
         agent.config = body.config.model_dump(mode="json", exclude={"adapter_type"})
     if body.name is not None:
         agent.name = body.name
+    old_secret = agent.secret_ref
     if body.auth_header is not None:
-        # ponytail: the old secret row (if any) is left orphaned rather than deleted; add a
-        # cleanup pass if the secrets table's size ever matters.
         agent.secret_ref = await _store_secret(
             db, _secret_box(request), agent.project_id, body.auth_header
         )
@@ -257,13 +272,20 @@ async def update_agent(
         await db.flush()
     except IntegrityError as exc:
         raise ApiError(409, "An agent with this name already exists in this project") from exc
+    if old_secret is not None and agent.secret_ref != old_secret:
+        await _drop_secret(db, old_secret)
     return _agent_out(agent)
 
 
 @router.delete("/agents/{agent_id}", status_code=204)
 async def delete_agent(agent_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -> None:
+    """Deletes the agent, its auth header, and (CASCADE) its runs; the UI warns first."""
     agent = await owned_agent(db, principal, agent_id)
+    secret = agent.secret_ref
     await db.delete(agent)
+    await db.flush()
+    if secret is not None:
+        await _drop_secret(db, secret)
 
 
 @router.post("/agents/{agent_id}/test")

@@ -33,9 +33,11 @@ export class SuitesPage {
     return (await issues.textContent()) ?? "";
   }
 
-  /** Clicks Run for the named suite and returns the new run's id, parsed off the redirect. */
+  /** Clicks Run for the named suite, starts it from the run dialog with the suite's own settings,
+   * and returns the new run's id, parsed off the redirect. */
   async run(suiteName: string): Promise<string> {
     await this.page.getByTestId(`run-suite-${suiteName}`).click();
+    await this.page.getByRole("dialog", { name: "Run a suite" }).getByTestId("start-run").click();
     // Not waitForURL: it lands via router.push, which fires no 'load' event.
     await expect(this.page).toHaveURL(/\/runs\/[^/]+$/);
     const match = /\/runs\/([^/]+)$/.exec(this.page.url());

@@ -585,6 +585,7 @@
           "agents"
         ],
         "summary": "Delete Agent",
+        "description": "Deletes the agent, its auth header, and (CASCADE) its runs; the UI warns first.",
         "operationId": "delete_agent_agents__agent_id__delete",
         "parameters": [
           {
@@ -888,6 +889,170 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuiteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suites/{suite_id}/versions": {
+      "get": {
+        "tags": [
+          "suites"
+        ],
+        "summary": "List Versions",
+        "description": "Every version, newest first, with its case and run counts.",
+        "operationId": "list_versions_suites__suite_id__versions_get",
+        "parameters": [
+          {
+            "name": "suite_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Suite Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SuiteVersionOut"
+                  },
+                  "title": "Response List Versions Suites  Suite Id  Versions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suites/{suite_id}/versions/{version}": {
+      "get": {
+        "tags": [
+          "suites"
+        ],
+        "summary": "Get Version",
+        "operationId": "get_version_suites__suite_id__versions__version__get",
+        "parameters": [
+          {
+            "name": "suite_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Suite Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuiteVersionDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suites/{suite_id}/cases": {
+      "get": {
+        "tags": [
+          "suites"
+        ],
+        "summary": "List Cases",
+        "description": "One version's cases (default: the current one), in the YAML's order when it was kept.",
+        "operationId": "list_cases_suites__suite_id__cases_get",
+        "parameters": [
+          {
+            "name": "suite_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Suite Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CaseOut"
+                  },
+                  "title": "Response List Cases Suites  Suite Id  Cases Get"
                 }
               }
             }
@@ -2764,6 +2929,71 @@
           "run"
         ],
         "title": "BaselineOut"
+      },
+      "CaseOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call"
+          },
+          "attack": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attack"
+          },
+          "context_count": {
+            "type": "integer",
+            "title": "Context Count"
+          },
+          "judges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Judges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "input",
+          "call",
+          "attack",
+          "context_count",
+          "judges"
+        ],
+        "title": "CaseOut",
+        "description": "A case as stored for one suite version (the suite page's case browser)."
       },
       "CaseSummaryOut": {
         "properties": {
@@ -5023,6 +5253,73 @@
           "valid"
         ],
         "title": "SuiteValidateOut"
+      },
+      "SuiteVersionDetailOut": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "yaml": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaml"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "yaml"
+        ],
+        "title": "SuiteVersionDetailOut"
+      },
+      "SuiteVersionOut": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "case_count": {
+            "type": "integer",
+            "title": "Case Count"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count"
+          },
+          "has_yaml": {
+            "type": "boolean",
+            "title": "Has Yaml"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "created_at",
+          "case_count",
+          "run_count",
+          "has_yaml"
+        ],
+        "title": "SuiteVersionOut",
+        "description": "One version in a suite's history. `has_yaml` is False for versions saved before\nmigration 0005, whose YAML was never kept (ADR 0038); their cases still are. `created_at`\nis None when the save time isn't known (those, and the backfilled current version > 1)."
       },
       "TokenUsage": {
         "properties": {

@@ -1,10 +1,12 @@
 import httpx
 import pytest
-from sqlalchemy import select
+from fastapi import FastAPI
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentprobe_api.models import TestCase
+from agentprobe_api.models import SuiteVersion, TestCase
 from apitest import SignUp
+from runtest import NullQueue
 
 pytestmark = pytest.mark.integration
 
@@ -197,3 +199,98 @@ async def test_get_nonexistent_suite_is_404(sign_up: SignUp) -> None:
     alice = await sign_up("alice@example.com")
     r = await alice.get("/suites/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
+
+
+REORDERED_YAML_V3 = """
+suite: demo-suite
+agent: demo-bot
+runs_per_case: 2
+cases:
+  - id: z-first-in-yaml
+    input: "first"
+    attack: prompt_injection.direct
+    context: ["doc one", "doc two"]
+    expect:
+      - judge: contains
+        value: "x"
+  - id: a-second-in-yaml
+    input: "second"
+    expect:
+      - judge: not_contains
+        values: ["y"]
+"""
+
+
+async def test_versions_keep_their_yaml_cases_and_run_counts(
+    sign_up: SignUp, app: FastAPI, db: AsyncSession
+) -> None:
+    app.state.queue = NullQueue()  # runs are only counted here, never executed
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    agent = {"adapter_type": "http", "url": "https://agent.example.com/chat"}
+    r = await alice.post(
+        f"/projects/{project['id']}/agents", json={"name": "demo-bot", "config": agent}
+    )
+    assert r.status_code == 201, r.text
+    suite = (
+        await alice.post(f"/projects/{project['id']}/suites", json={"yaml": VALID_YAML})
+    ).json()
+    base = f"/suites/{suite['id']}"
+    assert (await alice.post(f"{base}/runs", json={})).status_code == 202
+    for yaml in (VALID_YAML_V2, REORDERED_YAML_V3):
+        assert (await alice.put(base, json={"yaml": yaml})).status_code == 200
+
+    versions = (await alice.get(f"{base}/versions")).json()
+    assert [(v["version"], v["case_count"], v["run_count"], v["has_yaml"]) for v in versions] == [
+        (3, 2, 0, True),
+        (2, 2, 0, True),
+        (1, 1, 1, True),
+    ]
+    assert all(v["created_at"] for v in versions)
+    for number, yaml in ((1, VALID_YAML), (2, VALID_YAML_V2), (3, REORDERED_YAML_V3)):
+        assert (await alice.get(f"{base}/versions/{number}")).json() == {
+            "version": number,
+            "yaml": yaml,
+        }
+
+    # The current version's cases, in the YAML's order (not the key order), with their judges.
+    cases = (await alice.get(f"{base}/cases")).json()
+    assert [c["id"] for c in cases] == ["z-first-in-yaml", "a-second-in-yaml"]
+    assert cases[0] == {
+        "id": "z-first-in-yaml",
+        "input": "first",
+        "call": None,
+        "attack": "prompt_injection.direct",
+        "context_count": 2,
+        "judges": [{"judge": "contains", "value": "x"}],
+    }
+    old = (await alice.get(f"{base}/cases", params={"version": 1})).json()
+    assert [c["id"] for c in old] == ["c1"]
+
+    # A version saved before migration 0005 has its cases but no YAML: listed, cases in key order.
+    await db.execute(
+        delete(SuiteVersion).where(SuiteVersion.suite_id == suite["id"], SuiteVersion.version == 3)
+    )
+    v3 = (await alice.get(f"{base}/versions")).json()[0]
+    assert (v3["version"], v3["has_yaml"], v3["created_at"]) == (3, False, None)
+    assert (await alice.get(f"{base}/versions/3")).json() == {"version": 3, "yaml": None}
+    assert [c["id"] for c in (await alice.get(f"{base}/cases")).json()] == [
+        "a-second-in-yaml",
+        "z-first-in-yaml",
+    ]
+
+    for missing in (0, 4):
+        assert (await alice.get(f"{base}/versions/{missing}")).status_code == 404
+        assert (await alice.get(f"{base}/cases", params={"version": missing})).status_code == 404
+
+
+async def test_an_unchanged_put_adds_no_version(sign_up: SignUp) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    suite = (
+        await alice.post(f"/projects/{project['id']}/suites", json={"yaml": VALID_YAML})
+    ).json()
+    await alice.put(f"/suites/{suite['id']}", json={"yaml": VALID_YAML})
+    assert [v["version"] for v in (await alice.get(f"/suites/{suite['id']}/versions")).json()] == [
+        1
+    ]

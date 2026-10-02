@@ -11,7 +11,7 @@ A phase is complete only when every task in it is done.
 | B2: server runner and results API | **Complete** (B2.1–B2.6). B2.5's ingest is `POST /ci/report`, not the planned `runs:ingest` ([ADR 0019](decisions/0019-ci-report-is-the-ingest-endpoint.md)). |
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
-| E: dashboard | E0, E1, E2, E4, E5, E6, E7 **complete** (E2 on 2026-10-03, [ADR 0037](decisions/0037-project-overview-and-runs-page.md)); E3 done as a minimal agents/suites slice (below), the rest in progress. |
+| E: dashboard | **Complete** (E0–E7). E2 and the rest of E3 finished on 2026-10-03 ([ADR 0037](decisions/0037-project-overview-and-runs-page.md), [ADR 0038](decisions/0038-agents-and-suites-pages.md)). |
 | F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **live (Render, Vercel Hobby, Neon; ADR 0036), deployed by deploy.yml after CI and smoke-tested by `scripts/smoke_prod.py`; ADR 0036's live checks done (two bugs found and fixed), cold starts measured; three items still need the Render dashboard or a >15 min run**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
 
 ## Done
@@ -759,19 +759,42 @@ A phase is complete only when every task in it is done.
   - `RunSuiteDialog`: suite, attempts per case, and opt-in live judging (mock by default).
   - `DataTable` columns take a `className`. The runs table hides cost and latency below 1199px so it fits its card at 810.
   - Screenshots at 1440, 810 and 390 (`overview-*`, `runs-*`, `run-dialog-1440`): no horizontal scroll and no page errors. Fixed from them: same-day runs all labelled "3 Oct" (now the time of day), a $0 cost line on a made-up $0–$4 axis, a legend on an empty chart, and the runs table overflowing its card at 810.
-  - Tests: `trends.test.ts` (6); `test_baselines.py` covers the listing; new e2e `12-overview-and-runs.spec.ts`, where the first run is started from the dialog (with its attempts validation), the baseline shows in the tile, chart legend and table, and the Runs page filters and links through to a run and back. The visual-snapshot spec also covers the Runs page. Specs 05, 06, 07, 11 and 12 pass.
+  - Tests (E2): `trends.test.ts` (6); `test_baselines.py` covers the listing; new e2e `12-overview-and-runs.spec.ts`, where the first run is started from the dialog (with its attempts validation), the baseline shows in the tile, chart legend and table, and the Runs page filters and links through to a run and back. The visual-snapshot spec also covers the Runs page. Specs 05, 06, 07, 11 and 12 pass.
+
+- 2026-10-03 **E3 (rest): agents and suites pages, suite versions with their YAML** ([ADR 0038](decisions/0038-agents-and-suites-pages.md), migration 0005, scope confirmed by the user):
+  - Agents:
+    - the form edits every field of HTTP and MCP-over-HTTP configs;
+    - fixed: edit no longer wipes fields the form doesn't show (a template, headers, method, timeout set through the API or CLI), because the config is built on the stored one;
+    - the auth header can be set, replaced or removed, and is never shown;
+    - Test works for a draft, an unedited saved agent (with its stored header), or any row;
+    - delete asks first and says the agent's runs go with it, with the count.
+  - API:
+    - replaced, cleared and deleted auth headers' ciphertext is removed unless a live run still reads it (closes the orphaned-secrets known issue);
+    - `suite_versions` table, backfilled with each suite's current YAML;
+    - `GET /suites/{id}/versions`, `/versions/{n}` and `/cases?version=`, all IDOR-probed.
+  - Suite page (`/projects/{id}/suites/{suiteId}`):
+    - Editor tab: validates as you type, jumps to a problem's line, and saves a new version;
+    - Cases tab: browses any version;
+    - Versions tab: run counts, and a folded line diff against the version before.
+
+    Run from the suites list or the suite page opens the shared run dialog.
+  - Fixed from the screenshots: the agents table overflowed its card at 810, and the backfill stamped every version with the migration's time (now the suite's own `created_at` for v1, else NULL, shown as "Not recorded").
+  - Screenshots at 1440, 810 and 390: `agents-*`, `suite-editor-*`, `suite-cases-*`, `suite-versions-*`, plus `agent-edit-1440`, `agent-edit-mcp-1440` and `agent-delete-1440`. No horizontal scroll and no page errors.
+  - Tests:
+    - Vitest: `agent-form.test.ts` (6: round trip with unknown fields, edits, type switch, defaults, errors, headers), `line-diff.test.ts` (4, including rebuilding both texts from the diff);
+    - API integration: versions, YAML, cases in YAML order, the legacy path, 404s, no version on an unchanged PUT, secret cleanup, and a live run keeping its secret;
+    - e2e: new `13-agents-and-suites.spec.ts` through the UI. The suites page object now starts runs through the dialog. The visual snapshot spec covers the suite page.
+  - Gates: the full e2e suite passes (14 specs).
 
 ## Next
 - **F4 follow-ups (need the Render dashboard or the operator)**: run the `PROXY_SECRET` client-IP check in docs/DEPLOY.md step 10; read the API's memory graph around a Deploy run; optionally exercise `API_EXTRAS=live` as a build arg. Details: ADR 0036 §Still unverified.
 - **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
-- **E3 (rest)**, scope confirmed by the user on 2026-10-03:
-  - agents: MCP config, the auth-header UI, the full HTTP config, a fix for edit wiping fields the form doesn't show, test connection on a saved agent, and a delete confirmation;
-  - suites: a detail page with a validating YAML editor, a case browser, version history with each version's YAML (migration 0005), and run options.
 - **Live detection run**: deferred (user decision, 2026-10-03). The demo agents stay as they are; the README states the two live misses.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
 ## Decisions
 - Example suites run 10 attempts per case; flow tests that only need a finished run use 5 (user decision 2026-10-03, ADR 0022 amendment). Demo agents unchanged; the two live-mode misses are documented, not fixed.
+- Agents and suites pages ([ADR 0038](decisions/0038-agents-and-suites-pages.md)): the agent form edits every field of both server adapters and keeps fields it doesn't show; auth-header ciphertext is deleted when replaced, cleared or its agent deleted (unless a live run still reads it); `suite_versions` (migration 0005) keeps each version's YAML from now on; suite versions, YAML and cases are readable over the API; deleting an agent warns that its runs go too.
 - Project overview and Runs page ([ADR 0037](decisions/0037-project-overview-and-runs-page.md)): trends for one suite at a time; the baseline as a tile, a dashed reference line and a table badge; `GET /projects/{id}/baselines`; one "Run a suite" dialog, mock by default.
 - Production deploy on free, no-card tiers ([ADR 0036](decisions/0036-free-tier-deploy-on-render.md), user constraint 2026-10-01): Vercel Hobby + two Render free web services (the API inline; the demo agents public, fake data only, labelled) + a separate Neon project. deploy.yml after CI: migrations, Render deploy hooks pinned to the commit, wait for `/ready` to report it, then Vercel. No keep-alive (750 shared hours); the web waits for a sleeping API with a visible notice and never resends a mutation; the API wakes the demo agents before a run. Client IP: the web proxy's `x-agentprobe-client-ip` (Vercel's `x-real-ip`), only with its secret; `X-Forwarded-For` is never read (revised 2026-10-02 after the live check found it spoofable). No private targets in production. argon2 limited to two at a time for the 512 MB limit.
 - Public-abuse limits ([ADR 0035](decisions/0035-production-deploy-and-public-abuse-limits.md), user decisions 2026-09-29): open signup with per-user caps, an hourly registration limit and a worst-case global live-LLM budget; register/login need the web Origin; an allowlist is the whole private-target policy.
@@ -879,7 +902,9 @@ A phase is complete only when every task in it is done.
 - Local `.env` files from before B1.4 still say `ALLOW_PRIVATE_AGENT_URLS`, which nothing reads. Rename it to `ALLOW_PRIVATE_TARGETS=1` to reach the demo agents on localhost (done in this machine's `.env` on 2026-09-28, user decision).
 - An OpenAI-style agent that omits `tool_calls` when it made none gets an error under the strict mapping rule. Add an explicit "optional" flag to `ResponseMapping` if such an agent needs support (ADR 0012).
 - `next build` downloads Google Fonts (Geist, Geist Mono; Inter is self-hosted), so it needs network access. `pnpm check` doesn't build; CI does.
-- Replacing or clearing an agent's `auth_header` orphans the old `secrets` row instead of deleting it (`ponytail:` comment in `agents.py`). Harmless (it's ciphertext, never returned) but worth a cleanup pass if the table's size ever matters.
+- A replaced or cleared auth header's `secrets` row is deleted (ADR 0038), except when a queued or running run's snapshot still reads it; that one stays orphaned (`ponytail:` in `agents.py`). Rows orphaned before 2026-10-03 were not cleaned up.
+- Suite versions saved before migration 0005 have no YAML ("Before history was kept"), and a backfilled current version > 1 has no save time ("Not recorded").
+- Deleting an agent deletes its runs (`runs.agent_id` cascades). The UI warns with the count from the newest 200 runs.
 - This machine has a stale machine-level `CURL_CA_BUNDLE=C:\Program Files\PostgreSQL\18\ssl\certs\ca-bundle.crt` (the file doesn't exist; left by an uninstalled PostgreSQL). The live LLM provider refuses to start while it is set. Remove it from an admin PowerShell: `[Environment]::SetEnvironmentVariable('CURL_CA_BUNDLE', $null, 'Machine')`, then open a new terminal.
 - LiteLLM 1.102.1 ships a `cl100k_base` tokenizer file that fails tiktoken's hash check, so the first live import downloads the canonical file (hash-verified) into `.agentprobe/tiktoken/`. It needs network once; after that imports are offline.
 - The daily quota file (`.agentprobe/llm-quota.json`) has no cross-process lock: concurrent processes can undercount by a few requests. It is also per host, so each worker host has its own daily cap.

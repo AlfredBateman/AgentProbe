@@ -2,6 +2,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,7 @@ from agentprobe_api.models import Secret
 from agentprobe_core.adapters import HttpAdapterConfig
 from agentprobe_core.adapters.mcp import McpHttpConfig
 from apitest import SignUp
+from runtest import NullQueue
 
 pytestmark = pytest.mark.integration
 
@@ -17,6 +19,16 @@ HTTP_CONFIG = {
     "adapter_type": "http",
     "url": "https://agent.example.com/chat",
 }
+SUITE_YAML = """
+suite: demo-suite
+agent: demo-bot
+cases:
+  - id: c1
+    input: "hello"
+    expect:
+      - judge: contains
+        value: "hi"
+"""
 
 
 async def new_project(client: httpx.AsyncClient, name: str = "demo") -> dict[str, str]:
@@ -367,3 +379,60 @@ async def test_test_connection_for_a_draft_rejects_python_adapters(sign_up: Sign
         json={"config": {"adapter_type": "python", "module": "m", "function": "f"}},
     )
     assert r.status_code == 422, r.text
+
+
+async def secret_ids(db: AsyncSession) -> set[Any]:
+    return set(await db.scalars(select(Secret.id)))
+
+
+async def test_a_replaced_cleared_or_deleted_auth_header_leaves_no_ciphertext(
+    sign_up: SignUp, db: AsyncSession
+) -> None:
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    header = {"name": "Authorization", "value": "Bearer one"}
+    body = {"name": "bot", "config": HTTP_CONFIG, "auth_header": header}
+    agent = (await alice.post(f"/projects/{project['id']}/agents", json=body)).json()
+    first = await secret_ids(db)
+    assert len(first) == 1
+
+    replace = {"auth_header": {"name": "Authorization", "value": "Bearer two"}}
+    assert (await alice.put(f"/agents/{agent['id']}", json=replace)).status_code == 200
+    second = await secret_ids(db)
+    assert len(second) == 1 and second != first  # the old one is gone, not orphaned
+
+    # Editing anything else keeps the header.
+    rename = await alice.put(f"/agents/{agent['id']}", json={"name": "bot-2"})
+    assert rename.json()["has_secret"] is True
+    assert await secret_ids(db) == second
+
+    assert (
+        await alice.put(f"/agents/{agent['id']}", json={"clear_secret": True})
+    ).status_code == 200
+    assert await secret_ids(db) == set()
+
+    again = {"auth_header": {"name": "Authorization", "value": "Bearer three"}}
+    await alice.put(f"/agents/{agent['id']}", json=again)
+    assert len(await secret_ids(db)) == 1
+    assert (await alice.delete(f"/agents/{agent['id']}")).status_code == 204
+    assert await secret_ids(db) == set()
+
+
+async def test_a_header_a_live_run_still_reads_is_kept_when_replaced(
+    sign_up: SignUp, app: FastAPI, db: AsyncSession
+) -> None:
+    app.state.queue = NullQueue()  # the run stays queued: its snapshot names the first secret
+    alice = await sign_up("alice@example.com")
+    project = await new_project(alice)
+    header = {"name": "Authorization", "value": "Bearer one"}
+    body = {"name": "demo-bot", "config": HTTP_CONFIG, "auth_header": header}
+    agent = (await alice.post(f"/projects/{project['id']}/agents", json=body)).json()
+    suite = (
+        await alice.post(f"/projects/{project['id']}/suites", json={"yaml": SUITE_YAML})
+    ).json()
+    assert (await alice.post(f"/suites/{suite['id']}/runs", json={})).status_code == 202
+    first = await secret_ids(db)
+
+    replace = {"auth_header": {"name": "Authorization", "value": "Bearer two"}}
+    assert (await alice.put(f"/agents/{agent['id']}", json=replace)).status_code == 200
+    assert first < await secret_ids(db)  # still there for the queued run, plus the new one
