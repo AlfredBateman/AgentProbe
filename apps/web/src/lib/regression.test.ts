@@ -94,3 +94,11 @@ test("a suite-level regression names its p-value, delta and N, not a case", () =
   expect(text).toContain("p = 0.0010 vs α_suite = 0.025");
   expect(text).toContain("Monte Carlo");
 });
+
+test("pValue never shows a tiny p as 0.0000", async () => {
+  const { pValue } = await import("./format");
+  expect(pValue(0.0125)).toBe("0.0125");
+  expect(pValue(5.4e-6)).toBe("5.4e-6");
+  expect(pValue(0)).toBe("0.0000");
+  expect(pValue(1)).toBe("1.0000");
+});

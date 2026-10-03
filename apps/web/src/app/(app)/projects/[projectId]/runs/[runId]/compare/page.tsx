@@ -11,7 +11,7 @@ import { Label, Select } from "@/components/ui/field";
 import { Badge } from "@/components/ui/status";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { date, ms, pct, score, usd } from "@/lib/format";
+import { date, ms, pValue, pct, score, usd } from "@/lib/format";
 import { type CaseComparisonDump, type MetricDeltaDump, type RegressionReportDump, signedPct, verdictSummary } from "@/lib/regression";
 
 type Run = components["schemas"]["RunDetailOut"];
@@ -163,7 +163,7 @@ function CompareView({
       render: (c) => `${c.candidate.passes}/${c.candidate.attempts}`,
     },
     { key: "delta", header: "Δ pass rate", value: (c) => c.pass_rate_delta, align: "right", render: (c) => signedPct(c.pass_rate_delta) },
-    { key: "p", header: "p (worse)", value: (c) => c.p_worse, align: "right", render: (c) => c.p_worse.toFixed(4) },
+    { key: "p", header: "p (worse)", value: (c) => c.p_worse, align: "right", render: (c) => pValue(c.p_worse) },
     {
       key: "verdict",
       header: "Verdict",

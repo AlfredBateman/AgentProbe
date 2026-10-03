@@ -1,7 +1,7 @@
 // The JSON shape of core's `RegressionReport` (agentprobe_core.stats.regression), as
 // `GET /runs/compare` and `GET /runs/{id}/verdict` dump it (pydantic `TypeAdapter.dump_python`).
 // `pass_rate` and `label` are core's computed fields: the label rule lives only in core.
-import { pct } from "./format";
+import { pct, pValue } from "./format";
 
 export type CaseSummaryDump = {
   passes: number;
@@ -89,7 +89,7 @@ export function verdictSummary(r: RegressionReportDump): string {
     const p = worse ? r.suite.p_worse : r.suite.p_better;
     parts.push(
       `The suite pass rate moved ${signedPct(r.suite.pass_rate_delta)} across ${n} shared cases ` +
-        `(p = ${p.toFixed(4)} vs α_suite = ${r.alpha_suite}, paired sign-flip test${r.suite.exact ? "" : ", Monte Carlo"}).`,
+        `(p = ${pValue(p)} vs α_suite = ${r.alpha_suite}, paired sign-flip test${r.suite.exact ? "" : ", Monte Carlo"}).`,
     );
   }
   return parts.join(" ");

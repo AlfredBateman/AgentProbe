@@ -16,6 +16,9 @@ export function ms(x: number | null | undefined): string {
 
 export const count = (x: number | null | undefined) => (x == null ? DASH : x.toLocaleString());
 
+/** A p-value: four decimals, or scientific below 0.0001 so a tiny p never reads as "0.0000". */
+export const pValue = (p: number) => (p > 0 && p < 0.0001 ? p.toExponential(1) : p.toFixed(4));
+
 export const score = (x: number | null | undefined) => (x == null ? DASH : x.toFixed(2));
 
 /** A wall-clock duration, e.g. "42s", "3m 05s", "1h 02m". */
