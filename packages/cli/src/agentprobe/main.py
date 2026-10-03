@@ -141,11 +141,18 @@ def _load_run(ref: str) -> RunSummary:
     if not path.is_file():
         raise _NoSuchRun(f"{ref}: no such run file or baseline name")
     try:
-        return RunSummary.model_validate_json(path.read_bytes())
+        data = json.loads(path.read_bytes())
+        # `run --json` wraps the run ({"file", "exit_code", "run", ...}); the Action's
+        # `result-file` is that output, and the dogfood workflow keeps it as the next PR's baseline.
+        if isinstance(data, dict) and {"exit_code", "run"} <= data.keys():
+            data = data["run"]
+        return RunSummary.model_validate(data)
     except ValidationError as exc:
         raise ConfigError(
             f"{path}: not an AgentProbe run file ({exc.error_count()} errors)"
         ) from None
+    except ValueError:  # not JSON at all
+        raise ConfigError(f"{path}: not an AgentProbe run file (invalid JSON)") from None
 
 
 def _statistics(base: StatisticsConfig, **flags: float | None) -> StatisticsConfig:

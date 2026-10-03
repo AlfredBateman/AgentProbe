@@ -358,6 +358,26 @@ def test_baseline_regression_exits_2() -> None:
     assert json.loads(as_json.stdout)["regression"]["verdict"] == "regression"
 
 
+def test_a_json_output_file_works_as_a_baseline() -> None:
+    # The Action's `result-file` is `run --json` output; the dogfood workflow keeps it as the
+    # next PR's baseline (it was once rejected as "not an AgentProbe run file").
+    write_suite(suite(runs_per_case=5))
+    wrapped = invoke("run", "suite.yaml", "--json")
+    assert wrapped.exit_code == 0, wrapped.output
+    Path("result.json").write_text(wrapped.stdout)
+    same = invoke("run", "suite.yaml", "--baseline", "result.json")
+    assert same.exit_code == 0, same.output
+    assert "no change" in same.output
+    worse = invoke(
+        "run", "suite.yaml", "--agent", "bad", "--baseline", "result.json", "--fail-under", "0"
+    )
+    assert worse.exit_code == 2, worse.output
+    Path("result.json").write_text("not json")
+    broken = invoke("run", "suite.yaml", "--baseline", "result.json")
+    assert broken.exit_code == 3
+    assert "not an AgentProbe run file" in broken.output
+
+
 def test_baseline_must_be_the_same_suite() -> None:
     assert invoke("run", "suite.yaml").exit_code == 0
     [first] = runs()
