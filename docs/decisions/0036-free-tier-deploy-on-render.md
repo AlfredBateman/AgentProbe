@@ -281,6 +281,27 @@ So a free instance wakes in about 33 s (the API) and 23 s (the demo agents), not
 the site, with the notice up from about 3 s. The notice said "about a minute" until
 2026-10-03; it now says "about 30 to 40 seconds", the measured wait.
 
+### Cold starts through a proxy (measured 2026-10-03)
+A sleeping service doesn't always wake for a proxied request. Measured after 17 idle minutes:
+
+| Request to a cold service | Result |
+|---|---|
+| Browser or curl straight to Render (India, US runner) | Held, then 200: API in about 33 s, demo agents in about 23 s |
+| Through the web app's `/api` proxy, from a US runner (Vercel's US edge) | Held 30 s, then 200 at 35.6 s |
+| Through the web app's `/api` proxy, from India (Vercel's `bom1` edge) | 502 `X-Render-Routing: no-deploy` in about 0.6 s, every 5 s for 220 s; never woke |
+| API to cold demo agents (`wake.py`, Render to Render) | No wake: the connection test returned "HTTP 502 from the agent" after 116 s |
+
+So the earlier "Vercel's rewrite waits too" holds only on some edges, and the API's server-side
+wake of the demo agents never worked live. `scripts/smoke_prod.py` always wakes both services
+directly first, so it never exercised either path. Neither failure involves this repo's code.
+Render's edge declines to wake the service for those requests.
+
+The fix doesn't depend on the edge: the browser pings each service's `/health` directly, at most
+every 10 minutes while the app is in use. Those are opaque `no-cors` GETs to
+`NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WAKE_URLS`, the latter set by deploy.yml to the demo
+agents (`lib/api/wake.ts`, ADR 0039's CSP allows the origins). `wake.py` stays, since it costs
+nothing when its target is awake.
+
 ## Consequences
 - The first visitor after 15 idle minutes waits about 35 s (measured: §Cold starts), with the
   notice. A run against sleeping demo agents waits about 23 s more before its first attempt

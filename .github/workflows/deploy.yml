@@ -85,6 +85,8 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          # Inlined at build time: the browser pings the demo agents awake (ADR 0036).
+          NEXT_PUBLIC_WAKE_URLS: ${{ vars.DEMO_AGENTS_URL }}/health
         run: |
           npx --yes vercel@61.1.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
           npx --yes vercel@61.1.0 build --prod --token="$VERCEL_TOKEN"

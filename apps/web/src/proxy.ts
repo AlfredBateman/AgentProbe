@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { PUBLIC_API_URL } from "@/lib/api/public-url";
+import { NUDGE_URLS } from "@/lib/api/public-url";
 
 const PUBLIC = [/^\/$/, /^\/login$/, /^\/register$/, /^\/shared\//, /^\/dev\//];
 // The API trusts CLIENT_IP_HEADER only on requests carrying this secret (ADR 0036); a
@@ -38,17 +38,18 @@ function forwardToApi(request: NextRequest) {
  * puts on its own scripts (it reads the nonce from the request's CSP header), and whatever
  * those load ('strict-dynamic'): an injected <script> or inline handler never runs. Styles
  * allow inline, because React renders style attributes, which a nonce can't cover. The only
- * other origin is the API's own, for live run progress (ADR 0031). `next dev` needs eval.
+ * other origins are the API's own, for live run progress (ADR 0031), and the services the
+ * browser pings awake (lib/api/wake.ts). `next dev` needs eval.
  */
 export function contentSecurityPolicy(nonce: string, dev = process.env.NODE_ENV === "development") {
-  const api = PUBLIC_API_URL ? ` ${new URL(PUBLIC_API_URL).origin}` : "";
+  const others = [...new Set(NUDGE_URLS.map((u) => new URL(u).origin))].map((o) => ` ${o}`).join("");
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    `connect-src 'self'${api}`,
+    `connect-src 'self'${others}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",

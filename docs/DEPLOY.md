@@ -35,6 +35,7 @@ It does nothing until the repository variable `DEPLOY_ENABLED` is `true`. Render
 
 - **The web app** waits for a sleeping API before its first request after 10 quiet minutes (`lib/api/wake.ts`). It shows "Waking the server, about 30 to 40 seconds" if that takes more than 1.5 s, gives up after 150 s, and never sends a mutation twice. Live run progress already reconnects with backoff and falls back to polling (ADR 0031).
 - **The demo agents** are woken by the API (`WAKE_TARGET_HOSTS`). Before a run's first attempt, and before a connection test, the API polls their `/health` for up to 2 minutes.
+- **The browser pings both services directly** (`NUDGE_URLS` in `lib/api/public-url.ts`), at most every 10 minutes: `NEXT_PUBLIC_API_URL`'s `/health`, plus `NEXT_PUBLIC_WAKE_URLS`, which deploy.yml sets at build time to `DEMO_AGENTS_URL/health`. A request through a proxy doesn't always wake a Render free service (measured 2026-10-03, ADR 0036 §Cold starts through a proxy). The CSP allows those origins.
 - **Memory:** 512 MB per service. The API measured about 130 MiB idle and 147 MiB under two concurrent runs. argon2 is limited to two hashes at a time (64 MiB each). Details are in ADR 0036.
 
 ## Health and readiness
