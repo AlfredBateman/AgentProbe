@@ -72,6 +72,71 @@ Mock mode, offline: the demo agent's deterministic rule engine and the mock embe
 uv run python scripts/measure_clustering.py   # mock mode, a few seconds, offline
 ```
 
+## Throughput: N cases x 5 attempts
+
+### What is measured
+`scripts/measure_throughput.py` runs generated suites of 30 and 100 cases, 5 attempts each, against the demo support bot through core's `run_suite` and the HTTP adapter, the path `agentprobe run` takes. It is a measurement of AgentProbe's own overhead on one machine, against an agent that answers instantly.
+
+<!-- throughput:mock:start -->
+### Mock mode
+Measured 2026-10-04 by `scripts/measure_throughput.py`, on this machine:
+
+- CPU: 12th Gen Intel(R) Core(TM) i5-1240P, 16 logical cores
+- RAM: 16 GiB
+- OS: Windows-11-10.0.26200-SP0
+- Python: 3.12.14 (CPython)
+- Commit: `27a6779`
+
+The demo agents ran as a separate process (`AGENT_MODE=mock`, `FLAKY_RATE=0`, so no attempt is retried), the LLM was the mock provider (its per-run call cap lifted, because mock calls cost nothing), and every case has 5 attempts and an `llm_rubric` judge beside its rule judges. Each cell is the median of 5 runs after one discarded warm-up run. `concurrency` is `RunOptions.concurrency`, attempts in flight at once; the CLI, the server (`RUN_CONCURRENCY`) and the Action all default to 4.
+
+| Cases | Attempts | Concurrency | Wall-clock (median, range) | Attempts/s |
+|---|---|---|---|---|
+| 30 | 150 | 1 | 0.40 s (0.28 to 0.52) | 376 |
+| 30 | 150 | 4 (default) | 0.18 s (0.17 to 0.21) | 828 |
+| 30 | 150 | 16 | 0.22 s (0.21 to 0.25) | 690 |
+| 100 | 500 | 1 | 1.17 s (1.12 to 1.30) | 427 |
+| 100 | 500 | 4 (default) | 0.56 s (0.55 to 0.60) | 893 |
+| 100 | 500 | 16 | 0.73 s (0.71 to 0.74) | 681 |
+
+Attempts that ended in an error: 0.
+
+This is AgentProbe's own overhead against an agent that answers instantly. With a real agent the rate is set by the agent's latency and by `concurrency`, not by this table. It does not include the server's per-attempt writes to Postgres, which are measured separately below.
+<!-- throughput:mock:end -->
+
+### Reproduce
+```bash
+uv run python scripts/measure_throughput.py   # mock mode, offline, under a minute
+```
+
+### Server path: the same suite through the API and Postgres
+The server saves every attempt to Postgres as it finishes, so a run through the dashboard is much slower than the engine alone. Measured once on 2026-10-04, from the three runs `scripts/seed_demo.py` creates (the smoke suite, 9 cases x 10 attempts = 90 attempts each, mock LLM, inline queue, `RUN_CONCURRENCY` 4, local API and demo agents on the machine above, Neon dev database in `ap-southeast-1` reached over the internet): **41.3 s, 41.1 s and 40.6 s per run, about 2.2 attempts per second**, from the run's `started_at` to its `finished_at`. Against about 380 to 890 attempts per second for the engine alone, that gap is database round trips, not AgentProbe's logic. Three samples on one network day is a weak basis: treat it as an order of magnitude. A server in the same region as its database would be faster.
+
+## CI: tests, coverage and pipeline duration
+
+All of this is read from GitHub Actions on `main`; nothing here is estimated. Run 37116665866 is commit `27a6779`, the latest green CI run when this was written (2026-10-04).
+
+| | Value | Source |
+|---|---|---|
+| Python tests | 1,145 passed, plus 12 Redis-queue tests in their own step | `python` job: `pytest -m "not live and not redis"`, then `pytest -m redis` |
+| Web unit tests | 184 passed (32 files, Vitest) | `web` job |
+| End-to-end tests | 14 Playwright specs passed, on the production build | `e2e` job |
+| Coverage, `packages/core` | **97%** (2,419 statements; the gate is 80%) | `python` job: `coverage report --include="*/agentprobe_core/*" --fail-under=80` |
+| Coverage, `apps/api` | **97%** (2,446 statements; the gate is 80%) | same, `*/agentprobe_api/*`. The coverage includes the Redis tests and the integration tests on Postgres. |
+| CI duration (lint, type-check, tests, Docker build and compose smoke) | **median 8 min 6 s**, range 5 min 58 s to 9 min 53 s | last 10 green CI runs on `main`, 2026-10-01 to 2026-10-03 (`run_duration_ms` from the Actions timing API) |
+| Deploy duration (migrate, two Render deploys, Vercel, live smoke test) | **median 2 min 44 s**, range 2 min 30 s to 3 min 14 s | last 9 green Deploy runs on `main` |
+| Commit to live (CI start to Deploy end) | **median 11 min 6 s**, range 8 min 41 s to 12 min 51 s | the 9 commits that were both green in CI and deployed |
+
+The CI critical path is the `python` job, 9 min 25 s in run 37116665866, of which `pytest` is 8 min (the integration tests run on a Postgres service container and the statistics calibration tests run under coverage tracing). The other jobs run in parallel and finish sooner: `e2e` 1 min 57 s, `docker` 1 min 27 s (build 44 s, `compose up --wait` 20 s), `web` 48 s, `audit` 29 s, `packaging` 15 s, `workflow-lint` 7 s.
+
+CI has been getting slower as the suite grew: the green runs on 2026-10-01 took 6 to 8 minutes and the latest ones 8 to 10. Splitting the `python` job is the next item in `docs/PROGRESS.md`.
+
+### Reproduce
+```bash
+gh run list --workflow ci.yml --branch main --limit 60 --json databaseId,conclusion --jq '.[] | select(.conclusion=="success") | .databaseId'
+gh api repos/AlfredBateman/AgentProbe/actions/runs/<id>/timing --jq .run_duration_ms
+gh run view <id> --json jobs   # per-job and per-step timings
+```
+
 ## False regression alarms: multi-run statistics vs single-run checks
 
 ### Result
@@ -243,7 +308,7 @@ Halving each channel's budget buys the correct bound and lowers false alarms (2.
 | Three cases turn flaky (1 → 0.5) | 38.5% | 21.1% |
 | Every case 10% worse | 86.0% | 77.7% |
 
-- **The demo regression is unaffected.** Support-bot v1 vs v2, where one refund case goes 5/5 → 0/5 in a 30-case suite, is still detected on 100.0% of runs. Its p is 1/252 = 0.0040, and Tarone drops every unchanged case from the family, so it is compared against the whole 0.025 per-case budget. It would take six other cases able to reach 0.025 (K = 7, threshold 0.0036) before that break went unflagged; the deterministic demo test (`test_demo_one_refund_case_breaking_in_30_is_a_regression`) pins the threshold at 0.025 with and without flaky cases around it.
+- **The demo regression's shape is unaffected.** One refund case going 5/5 → 0/5 in a 30-case suite, the shape of the support-bot v1 → v2 change at 5 runs per case (the example suites now run 10, see the detection table above), is still detected on 100.0% of runs. Its p is 1/252 = 0.0040, and Tarone drops every unchanged case from the family, so it is compared against the whole 0.025 per-case budget. It would take six other cases able to reach 0.025 (K = 7, threshold 0.0036) before that break went unflagged; the deterministic demo test (`test_demo_one_refund_case_breaking_in_30_is_a_regression`) pins the threshold at 0.025 with and without flaky cases around it.
 - **At 100 cases a single break is now missed on 0.8% of runs**, where before it never was: with 20 flaky cases in the suite, some draws put six or more of them within reach of 0.025, which raises Tarone's K to 7 or more and the threshold below p = 1/252.
 - **At 3 runs per case a single break can no longer be flagged at all** (0.5%, and those few alarms come from the suite channel). Its smallest possible p is 1/20 = 0.05, above the 0.025 per-case budget. This was predicted analytically in ADR 0014 before the change and is now measured. **Use 5 or more runs per case**, which the CLI's `--help` says.
 - **Diffuse regressions are caught less often**: three cases turning flaky 38.5% → 21.1%, a 10% across-the-board degradation 86.0% → 77.7%. Both were already weak at 5 runs; more runs per case is the fix (at 10 runs, 66.9% and 96.1%).
