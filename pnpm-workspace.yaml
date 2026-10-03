@@ -6,3 +6,8 @@ saveExact: true
 allowBuilds:
   sharp: false
   unrs-resolver: false
+
+# Accepted advisories, each with its reason in ADR 0034 §Accepted risks.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm  # braces <=3.0.3, no patched release; ESLint-only (dev), own globs

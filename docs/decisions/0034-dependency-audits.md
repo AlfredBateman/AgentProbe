@@ -28,7 +28,13 @@ in those lockfiles has a published advisory.
   `pnpm audit` was clean.
 
 ## Accepted risks
-None.
+- **GHSA-vfj7-8cjw-p6xm, `braces` <= 3.0.3** (high: stack exhaustion on deeply nested brace
+  patterns). Accepted 2026-10-03, when CI first flagged it. No patched release exists: npm's
+  latest is 3.0.3, and the advisory names no fixed version, so neither fixing nor pinning is
+  possible. Reachable only through ESLint (`eslint-config-next` > `@next/eslint-plugin-next` >
+  `fast-glob` > `micromatch`), a dev dependency that expands this repo's own glob patterns. It
+  never sees user input and isn't in the production bundle. Look again when `braces` 3.0.4 or
+  a fixed `micromatch` is released, then remove the ignore in `pnpm-workspace.yaml`.
 
 ## Consequences
 - An advisory published upstream can turn CI red on a commit that changed nothing. That's
