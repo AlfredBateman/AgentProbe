@@ -52,7 +52,7 @@ Auto-deploy is off on both Render services, so nothing ships before CI passes.
   - Every `/api` call made after 10 quiet minutes waits for `/api/health` first. Probes back
     off 1, 2 and 4 s, then every 5 s. Each probe times out after 30 s, and the wait gives up
     after 150 s.
-  - After 1.5 s the app shows "Waking the server, about a minute" (`WakingNotice`, a live
+  - After 1.5 s the app shows "Waking the server, about 30 to 40 seconds" (`WakingNotice`, a live
     region), not an error.
   - A mutation is sent only to an API that has just answered, so it is never sent twice. A
     GET that meets a 502/503/504 or a dropped connection waits again and is retried once.
@@ -278,8 +278,8 @@ dashboard; the throwaway accounts were deleted afterwards.
 
 So a free instance wakes in about 33 s (the API) and 23 s (the demo agents), not the brief's
 "about a minute". The first page that needs the API shows about 37 s after a visitor opens
-the site, with the notice up from about 3 s. The notice still says "about a minute", which
-overstates the wait but never understates it.
+the site, with the notice up from about 3 s. The notice said "about a minute" until
+2026-10-03; it now says "about 30 to 40 seconds", the measured wait.
 
 ## Consequences
 - The first visitor after 15 idle minutes waits about 35 s (measured: §Cold starts), with the

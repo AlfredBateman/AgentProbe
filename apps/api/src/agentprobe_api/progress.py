@@ -35,7 +35,8 @@ class ProgressBus(Protocol):
 
 class _QueueSubscription:
     def __init__(self) -> None:
-        # ponytail: unbounded; a run has at most 10,000 attempts (500 cases x 20 runs).
+        # ponytail: unbounded; a run has at most 10,000 attempts (500 cases x 20 runs). Bound it
+        # (drop events, let the client resync) if those limits are ever raised.
         self.queue: asyncio.Queue[Event] = asyncio.Queue()
 
     async def next(self, wait_s: float) -> Event | None:

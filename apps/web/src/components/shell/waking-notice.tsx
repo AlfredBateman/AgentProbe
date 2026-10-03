@@ -13,7 +13,7 @@ export function WakingNotice() {
         <div className="flex w-full items-start gap-12 rounded-lg bg-surface-2 px-15 py-12 text-body-sm shadow-float tablet:max-w-360">
           <span aria-hidden className="mt-6 size-8 shrink-0 animate-pulse rounded-full bg-ink-muted motion-reduce:animate-none" />
           <span>
-            <span className="block text-ink">Waking the server, about a minute</span>
+            <span className="block text-ink">Waking the server, about 30 to 40 seconds</span>
             <span className="block text-ink-muted">The free hosting tier sleeps when idle. Your request goes through once it&rsquo;s up.</span>
           </span>
         </div>

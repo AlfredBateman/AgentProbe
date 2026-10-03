@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentprobe_api import limits
-from agentprobe_api.auth import AppSettings, CurrentPrincipal, Db, Principal
+from agentprobe_api.auth import AppSettings, CurrentPrincipal, Db, Principal, rate_limit
 from agentprobe_api.crypto import SecretBox
 from agentprobe_api.errors import ApiError
 from agentprobe_api.models import Agent, Project, Run, Secret
@@ -187,7 +187,8 @@ async def _store_secret(
 
 async def _drop_secret(db: AsyncSession, secret_id: uuid.UUID) -> None:
     """Deletes a replaced or cleared auth header, unless a queued or running run's snapshot
-    still reads it for its remaining attempts (ADR 0017). ponytail: that one stays orphaned.
+    still reads it for its remaining attempts (ADR 0017). ponytail: that one stays orphaned;
+    delete secrets no agent references in a sweep if orphans ever add up.
     """
     in_use = await db.scalar(
         select(Run.id)
@@ -288,6 +289,13 @@ async def delete_agent(agent_id: uuid.UUID, principal: CurrentPrincipal, db: Db)
         await _drop_secret(db, secret)
 
 
+async def _limit_probes(request: Request, principal: Principal) -> None:
+    """A probe is an outbound request to a URL the caller chose: limited per account, so the
+    API can't be used as a request generator against third parties (ADR 0035).
+    """
+    await rate_limit(request.app.state.probe_limiter, f"user:{principal.user_id}")
+
+
 @router.post("/agents/{agent_id}/test")
 async def test_agent(
     agent_id: uuid.UUID,
@@ -297,6 +305,7 @@ async def test_agent(
     settings: AppSettings,
 ) -> AgentTestOut:
     """One probe request against a saved agent's stored config, no retries."""
+    await _limit_probes(request, principal)
     agent = await owned_agent(db, principal, agent_id)
     secret_headers: dict[str, SecretStr] = {}
     if agent.secret_ref is not None:
@@ -317,11 +326,13 @@ async def test_draft_agent(
     body: AgentTestDraft,
     principal: CurrentPrincipal,
     db: Db,
+    request: Request,
     settings: AppSettings,
 ) -> AgentTestOut:
     """The same probe, for a not-yet-saved config (the add-agent form's "Test connection").
     The project id only scopes access; nothing about the draft is stored.
     """
+    await _limit_probes(request, principal)
     await owned_project(db, principal, project_id)
     secret_headers = (
         {body.auth_header.name: SecretStr(body.auth_header.value)} if body.auth_header else {}

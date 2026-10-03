@@ -12,7 +12,7 @@ A phase is complete only when every task in it is done.
 | D2: CLI remote features | **Complete** (D2.1). |
 | C: security and AI features | **Complete** (C1–C4). C1's generators and C2's mutator were later cut to an id/category registry ([ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)); C3's tool-description scan is out of scope ([ADR 0026](decisions/0026-no-mcp-tool-description-scan.md)). |
 | E: dashboard | **Complete** (E0–E7). E2 and the rest of E3 finished on 2026-10-03 ([ADR 0037](decisions/0037-project-overview-and-runs-page.md), [ADR 0038](decisions/0038-agents-and-suites-pages.md)). |
-| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **live (Render, Vercel Hobby, Neon; ADR 0036), deployed by deploy.yml after CI and smoke-tested by `scripts/smoke_prod.py`; ADR 0036's live checks done (two bugs found and fixed), cold starts measured; three items still need the Render dashboard or a >15 min run**. F5's dependency audit and public-abuse limits are done (ADR 0034, ADR 0035); the rest of F5, and F6, not started. |
+| F | F1 (GitHub Action), F2 (dogfood workflow) and F3 (Docker, compose, CI smoke) **complete**, out of build order (E2/E3 rest not done yet; user decision). F4 (deploy) **live (Render, Vercel Hobby, Neon; ADR 0036), deployed by deploy.yml after CI and smoke-tested by `scripts/smoke_prod.py`; ADR 0036's live checks done (two bugs found and fixed), cold starts measured; three items still need the Render dashboard or a >15 min run**. F5 **complete** (2026-10-03: security headers and CSP, body cap, connection-test limit, secret scanning and the security review, ADR 0039; dependency audit and public-abuse limits earlier, ADR 0034/0035). F6 not started. |
 
 ## Done
 - 2026-09-24 **Bootstrap**:
@@ -786,6 +786,46 @@ A phase is complete only when every task in it is done.
     - e2e: new `13-agents-and-suites.spec.ts` through the UI. The suites page object now starts runs through the dialog. The visual snapshot spec covers the suite page.
   - Gates: the full e2e suite passes (14 specs).
 
+- 2026-10-03 **Review pass: SPEC §10 tests, security headers and CSP, secret scan, ponytail audit, coverage, SPEC compliance; F5 complete** ([ADR 0039](decisions/0039-security-headers-csp-and-request-limits.md), [docs/SPEC_COMPLIANCE.md](SPEC_COMPLIANCE.md)):
+  - **SPEC §10, one named test per bullet.** Three bullets had none:
+    - attacks only against registered agents (`test_spec10_runs_target_only_the_suites_own_registered_agent`);
+    - YAML size limits through the API (`test_spec10_oversized_suite_yaml_is_rejected_and_nothing_saved`);
+    - a complete `.env.example` (three `test_spec10_env_example_*` tests).
+
+    Encrypted secrets never logged, SSRF and per-key rate limiting already had tests; SPEC_COMPLIANCE.md §10 maps them. The new `.env.example` tests found five gaps, all fixed: `AGENT_MODE`, `FLAKY_RATE` and `FLAKY_SEED` were undocumented, and `RUNNER_CONCURRENCY` and `AGENTPROBE_PROJECT` were read by nothing.
+  - **Security headers.**
+    - API: CSP `default-src 'none'`, nosniff, `X-Frame-Options`, `Referrer-Policy`, HSTS on every response. The HTML export keeps its own stricter CSP; `/docs` gets no CSP.
+    - Web: a per-request nonce CSP with `'strict-dynamic'` (no inline script) from `src/proxy.ts`, and static headers from `next.config.ts`. Every page now renders dynamically, because a prerendered page has no nonce.
+  - **Tests for CSRF, CORS and XSS.**
+    - CSRF: a test enumerates every mutating route from the app's OpenAPI and checks that a valid session cookie with a foreign, `null`, lookalike or missing Origin gets 403.
+    - CORS: no route grants a cross-origin read, and preflights get 405.
+    - XSS: new offline tests for the HTML export (every field, plus a planted missing escape that fails the test) and the share page. The trace viewer's test already existed.
+  - **Hardening (F5 rest).**
+    - 10 MiB request-body cap, whether the length is declared or the body is chunked. Before this, `/auth/register` read unbounded bodies on a 512 MB instance.
+    - Connection tests limited per account (`CONNECTION_TEST_RATE_LIMIT_PER_MINUTE`, default 20). Before this, they were an unthrottled prober of URLs the caller chose.
+    - gitleaks over the full history in CI's `audit` job.
+  - **Secret scan** (gitleaks 8.30.1 over all 63 commits on every ref, plus a custom pass for credential-bearing DB URLs, Neon and Render hosts, deploy hooks, `ap_` keys and JWTs):
+    - no real secret anywhere;
+    - three gitleaks hits, all known public dev values (the compose Fernet key, the e2e fallback key, the demo canary), none equal to a real `.env` secret, now listed in `.gitleaksignore`;
+    - every DB URL with a password is a placeholder (`ep-example`, `localhost`, `db:5432`);
+    - no `.env` was ever committed.
+
+    `.claude/` was ignored only partly, and only by the developer's global git ignore; it's now in `.gitignore`.
+  - **Supply-chain finding.** `agentprobe` on PyPI is an unrelated project (`nkkko/agentprobe`), so the Action's default `pip install agentprobe` and the CLI README would have installed a stranger's package. The Action now installs the CLI from its own source by default, and the README installs by git URL (verified in a clean venv). Publishing needs a name: a user decision.
+  - **Ponytail audit and debt ledger.**
+    - vulture and knip found no dead Python. The two unused web exports were un-exported; the other knip hits are false positives (`page.dev.tsx`, `inter-ui` loaded by path).
+    - Every protocol has two implementations, or a production one and a test fake.
+    - 13 `ponytail:` markers. Two named no upgrade trigger and now do (`progress.py`, `agents.py`).
+    - Refused to simplify (out of bounds or load-bearing): the exact Fisher/sign-flip arithmetic and its Monte Carlo fallback; the duplicated SSRF backend for httpcore and httpcore2 (two HTTP stacks); the regex judge's three guards; refresh-token reuse detection, the dummy-hash timing equalizer and the cross-tab refresh lock; `SecretBox` (one caller, but it keeps decrypted values `SecretStr`); stdlib-only clustering (ADR 0024).
+  - **Coverage by module.** From CI's last green artifact (which includes the Redis tests), every module in core and api was at or above 80% except `worker.py` (75%). New offline `test_worker.py` covers its startup/shutdown hooks and its unrecoverable, missing-run and fully-saved paths (82% offline alone).
+  - **SPEC compliance** ([docs/SPEC_COMPLIANCE.md](SPEC_COMPLIANCE.md)): no MVP item missing. The only "missing" should-have items (mutator, obfuscation) were cut by user decision (ADR 0027). `pip install agentprobe` is partial (above). Fixed cheaply: no example suite exercised the MVP's jailbreak or system-prompt-extraction categories. `suites/examples/jailbreak-extraction.yaml` does now (support-v1 passes 5 of 5 cases, the vulnerable bot fails all 4 attack cases) and runs in the dogfood matrix.
+  - **Waking notice** now says "about 30 to 40 seconds" (measured: about 35 s). Test, DEPLOY.md, ADR 0036 and `docs/screenshots/waking-notice-*.png` were updated, retaken from a production build at 1440, 810 and 390 with no horizontal scroll.
+  - **Gates.**
+    - `pnpm check`: 972 Python and 182 Vitest tests.
+    - `pnpm verify`-equivalent run: 1,109 passed. The 21 failures and errors were one block where Neon closed the connection ("server closed the connection unexpectedly"), plus leftover e2e data that global counts tripped over. Every affected file passed after `scripts/reset_test_db.py` (82 tests).
+    - `pnpm e2e`: 14 of 14 on the production build, and the visual spec now fails on any CSP violation.
+    - Production build in a browser: every script carries the nonce, React hydrates, and there are no CSP violations.
+
 ## Next
 - **F4 follow-ups (need the Render dashboard or the operator)**: run the `PROXY_SECRET` client-IP check in docs/DEPLOY.md step 10; read the API's memory graph around a Deploy run; optionally exercise `API_EXTRAS=live` as a build arg. Details: ADR 0036 §Still unverified.
 - **Shorten CI** (measured in the F3 entry). Split `python`'s pytest into parallel jobs: the pure-CPU unit/stats tests, which could use `COVERAGE_CORE=sysmon` with a coverage config that has no greenlet, and the integration + redis tests. Then `coverage combine` and gate in a small final job. Also cache `.mypy_cache`, or run mypy in parallel.
@@ -793,6 +833,7 @@ A phase is complete only when every task in it is done.
 - Consider re-measuring the metrics on recorded demo-agent runs rather than simulation, now that B1.8's golden tests exist (noted in docs/metrics.md §Limitations).
 
 ## Decisions
+- Security headers, CSP and request limits ([ADR 0039](decisions/0039-security-headers-csp-and-request-limits.md)): API headers on every response (the export keeps its stricter CSP); a per-request nonce CSP with `'strict-dynamic'` on every web page, so every page renders dynamically; CORS stays without middleware; a 10 MiB body cap; connection tests limited per account; the Action installs the CLI from its own source because the PyPI name `agentprobe` is someone else's; gitleaks over the full history in CI.
 - Example suites run 10 attempts per case; flow tests that only need a finished run use 5 (user decision 2026-10-03, ADR 0022 amendment). Demo agents unchanged; the two live-mode misses are documented, not fixed.
 - Agents and suites pages ([ADR 0038](decisions/0038-agents-and-suites-pages.md)): the agent form edits every field of both server adapters and keeps fields it doesn't show; auth-header ciphertext is deleted when replaced, cleared or its agent deleted (unless a live run still reads it); `suite_versions` (migration 0005) keeps each version's YAML from now on; suite versions, YAML and cases are readable over the API; deleting an agent warns that its runs go too.
 - Project overview and Runs page ([ADR 0037](decisions/0037-project-overview-and-runs-page.md)): trends for one suite at a time; the baseline as a tile, a dashed reference line and a table badge; `GET /projects/{id}/baselines`; one "Run a suite" dialog, mock by default.
@@ -877,6 +918,9 @@ A phase is complete only when every task in it is done.
 - `LLM_CACHE=1` is the recommended setting for live/dev runs (`.env.example`, docs/metrics.md). `scripts/measure_detection.py` forces it off for itself, because cached replays would erase the run-to-run variance it measures. Non-`live` tests clear it (user decision 2026-09-27, ADR 0022 amended).
 
 ## Known issues
+- Every web page renders per request (the CSP nonce, ADR 0039): one Vercel function invocation per page view, no prerendered HTML.
+- The CLI isn't on PyPI, and the name `agentprobe` there belongs to an unrelated project. Install it by git URL (`packages/cli/README.md`); the Action installs from its own source.
+- Neon sometimes drops the test connection mid-run ("server closed the connection unexpectedly"), failing a contiguous block of integration tests. It happened twice on 2026-10-03. Rerun the affected files; the failure looks the same each time.
 - `pnpm e2e` reuses an already-running e2e web/API/demo-agents stack (`reuseExistingServer: true`) across consecutive invocations, which is deliberate for local iteration — but a `next build` produced by a since-changed working tree won't be picked up until those processes are stopped (Windows: `Get-NetTCPConnection -LocalPort 3010,8100,9100` to find and kill them). The reset script still runs on every invocation, so stale data is never the issue; a stale build is.
 - Locally, `pnpm e2e` and `pnpm verify` share one Neon branch (`TEST_DATABASE_URL`); CI gives each its own throwaway Postgres container, so this is a local-only concern. `pnpm e2e`'s reset wipes it before *its own* run, but several of its specs leave real users and active sessions behind afterward (by design — no per-spec cleanup, unlike `01`–`06`), which sat there until the next `pnpm e2e` reset. One integration test's assertion was scoped too broadly and read that leftover data as a failure (fixed, see the E7 entry above); if `pnpm verify` ever fails right after an e2e run in a way that looks unrelated to your change, run `uv run --env-file .env python scripts/reset_test_db.py` and retry before assuming it's real.
 - `uvicorn --reload` on Windows can detect a change and never restart its worker while a run's SSE stream is open: the old code keeps serving with no second "Application startup complete" in the log (seen twice on 2026-09-28, including a peer session's API left from the morning). Restart `pnpm dev:api` after API changes if a new route 404s.
@@ -932,7 +976,6 @@ A phase is complete only when every task in it is done.
   - Whether an open SSE stream counts as activity. Render's docs list only HTTP requests and WebSocket messages; a run that sleeps mid-way is resumed by crash recovery.
   - Memory in the Linux image (Render's dashboard only).
   - That the client-IP key is exactly the browser's address. That check needs `PROXY_SECRET`; the spoofing checks passed.
-- The waking notice says "about a minute"; the measured wake is about 35 s. It overstates the wait, never understates it.
 - The API's wake-up of sleeping agent hosts (`wake.py`) runs on the inline queue and the connection test only, not on the Redis worker path (production is inline).
 - The per-user caps count, then insert, so two concurrent creates can each pass a cap by one (`ponytail:` in `limits.py`). A resumed live run builds fresh LLM clients and can exceed its budget reservation (ADR 0035).
 - Production rate limits are in memory in the one API instance. They reset when it sleeps, which happens only after 15 idle minutes.

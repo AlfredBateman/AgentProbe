@@ -33,7 +33,7 @@ It does nothing until the repository variable `DEPLOY_ENABLED` is `true`. Render
   | First page that needs the API: opening `/register` to the dashboard after "Create account" | 36.9 s, 36.6 s |
   | "Waking the server" notice appears | 3.2 s, 3.5 s |
 
-- **The web app** waits for a sleeping API before its first request after 10 quiet minutes (`lib/api/wake.ts`). It shows "Waking the server, about a minute" if that takes more than 1.5 s, gives up after 150 s, and never sends a mutation twice. Live run progress already reconnects with backoff and falls back to polling (ADR 0031).
+- **The web app** waits for a sleeping API before its first request after 10 quiet minutes (`lib/api/wake.ts`). It shows "Waking the server, about 30 to 40 seconds" if that takes more than 1.5 s, gives up after 150 s, and never sends a mutation twice. Live run progress already reconnects with backoff and falls back to polling (ADR 0031).
 - **The demo agents** are woken by the API (`WAKE_TARGET_HOSTS`). Before a run's first attempt, and before a connection test, the API polls their `/health` for up to 2 minutes.
 - **Memory:** 512 MB per service. The API measured about 130 MiB idle and 147 MiB under two concurrent runs. argon2 is limited to two hashes at a time (64 MiB each). Details are in ADR 0036.
 

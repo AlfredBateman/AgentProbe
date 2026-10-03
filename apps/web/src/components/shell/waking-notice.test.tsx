@@ -22,7 +22,7 @@ test("the notice shows in a live region while the API wakes, and goes once it an
 
   const pending = awakeFetch(new Request("http://localhost:3000/api/projects"));
   await act(() => vi.advanceTimersByTimeAsync(2_000));
-  expect(region.textContent).toContain("Waking the server, about a minute");
+  expect(region.textContent).toContain("Waking the server, about 30 to 40 seconds");
 
   awake = true;
   await act(() => vi.advanceTimersByTimeAsync(5_000));

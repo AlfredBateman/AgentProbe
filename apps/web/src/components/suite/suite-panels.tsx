@@ -174,7 +174,7 @@ function VersionDetail({ suiteId, version, previous }: { suiteId: string; versio
 const CONTEXT = 3; // unchanged lines kept around each change
 
 /** A folded line diff as plain text: +/− marks (and screen-reader words), never color alone. */
-export function YamlDiff({ before, after }: { before: string; after: string }) {
+function YamlDiff({ before, after }: { before: string; after: string }) {
   const diff = lineDiff(before, after);
   if (diff === null) return <p className="text-body-sm text-ink-muted">Too large to compare here.</p>;
   if (diff.every((l) => l.kind === "same")) return <p className="text-body-sm text-ink-muted">No changes.</p>;

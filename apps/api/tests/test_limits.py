@@ -159,3 +159,25 @@ async def test_live_budget_reserves_twice_the_per_run_cap(
             assert (await ci.post("/ci/report", json=report(mock=True))).status_code == 201
         r = await alice.post(f"/suites/{ids['suite_id']}/runs", json={"mock": False})
         assert r.status_code == 429 and "live-LLM budget" in r.json()["error"]["message"]
+
+
+async def test_connection_tests_are_limited_per_account(db: AsyncSession) -> None:
+    """Each probe is a request to a URL the caller chose: saved and draft probes share one
+    bucket per account, and another account keeps its own.
+    """
+    app = bind_db(create_app(make_settings(connection_test_rate_limit_per_minute=2)), db)
+    async with client_for(app) as alice, client_for(app) as bob:
+        await signed_up(alice, "alice@example.com")
+        await signed_up(bob, "bob@example.com")
+        ids = await make_project(alice, AGENT_URL)  # port 9: the probe fails fast, unreachable
+        draft = {"config": {"adapter_type": "http", "url": AGENT_URL, "allow_private": True}}
+        saved = f"/agents/{ids['agent_id']}/test"
+        drafts = f"/projects/{ids['project_id']}/agents/test"
+        statuses = [
+            (await alice.post(saved)).status_code,
+            (await alice.post(drafts, json=draft)).status_code,
+            (await alice.post(saved)).status_code,
+        ]
+        assert statuses == [200, 200, 429]
+        bobs = await make_project(bob, AGENT_URL)
+        assert (await bob.post(f"/agents/{bobs['agent_id']}/test")).status_code == 200

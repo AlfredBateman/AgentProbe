@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { NextRequest } from "next/server";
 import { expect, test, vi } from "vitest";
-import { proxy } from "./proxy";
+import { contentSecurityPolicy, proxy } from "./proxy";
 
 const visit = (path: string, cookie?: string) =>
   proxy(new NextRequest(`http://localhost:3000${path}`, { headers: cookie ? { cookie } : {} }));
@@ -76,4 +76,31 @@ test("without PROXY_SECRET, a browser's forged secret and client IP never reach 
   expect(forwarded(response, "x-agentprobe-client-ip")).toBeNull();
   expect(forwarded(response, "host")).toBeNull();
   vi.unstubAllEnvs();
+});
+
+const directives = (csp: string) => new Map(csp.split("; ").map((d) => [d.split(" ")[0], d] as const));
+
+test.each(["/", "/shared/abc", "/projects/p1"])("%s gets a CSP with a fresh nonce, on the response and for Next", (path) => {
+  const first = visit(path, "access_token=x");
+  const csp = first.headers.get("content-security-policy")!;
+  expect(forwarded(first, "content-security-policy")).toBe(csp); // Next nonces its scripts from it
+  const script = directives(csp).get("script-src")!;
+  expect(script).toMatch(/^script-src 'self' 'nonce-[A-Za-z0-9+/=]{20,}' 'strict-dynamic'$/);
+  expect(visit(path, "access_token=x").headers.get("content-security-policy")).not.toBe(csp);
+});
+
+test("the CSP blocks inline and foreign scripts, framing, plugins and base-tag hijacks", () => {
+  const csp = directives(contentSecurityPolicy("n0nce", false));
+  expect(csp.get("script-src")).not.toContain("unsafe-inline");
+  expect(csp.get("script-src")).not.toContain("unsafe-eval");
+  expect(csp.get("default-src")).toBe("default-src 'self'");
+  expect(csp.get("frame-ancestors")).toBe("frame-ancestors 'none'");
+  expect(csp.get("object-src")).toBe("object-src 'none'");
+  expect(csp.get("base-uri")).toBe("base-uri 'none'");
+  expect(csp.get("form-action")).toBe("form-action 'self'");
+  expect(contentSecurityPolicy("n0nce", true)).toContain("'unsafe-eval'"); // next dev only
+});
+
+test("/api responses carry the API's own headers, not the page CSP", () => {
+  expect(callApi("/api/health").headers.get("content-security-policy")).toBeNull();
 });

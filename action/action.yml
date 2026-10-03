@@ -66,11 +66,12 @@ inputs:
     default: ""
   cli-package:
     description: >-
-      pip install spec for the `agentprobe` CLI. Override with a local wheel path (or a
-      space-separated list of wheel paths) to test a change to the CLI itself before it's
-      published.
+      pip install spec for the `agentprobe` CLI. Empty (the default) installs the CLI and its
+      engine from this action's own source, at the ref the workflow pinned. Never set it to the
+      bare name `agentprobe`: that PyPI name belongs to an unrelated project. Override with a
+      local wheel path (or a space-separated list of wheel paths) to test an unreleased change.
     required: false
-    default: agentprobe
+    default: ""
   python-version:
     description: Python version to run the CLI under.
     required: false
@@ -113,7 +114,15 @@ runs:
 
     - name: Install the agentprobe CLI
       shell: bash
-      run: pip install --disable-pip-version-check ${{ inputs.cli-package }}
+      env:
+        CLI_PACKAGE: ${{ inputs.cli-package }}
+      run: |
+        if [ -z "$CLI_PACKAGE" ]; then
+          CLI_PACKAGE="$GITHUB_ACTION_PATH/../packages/core $GITHUB_ACTION_PATH/../packages/cli"
+        fi
+        # Word splitting is intended: the spec may list several wheels.
+        # shellcheck disable=SC2086
+        pip install --disable-pip-version-check $CLI_PACKAGE
 
     - id: context
       name: Resolve branch, commit and PR number
