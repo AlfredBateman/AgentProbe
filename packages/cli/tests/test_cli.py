@@ -17,7 +17,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from agentprobe import main, push
+from agentprobe import main, push, report
 from agentprobe.config import load_config
 from agentprobe.main import app
 from agentprobe_core.suite import parse_suite_yaml
@@ -376,6 +376,13 @@ def test_a_json_output_file_works_as_a_baseline() -> None:
     broken = invoke("run", "suite.yaml", "--baseline", "result.json")
     assert broken.exit_code == 3
     assert "not an AgentProbe run file" in broken.output
+
+
+def test_a_tiny_p_value_is_not_printed_as_zero() -> None:
+    assert report.p_value(5.4e-6) == "5.4e-06"
+    assert report.p_value(0.0125) == "0.0125"
+    assert report.p_value(0.0) == "0.0000"
+    assert report.p_value(1.0) == "1.0000"
 
 
 def test_baseline_must_be_the_same_suite() -> None:

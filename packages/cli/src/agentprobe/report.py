@@ -41,6 +41,11 @@ def _usd(value: float | None) -> str:
     return "n/a" if value is None else f"${value:.4f}"
 
 
+def p_value(p: float) -> str:
+    """Four decimals, or scientific below 0.0001 so a tiny p never reads as 0.0000."""
+    return f"{p:.1e}" if 0 < p < 0.0001 else f"{p:.4f}"
+
+
 def render_run(
     console: Console,
     summary: RunSummary,
@@ -141,7 +146,7 @@ def _render_regression(console: Console, regression: RegressionReport) -> None:
         s = regression.suite
         console.print(
             f"  suite {_pct(s.baseline_pass_rate)} -> {_pct(s.candidate_pass_rate)} "
-            f"({s.pass_rate_delta * 100:+.1f} pts, p_worse {s.p_worse:.4f})"
+            f"({s.pass_rate_delta * 100:+.1f} pts, p_worse {p_value(s.p_worse)})"
         )
     for comparison in regression.cases:
         if comparison.regressed or comparison.improved:
@@ -153,7 +158,7 @@ def _render_regression(console: Console, regression: RegressionReport) -> None:
                     ("regressed" if comparison.regressed else "improved", "bold"),
                     " ",
                     safe(comparison.case_id),
-                    f": {b.passes}/{b.attempts} -> {c.passes}/{c.attempts} (p {p:.4f})",
+                    f": {b.passes}/{b.attempts} -> {c.passes}/{c.attempts} (p {p_value(p)})",
                 )
             )
     for title, ids in (
@@ -213,7 +218,7 @@ def render_comparison(
             f"{c.baseline.passes}/{c.baseline.attempts}",
             f"{c.candidate.passes}/{c.candidate.attempts}",
             f"{c.pass_rate_delta * 100:+.0f} pts",
-            f"{c.p_worse:.4f}",
+            p_value(c.p_worse),
             Text(flag, style="bold red" if c.regressed else "green"),
         )
     console.print(table)

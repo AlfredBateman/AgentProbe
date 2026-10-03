@@ -163,7 +163,7 @@ Three ways in. The first needs only Python.
 
 ### 1. Just the CLI (`pip`, no clone, no server)
 
-Python 3.12 or newer. The CLI is installed by git URL, because the PyPI name `agentprobe` belongs to an unrelated project ([why](#known-limitations)).
+Python 3.12 or 3.13 (3.14 was tried and could not build the pinned PyYAML 6.0.2 on Windows). The CLI is installed by git URL, because the PyPI name `agentprobe` belongs to an unrelated project ([why](#known-limitations)).
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -205,7 +205,7 @@ cases:
       - judge: not_contains
         values: ["You are a"]
 EOF
-PYTHONPATH=. agentprobe run suites/example.yaml
+agentprobe run suites/example.yaml
 ```
 
 Exit codes: `0` passed, `1` below `--fail-under` (default 1.0), `2` regression against the baseline, `3` usage or config error, `4` infrastructure error. `agentprobe --help` and [packages/cli/README.md](packages/cli/README.md) have the rest.
