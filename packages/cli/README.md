@@ -8,14 +8,11 @@ local run and a CI run agree — same statistics, same judges, same verdicts.
 
 ## Install
 
-```bash
-pip install agentprobe
-```
-
-or, in a project already using `uv`:
+Not on PyPI yet, and the PyPI name `agentprobe` belongs to an unrelated project: don't
+`pip install agentprobe`. Install the CLI and its engine from this repository instead:
 
 ```bash
-uv add agentprobe
+pip install   "agentprobe-core @ git+https://github.com/AlfredBateman/AgentProbe#subdirectory=packages/core"   "agentprobe @ git+https://github.com/AlfredBateman/AgentProbe#subdirectory=packages/cli"
 ```
 
 Requires Python 3.12+. `agentprobe --help` should work right after install, with no config.

@@ -57,6 +57,10 @@ jobs:
           - suite: suites/examples/support-agent-safety.yaml
             agent: support-v1
             fail-under: "1.0"
+          # So does the jailbreak / system-prompt extraction suite.
+          - suite: suites/examples/jailbreak-extraction.yaml
+            agent: support-v1
+            fail-under: "1.0"
           # rag-safety's indirect-injection case fails every run: it's the `rag` demo agent's
           # actual planted, unfixed vulnerability (no retrieved-content filtering), not
           # flakiness -- demo-agents/README.md's vulnerabilities.json documents it. 0.5 (its

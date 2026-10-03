@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { PUBLIC_API_URL } from "@/lib/api/public-url";
 
 const PUBLIC = [/^\/$/, /^\/login$/, /^\/register$/, /^\/shared\//, /^\/dev\//];
 // The API trusts CLIENT_IP_HEADER only on requests carrying this secret (ADR 0036); a
@@ -33,6 +34,38 @@ function forwardToApi(request: NextRequest) {
 }
 
 /**
+ * The page's Content-Security-Policy. Scripts run only with this response's nonce, which Next
+ * puts on its own scripts (it reads the nonce from the request's CSP header), and whatever
+ * those load ('strict-dynamic'): an injected <script> or inline handler never runs. Styles
+ * allow inline, because React renders style attributes, which a nonce can't cover. The only
+ * other origin is the API's own, for live run progress (ADR 0031). `next dev` needs eval.
+ */
+export function contentSecurityPolicy(nonce: string, dev = process.env.NODE_ENV === "development") {
+  const api = PUBLIC_API_URL ? ` ${new URL(PUBLIC_API_URL).origin}` : "";
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self'",
+    `connect-src 'self'${api}`,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
+function page(request: NextRequest) {
+  const csp = contentSecurityPolicy(btoa(crypto.randomUUID()));
+  const headers = new Headers(request.headers);
+  headers.set("content-security-policy", csp);
+  const response = NextResponse.next({ request: { headers } });
+  response.headers.set("content-security-policy", csp);
+  return response;
+}
+
+/**
  * Route protection. The session cookies are httpOnly and signed by the API, so all this can
  * check is that one exists; the API stays the authority, and a 401 that a refresh can't fix
  * sends the browser to /login anyway (lib/api/session.ts). The refresh cookie counts: an
@@ -41,8 +74,8 @@ function forwardToApi(request: NextRequest) {
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   if (pathname === "/api" || pathname.startsWith("/api/")) return forwardToApi(request);
-  if (PUBLIC.some((p) => p.test(pathname))) return NextResponse.next();
-  if (request.cookies.has("access_token") || request.cookies.has("refresh_token")) return NextResponse.next();
+  if (PUBLIC.some((p) => p.test(pathname))) return page(request);
+  if (request.cookies.has("access_token") || request.cookies.has("refresh_token")) return page(request);
   const login = new URL("/login", request.url);
   login.searchParams.set("next", pathname + search);
   return NextResponse.redirect(login);

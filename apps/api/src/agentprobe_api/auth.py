@@ -56,7 +56,7 @@ def _jwt_secret(settings: Settings) -> SecretStr:
     return settings.jwt_secret
 
 
-async def _limit(limiter: RateLimiter, bucket: str) -> None:
+async def rate_limit(limiter: RateLimiter, bucket: str) -> None:
     if (retry := await limiter.acquire(bucket)) is not None:
         raise ApiError(429, "Too many requests", headers={"Retry-After": retry_after_header(retry)})
 
@@ -136,7 +136,7 @@ async def _api_key_principal(request: Request, db: AsyncSession, key: str) -> Pr
     ).first()
     if row is None:  # unknown and revoked look the same
         raise _unauthenticated("Invalid or revoked API key")
-    await _limit(request.app.state.api_key_limiter, f"key:{row.id}")
+    await rate_limit(request.app.state.api_key_limiter, f"key:{row.id}")
     return Principal(user_id=row.user_id, project_id=row.project_id, api_key_id=row.id)
 
 
@@ -284,8 +284,8 @@ async def register(
 ) -> UserOut:
     _check_origin(request, settings)  # login CSRF matters once signup is open (ADR 0035)
     ip = client_ip(request, settings)
-    await _limit(request.app.state.auth_limiter, f"ip:{ip}")
-    await _limit(request.app.state.register_limiter, f"ip:{ip}")
+    await rate_limit(request.app.state.auth_limiter, f"ip:{ip}")
+    await rate_limit(request.app.state.register_limiter, f"ip:{ip}")
     email = body.email.lower()
     if not settings.signup_open and email not in settings.signup_allowlist:
         raise ApiError(403, "Registration is closed for this email")
@@ -308,7 +308,7 @@ async def login(
     body: Login, request: Request, response: Response, db: Db, settings: AppSettings
 ) -> UserOut:
     _check_origin(request, settings)
-    await _limit(request.app.state.auth_limiter, f"ip:{client_ip(request, settings)}")
+    await rate_limit(request.app.state.auth_limiter, f"ip:{client_ip(request, settings)}")
     user = await db.scalar(select(User).where(User.email == body.email.lower()))
     # verify first: an unknown email still pays for one argon2 verify (no timing oracle).
     stored = user.password_hash if user else None

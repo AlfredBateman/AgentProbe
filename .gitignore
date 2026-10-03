@@ -34,7 +34,8 @@ coverage/
 test-results/
 playwright-report/
 
-# OS / editors
+# OS / editors / local tool settings
+.claude/
 .DS_Store
 Thumbs.db
 *.pem

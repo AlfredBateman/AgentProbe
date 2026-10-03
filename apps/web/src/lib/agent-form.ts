@@ -28,7 +28,7 @@ export type Draft = {
   totalTokens: string;
 };
 
-export const DEFAULT_TEMPLATE = { input: "{{input}}", documents: "{{documents}}" };
+const DEFAULT_TEMPLATE = { input: "{{input}}", documents: "{{documents}}" };
 
 // Defaults match the bundled demo agents, so pointing a new agent at one just works.
 const NEW: Draft = {

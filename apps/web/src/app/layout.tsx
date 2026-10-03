@@ -15,6 +15,10 @@ const inter = localFont({
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+// Every page renders per request: the CSP nonce (src/proxy.ts) is new each time, and a page
+// prerendered at build time would carry no nonce, so its scripts would be blocked.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "AgentProbe",
   description: "Statistically-corrected regression detection for LLM agents, gated in CI.",

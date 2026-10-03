@@ -6,8 +6,8 @@ import { DEMO_AGENTS_URL, VISUAL_EMAIL } from "./fixtures";
 // which would make a strict image comparison fail on rendering noise rather than a real
 // regression — the same reason this repo's own screenshot passes, throughout E0-E6, are taken
 // and compared by eye/AI against DESIGN.md rather than asserted pixel-for-pixel). What IS
-// asserted here, on every page: it renders its heading, has no horizontal overflow, and throws
-// no uncaught JS error.
+// asserted here, on every page: it renders its heading, has no horizontal overflow, throws no
+// uncaught JS error, and the CSP blocks nothing.
 test.describe.configure({ timeout: 120_000 });
 
 const PASSWORD = "correct horse battery staple visual";
@@ -41,6 +41,11 @@ test("every main page renders cleanly at desktop width", async ({ page, baseURL 
   // console message even though the app handles it — that's not a bug to fail this test over.
   const pageErrors: string[] = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));
+  // Anything the Content-Security-Policy blocked (ADR 0039): Chrome reports each as a console error.
+  const cspViolations: string[] = [];
+  page.on("console", (m) => {
+    if (m.type() === "error" && m.text().includes("Content Security Policy")) cspViolations.push(m.text());
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
 
   await post(page.request, baseURL!, "/auth/register", { email: VISUAL_EMAIL, password: PASSWORD });
@@ -97,4 +102,5 @@ test("every main page renders cleanly at desktop width", async ({ page, baseURL 
   }
 
   expect(pageErrors, `uncaught page errors: ${pageErrors.join("; ")}`).toEqual([]);
+  expect(cspViolations, `CSP violations: ${cspViolations.join("; ")}`).toEqual([]);
 });

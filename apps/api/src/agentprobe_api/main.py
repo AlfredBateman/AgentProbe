@@ -6,7 +6,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
@@ -38,10 +38,27 @@ from agentprobe_api.settings import Settings, get_settings
 log = logging.getLogger("agentprobe")
 access_log = logging.getLogger("agentprobe.access")
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+# Every request body is read into memory before validation, /auth/register's included, so an
+# unbounded one could exhaust a 512 MB instance (ADR 0036). The largest real body is a
+# /ci/report upload. ponytail: one global cap; per-route caps if /ci/report outgrows it.
+MAX_BODY_BYTES = 10 * 1024 * 1024
+# On every response. The API serves JSON (and the HTML export, which sets its own stricter CSP
+# that this doesn't override), so nothing it sends may run script, load anything or be framed.
+SECURITY_HEADERS = {
+    b"content-security-policy": b"default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+    b"x-content-type-options": b"nosniff",
+    b"x-frame-options": b"DENY",
+    b"referrer-policy": b"no-referrer",
+    b"strict-transport-security": b"max-age=63072000; includeSubDomains",
+}
+# FastAPI's own docs pages load Swagger UI / ReDoc from a CDN and hold no user data, so they
+# get the headers above except the CSP.
+_DOCS_PATHS = frozenset({"/docs", "/redoc", "/docs/oauth2-redirect"})
 
 
 class RequestContextMiddleware:
-    """Request IDs, one access-log line per request, and 500s for unhandled errors.
+    """Request IDs, security headers, the body-size cap, one access-log line per request, and
+    500s for unhandled errors.
 
     Pure ASGI (not BaseHTTPMiddleware) so streaming responses (SSE) aren't buffered. It turns
     unhandled exceptions into the standard error body itself, because Starlette's own
@@ -55,22 +72,50 @@ class RequestContextMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        incoming = dict(scope["headers"]).get(b"x-request-id", b"").decode("latin-1")
+        request_headers = dict(scope["headers"])
+        incoming = request_headers.get(b"x-request-id", b"").decode("latin-1")
         request_id = incoming if _SAFE_REQUEST_ID.match(incoming) else uuid.uuid4().hex
         token = request_id_var.set(request_id)
         start = time.perf_counter()
         status: int | None = None
+        security = {
+            k: v
+            for k, v in SECURITY_HEADERS.items()
+            if not (k == b"content-security-policy" and scope["path"] in _DOCS_PATHS)
+        }
 
         async def send_with_id(message: Message) -> None:
             nonlocal status
             if message["type"] == "http.response.start":
                 status = message["status"]
-                headers = [*message.get("headers", []), (b"x-request-id", request_id.encode())]
+                headers = list(message.get("headers", []))
+                present = {k.lower() for k, _ in headers}  # a route's own (stricter) CSP wins
+                headers += [(k, v) for k, v in security.items() if k not in present]
+                headers.append((b"x-request-id", request_id.encode()))
                 message["headers"] = headers
             await send(message)
 
+        received = 0
+
+        async def capped_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > MAX_BODY_BYTES:  # a chunked body, or one longer than declared
+                    # FastAPI's HTTPException: FastAPI turns anything else raised while it
+                    # reads a body into a 400.
+                    raise HTTPException(413, "Request body too large")
+            return message
+
         try:
-            await self.app(scope, receive, send_with_id)
+            declared = request_headers.get(b"content-length", b"")
+            if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+                await error_response(413, "payload_too_large", "Request body too large")(
+                    scope, receive, send_with_id
+                )
+                return
+            await self.app(scope, capped_receive, send_with_id)
         except Exception:
             log.exception("unhandled error")
             if status is not None:
@@ -142,6 +187,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.auth_limiter = _limiter(redis, settings.auth_rate_limit_per_minute, "rl:ip:")
     app.state.register_limiter = _limiter(
         redis, settings.register_rate_limit_per_hour, "rl:reg:", window_s=3600
+    )
+    app.state.probe_limiter = _limiter(
+        redis, settings.connection_test_rate_limit_per_minute, "rl:probe:"
     )
     app.state.argon2_slots = asyncio.Semaphore(auth.ARGON2_SLOTS)
     bus: ProgressBus = (

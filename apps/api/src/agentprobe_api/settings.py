@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 120  # per API key
     auth_rate_limit_per_minute: int = 10  # per client IP on /auth/register and /auth/login
     register_rate_limit_per_hour: int = 20  # per client IP on /auth/register, on top of that
+    connection_test_rate_limit_per_minute: int = 20  # per account, both test-connection routes
     redis_url: str = "redis://localhost:6379/0"
 
     # Runs (ADR 0017). inline: runs execute in the API process (local dev, `pnpm verify`);

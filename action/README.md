@@ -9,7 +9,7 @@ a pass rate below threshold — using the `agentprobe` CLI's own exit codes ([AD
 Minimal, no server (mock LLM judges, no baseline comparison):
 
 ```yaml
-- uses: your-org/agentprobe/action@v1
+- uses: AlfredBateman/AgentProbe/action@main
   with:
     suite: suites/regression.yaml
 ```
@@ -17,7 +17,7 @@ Minimal, no server (mock LLM judges, no baseline comparison):
 With an AgentProbe server, comparing against `main`'s recorded baseline:
 
 ```yaml
-- uses: your-org/agentprobe/action@v1
+- uses: AlfredBateman/AgentProbe/action@main
   with:
     suite: suites/regression.yaml
     baseline-branch: main
@@ -45,7 +45,7 @@ failing — see [Fork PRs](#fork-prs) below.
 | `pr-number` | from the triggering event | The PR number, if any. |
 | `api-url` | *(none)* | AgentProbe server URL. Omit to run without a server. |
 | `api-key` | *(none)* | AgentProbe project API key. Pass it as a secret; never commit it. |
-| `cli-package` | `agentprobe` | pip install spec. Override with a local wheel path (or a space-separated list of wheel paths) to test an unreleased CLI change. |
+| `cli-package` | empty | pip install spec. Empty installs the CLI and its engine from the action's own source, at the ref you pinned. Override with a local wheel path (or a space-separated list of wheel paths) to test an unreleased CLI change. Don't use the bare name `agentprobe`: on PyPI it is an unrelated project. |
 | `python-version` | `3.12` | Python version the CLI runs under. |
 | `github-token` | `github.token` | Token used to create/update the PR comment. |
 | `comment` | `true` | Post or update a PR comment with the result. |
@@ -61,7 +61,7 @@ failing — see [Fork PRs](#fork-prs) below.
 
 ## What it does
 
-1. Installs the `agentprobe` CLI (`pip install`).
+1. Installs the `agentprobe` CLI from the action's own source (`pip install`), unless `cli-package` says otherwise.
 2. Runs the suite (`agentprobe run --json`), pushing to a server (`--push`) if `api-url`/
    `api-key` are set, or comparing against `baseline-run` locally otherwise.
 3. Formats a PR comment from the result: pass rate with its 95% CI, the verdict against the

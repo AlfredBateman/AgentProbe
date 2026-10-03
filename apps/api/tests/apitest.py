@@ -30,6 +30,7 @@ def make_settings(**overrides: Any) -> Settings:
         "rate_limit_per_minute": 10_000,
         "auth_rate_limit_per_minute": 10_000,
         "register_rate_limit_per_hour": 10_000,
+        "connection_test_rate_limit_per_minute": 10_000,
         # A developer's own .env may set PUBLIC_WEB_URL; pin it so tests never depend on
         # what happens to be in the environment they run in. Pass it explicitly to test it.
         "public_web_url": None,
