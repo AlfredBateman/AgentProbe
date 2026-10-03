@@ -109,3 +109,23 @@ def test_pr_number_from_event_reads_the_event_payload(tmp_path, monkeypatch):
     event_file.write_text(json.dumps({"pull_request": {"number": 99}}), encoding="utf-8")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_file))
     assert post_comment._pr_number_from_event() == 99
+
+
+def test_main_uses_the_comments_first_line_as_its_marker(tmp_path):
+    comment_file = tmp_path / "comment.md"
+    comment_file.write_text("<!-- agentprobe-report: s__a -->" + chr(10) + "body", encoding="utf-8")
+    with patch.object(post_comment, "upsert_comment") as upsert:
+        code = post_comment.main(
+            [
+                "--comment-file",
+                str(comment_file),
+                "--pr-number",
+                "1",
+                "--repo",
+                "o/r",
+                "--token",
+                "t",
+            ]
+        )
+    assert code == 0
+    assert upsert.call_args.kwargs["marker"] == "<!-- agentprobe-report: s__a -->"

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
-from format_comment import code_span, escape_md, render_comment
+from format_comment import code_span, escape_md, marker_for, render_comment
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -100,4 +100,24 @@ def test_fallback_run_url_used_when_no_push_dashboard_url():
 )
 def test_marker_is_always_first_line(fixture):
     comment = render_comment(_load(fixture), suite="s", agent="a", baseline_branch="main")
-    assert comment.splitlines()[0] == "<!-- agentprobe-report -->"
+    assert comment.splitlines()[0] == "<!-- agentprobe-report: s__a -->"
+
+
+def test_each_suite_agent_pair_has_its_own_marker():
+    # Parallel matrix jobs share one PR: a shared marker made the last job overwrite the rest.
+    a = marker_for("suites/smoke.yaml", "support-v1")
+    assert a != marker_for("suites/smoke.yaml", "support-v2")
+    assert a != marker_for("suites/other.yaml", "support-v1")
+    # An HTML comment can't be closed early by a hostile name.
+    assert marker_for("x --> <script>", "a").count("-->") == 1
+
+
+def test_a_local_baseline_is_not_called_a_branch():
+    comment = render_comment(
+        _load("local_baseline_regression.json"),
+        suite="smoke",
+        agent="support-v1",
+        baseline_branch="feature-x",
+    )
+    assert "Verdict vs the baseline run" in comment
+    assert "feature-x" not in comment

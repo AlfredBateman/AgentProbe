@@ -50,6 +50,12 @@ issue comments for one starting with the marker and PATCHes it; job re-runs upda
 instead of piling up duplicate comments. This means a PR touching multiple suites gets multiple
 AgentProbe comments (one per suite/agent pair) — acceptable, and each is clearly titled.
 
+*Amended 2026-10-04.* The marker was in fact one fixed string for every pair, so parallel matrix jobs
+overwrote each other's comment and a PR showed only whichever job finished last (found by opening a
+demo PR). The marker now includes the suite and agent (`format_comment.marker_for`), and
+`post_comment.py` takes the comment file's first line as its marker. The comment also no longer says
+"Verdict vs `<branch>`" for a local baseline run, which compares against a run file, not a branch.
+
 ### Escaping untrusted text in the comment (ADR 0019's requirement)
 Suite/agent/branch names and case ids are wrapped in Markdown code spans, whose content is
 never re-parsed as Markdown; the only character that matters there is a literal backtick, which

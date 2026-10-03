@@ -67,8 +67,8 @@ failing — see [Fork PRs](#fork-prs) below.
 3. Formats a PR comment from the result: pass rate with its 95% CI, the verdict against the
    baseline, newly-failing and newly-flaky cases, the top failure clusters (server mode only —
    clustering runs server-side, PLAN.md C4), and a link to the dashboard or the saved local run.
-4. Creates or updates that one comment on the PR (identified by a hidden marker, so re-runs
-   edit the same comment instead of piling up new ones).
+4. Creates or updates one comment per suite and agent on the PR (identified by a hidden marker
+   that names the pair, so re-runs edit the same comment and parallel jobs don't overwrite each other).
 5. Exits with the CLI's own exit code, so the job — and the PR's required check, once branch
    protection requires it — fails on a regression or a pass rate below `fail-under`.
 

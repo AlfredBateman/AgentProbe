@@ -14,7 +14,7 @@ import re
 import sys
 from typing import Any
 
-MARKER = "<!-- agentprobe-report -->"
+MARKER_PREFIX = "<!-- agentprobe-report"
 _MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+.!|<>~-])")
 _VERDICT_ICON = {
     "regression": "\U0001f534",  # red circle
@@ -22,6 +22,15 @@ _VERDICT_ICON = {
     "no_change": "⚪",  # white circle
     "no_baseline": "⚪",
 }
+
+
+def marker_for(suite: str, agent: str) -> str:
+    """The hidden first line that identifies this suite/agent pair's comment. One per pair
+    (ADR 0032), so parallel matrix jobs each keep their own comment instead of overwriting one.
+    Only characters that are safe inside an HTML comment survive.
+    """
+    safe = re.compile(r"[^A-Za-z0-9._/]")
+    return f"{MARKER_PREFIX}: {safe.sub('_', suite)}__{safe.sub('_', agent)} -->"
 
 
 def escape_md(text: str) -> str:
@@ -64,7 +73,7 @@ def render_comment(
     dashboard_url = (push or {}).get("dashboard_url") or fallback_run_url
 
     title = code_span(suite) if not agent else f"{code_span(suite)} / {code_span(agent)}"
-    lines = [MARKER, f"## AgentProbe report: {title}", ""]
+    lines = [marker_for(suite, agent), f"## AgentProbe report: {title}", ""]
 
     ci = run.get("ci")
     dash = chr(0x2013)  # en dash; chr() avoids an ambiguous unicode literal in source (RUF001)
@@ -73,13 +82,15 @@ def render_comment(
 
     icon = _VERDICT_ICON.get(verdict, "⚪")
     verdict_text = verdict.replace("_", " ")
+    # A server compares against a branch's baseline; without one, the baseline is a run file.
+    target = code_span(baseline_branch) if push else "the baseline run"
     if comparison is None:
         lines.append(
-            f"**Verdict vs {code_span(baseline_branch)}:** {icon} no baseline available "
+            f"**Verdict vs {target}:** {icon} no baseline available "
             "(ran without a server or local baseline; see the job log)"
         )
     else:
-        lines.append(f"**Verdict vs {code_span(baseline_branch)}:** {icon} {verdict_text}")
+        lines.append(f"**Verdict vs {target}:** {icon} {verdict_text}")
         lines.append(f"\n**Newly failing:** {_case_list(comparison.get('newly_failing') or [])}")
         lines.append(f"\n**Newly flaky:** {_case_list(comparison.get('newly_flaky') or [])}")
 

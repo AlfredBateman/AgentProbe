@@ -1,5 +1,6 @@
-"""Creates or updates the single AgentProbe PR comment, identified by a hidden marker
-(format_comment.MARKER) so re-runs edit the same comment instead of piling up new ones.
+"""Creates or updates the AgentProbe PR comment for one suite/agent pair, identified by a hidden
+marker (its first line, from format_comment.marker_for) so re-runs edit the same comment
+instead of piling up new ones, and parallel matrix jobs keep one comment each.
 
 Stdlib only (urllib), talking to the GitHub REST API directly: this is the one HTTP call the
 composite action needs, and it must never hold a GitHub token beyond this process's env.
@@ -89,7 +90,7 @@ def _pr_number_from_event() -> int | None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--comment-file", required=True)
-    parser.add_argument("--marker", default="<!-- agentprobe-report -->")
+    parser.add_argument("--marker", default=None, help="default: the comment file's first line")
     parser.add_argument("--pr-number", type=int, default=None)
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY"))
     parser.add_argument("--token", default=os.environ.get("GITHUB_TOKEN"))
@@ -105,9 +106,10 @@ def main(argv: list[str] | None = None) -> int:
 
     with open(args.comment_file, encoding="utf-8") as f:
         body = f.read()
+    marker = args.marker or body.splitlines()[0]
 
     try:
-        upsert_comment(args.repo, pr_number, args.token, body, marker=args.marker)
+        upsert_comment(args.repo, pr_number, args.token, body, marker=marker)
     except urllib.error.HTTPError as exc:
         # A fork PR's GITHUB_TOKEN is read-only (403/404 here); degrade gracefully (ADR 0032):
         # the required check still fails on regression via the CLI's own exit code.
