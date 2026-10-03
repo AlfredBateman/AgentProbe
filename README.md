@@ -64,37 +64,16 @@ For example, a case going from 10/10 to 0/10 has p = 1/184,756 = 5.4e-6, far bel
 ```mermaid
 flowchart TB
     subgraph clients["Callers"]
+        direction LR
+        WEB["Dashboard<br/>apps/web (Next.js)"]
         CLI["agentprobe CLI<br/>packages/cli (Typer)"]
         ACT["GitHub Action<br/>action/ (runs the CLI)"]
-        WEB["Dashboard<br/>apps/web (Next.js)"]
     end
 
-    subgraph core["packages/core: the pure engine"]
-        SUITE["suite<br/>YAML schema, safe parser"]
-        RUNNER["runner<br/>execute_attempt, run_suite, finalize_run"]
-        ADAPT["adapters<br/>HTTP + SSRF guard, MCP, Python (CLI only)"]
-        JUDGE["judges<br/>10 rule, llm_rubric, consistency"]
-        LLM["llm<br/>mock (default), LiteLLM (opt-in), budget guard"]
-        STATS["stats<br/>Fisher, Tarone-Holm, sign-flip, Wilson, bootstrap"]
-        FIND["findings<br/>failure clustering"]
-    end
-
-    SUITE --> RUNNER
-    RUNNER --> ADAPT
-    RUNNER --> JUDGE
-    JUDGE --> LLM
-    RUNNER --> STATS
-    FIND --> LLM
-
-    AGENT["Agent under test<br/>HTTP or MCP"]
-    ADAPT --> AGENT
-
-    CLI --> RUNNER
-    CLI -- "--push: POST /ci/report" --> API
     ACT --> CLI
 
     subgraph server["apps/api: FastAPI"]
-        API["REST API + SSE<br/>auth, projects, suites, runs, compare, share"]
+        API["REST API + SSE<br/>auth, projects, suites, runs,<br/>compare, share"]
         QB{{"QUEUE_BACKEND"}}
         INL["inline<br/>runs in the API process<br/>(local dev and production)"]
         RQ["redis<br/>Taskiq jobs on a Redis stream,<br/>one per attempt"]
@@ -106,16 +85,33 @@ flowchart TB
         RQ --> WRK
         INL --> BUS
         WRK --> BUS
-        BUS -- "run progress (SSE)" --> API
     end
 
+    WEB -- "/api/*" --> API
+    BUS -- "run progress (SSE)" --> WEB
+    CLI -- "--push: POST /ci/report" --> API
+    API --> PG[("Postgres + pgvector<br/>runs, traces, judgments,<br/>finding embeddings")]
+
+    subgraph core["packages/core: the pure engine, no database or web framework"]
+        RUNNER["runner<br/>execute_attempt, run_suite, finalize_run"]
+        SUITE["suite<br/>YAML schema, safe parser"]
+        ADAPT["adapters<br/>HTTP + SSRF guard, MCP, Python (CLI only)"]
+        JUDGE["judges<br/>10 rule, llm_rubric, consistency"]
+        STATS["stats<br/>Fisher, Tarone-Holm, sign-flip,<br/>Wilson, bootstrap"]
+        FIND["findings<br/>failure clustering"]
+        LLM["llm<br/>mock (default), LiteLLM (opt-in),<br/>budget guard"]
+        SUITE --> RUNNER
+        RUNNER --> ADAPT
+        RUNNER --> JUDGE
+        RUNNER --> STATS
+        JUDGE --> LLM
+        FIND --> LLM
+    end
+
+    CLI --> RUNNER
     INL --> RUNNER
     WRK --> RUNNER
-    WEB -- "/api/*" --> API
-    API --> PG[("Postgres + pgvector<br/>runs, traces, judgments,<br/>finding embeddings")]
-    WRK --> PG
-    INL --> PG
-    API --> FIND
+    ADAPT --> AGENT["Agent under test<br/>HTTP or MCP"]
 ```
 
 Both queue backends call the same core functions (`execute_with_retries`, `finalize_run`); they add only persistence, progress events and crash recovery. The inline backend is what local development and the production deploy use. The Redis backend is what `docker compose` and CI exercise.
