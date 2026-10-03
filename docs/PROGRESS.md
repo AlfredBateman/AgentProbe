@@ -833,6 +833,12 @@ A phase is complete only when every task in it is done.
     - A direct request (browser or curl) always woke both.
 
     Fix: the browser pings `/health` on the API and the demo agents directly, at most every 10 minutes (`NUDGE_URLS`, `NEXT_PUBLIC_WAKE_URLS` set by deploy.yml). It's opaque `no-cors`, and the CSP allows those origins.
+    Verified live after `ecf049e` deployed (CI and Deploy green) and 17 idle minutes, from India through `bom1`, the edge that failed:
+    - the pings left at 6.0 s;
+    - the proxy answered 502 `no-deploy` at first, then 200 at 39.1 s;
+    - the waking notice cleared and the login form was ready at 39.6 s;
+    - the demo agents were already awake (0.4 s), woken by the same ping;
+    - no CSP violations.
   - Throwaway accounts: the three `live-check-…@example.com` users were deleted from production by a temporary workflow on the branch `tmp/live-cleanup` (the branch is deleted afterwards). A second pass found none of them.
 
 ## Next

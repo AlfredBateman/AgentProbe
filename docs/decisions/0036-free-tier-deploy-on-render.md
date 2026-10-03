@@ -302,6 +302,11 @@ every 10 minutes while the app is in use. Those are opaque `no-cors` GETs to
 agents (`lib/api/wake.ts`, ADR 0039's CSP allows the origins). `wake.py` stays, since it costs
 nothing when its target is awake.
 
+Verified live after the fix (`ecf049e`, 17 idle minutes, from India through `bom1`). The direct
+pings left as `/login` loaded, at 6.0 s. The proxy answered 502 `no-deploy` at first, then 200
+at 39.1 s, and the login form was ready at 39.6 s. The demo agents were already awake (0.4 s).
+There were no CSP violations.
+
 ## Consequences
 - The first visitor after 15 idle minutes waits about 35 s (measured: §Cold starts), with the
   notice. A run against sleeping demo agents waits about 23 s more before its first attempt
