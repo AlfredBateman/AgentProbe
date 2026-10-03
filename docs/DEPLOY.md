@@ -72,7 +72,7 @@ Render names the public URL after the service (`https://<name>.onrender.com`) an
 | `JWT_SECRET` | 32+ random characters | The API refuses to start with less. |
 | `ENCRYPTION_KEY` | A Fernet key | Encrypts stored agent auth headers. Losing it makes them unreadable, and rotating it needs a re-encryption (ADR 0003). |
 | `PROXY_SECRET` | 32+ random characters, **the same value** as the Vercel project's | Only requests carrying it have `x-agentprobe-client-ip` trusted. |
-| `WEB_ORIGIN` | The Vercel production URL, e.g. `https://agentprobe.vercel.app`, no trailing slash | The Origin check and the SSE route's CORS. The API drops a trailing slash and refuses to start with a path or query. A 403 "Cross-origin request rejected" logs the `origin` it saw and the `web_origin` it expected (ADR 0036). |
+| `WEB_ORIGIN` | The Vercel production URL, e.g. `https://agent-probe-umber.vercel.app`, no trailing slash | The Origin check and the SSE route's CORS. The API drops a trailing slash and refuses to start with a path or query. A 403 "Cross-origin request rejected" logs the `origin` it saw and the `web_origin` it expected (ADR 0036). |
 | `PUBLIC_WEB_URL` | Same as `WEB_ORIGIN` | Links in exports and PR comments. |
 | `WAKE_TARGET_HOSTS` | The demo agents' hostname, e.g. `agentprobe-demo-agents.onrender.com` | Woken before a run or connection test. |
 | `QUEUE_BACKEND` | `inline` | Runs execute in the API process; there's no worker or Redis. |
@@ -201,7 +201,7 @@ Do these in order. None of them asks for a card. Where a name is taken, use the 
 6. **Vercel project.** In the Vercel dashboard, Add New > Project > import this repository.
    - Root Directory `apps/web`, Framework Next.js, Node 22.
    - Environment Variables (Production): `API_INTERNAL_URL=<API_URL>`, `NEXT_PUBLIC_API_URL=<API_URL>`, `PROXY_SECRET=<from step 2>` (mark it Sensitive).
-   - Deploy once (deploy.yml replaces this build), and note the production URL as `<WEB_ORIGIN>` (e.g. `https://agentprobe-xyz.vercel.app`).
+   - Deploy once (deploy.yml replaces this build), and note the production URL as `<WEB_ORIGIN>` (this deployment's is `https://agent-probe-umber.vercel.app`).
    - Note the Project ID (Settings > General) and the Team or Account ID (team Settings > General).
    - Create an access token (Account Settings > Tokens).
 7. **Point the API at the web app.** In Render, on the API's Environment, set `WEB_ORIGIN=<WEB_ORIGIN>` and `PUBLIC_WEB_URL=<WEB_ORIGIN>`, then Save, rebuild and deploy.
