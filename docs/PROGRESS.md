@@ -804,6 +804,7 @@ A phase is complete only when every task in it is done.
     - 10 MiB request-body cap, whether the length is declared or the body is chunked. Before this, `/auth/register` read unbounded bodies on a 512 MB instance.
     - Connection tests limited per account (`CONNECTION_TEST_RATE_LIMIT_PER_MINUTE`, default 20). Before this, they were an unthrottled prober of URLs the caller chose.
     - gitleaks over the full history in CI's `audit` job.
+    - The first CI run of this pass went red on a new `pnpm audit` finding: GHSA-vfj7-8cjw-p6xm (`braces` <= 3.0.3), which has no patched release. It's ESLint-only, so it's accepted in ADR 0034 §Accepted risks, with a trigger to look again.
   - **Secret scan** (gitleaks 8.30.1 over all 63 commits on every ref, plus a custom pass for credential-bearing DB URLs, Neon and Render hosts, deploy hooks, `ap_` keys and JWTs):
     - no real secret anywhere;
     - three gitleaks hits, all known public dev values (the compose Fernet key, the e2e fallback key, the demo canary), none equal to a real `.env` secret, now listed in `.gitleaksignore`;
