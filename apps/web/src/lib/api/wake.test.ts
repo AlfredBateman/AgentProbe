@@ -103,3 +103,42 @@ test("an API that never wakes: after the budget the request goes ahead and fails
   expect(calls.at(-1)).toBe("POST /api/auth/login");
   expect(wakeNotice.get()).toBe(false);
 });
+
+test("services the proxy can't wake get one direct, opaque ping per 10 minutes", async () => {
+  const sent: { url: string; mode?: RequestMode }[] = [];
+  let woken = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: Request | URL | string, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      sent.push({ url, mode: init?.mode });
+      if (url === "https://api.example/health") {
+        woken = true; // a direct request wakes it
+        return new Response(null, { status: 200 });
+      }
+      if (url.endsWith("/api/health")) return new Response(null, { status: woken ? 200 : 502 }); // "no-deploy"
+      return new Response(null, { status: 200 });
+    }),
+  );
+  const urls = ["https://api.example/health", "https://agents.example/health"];
+  const first = awakeFetch(get("/api/projects"), urls);
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect((await first).status).toBe(200);
+  const direct = () => sent.filter((s) => !s.url.startsWith(BASE));
+  expect(direct()).toEqual(urls.map((url) => ({ url, mode: "no-cors" })));
+
+  await vi.advanceTimersByTimeAsync(9 * 60_000);
+  await awakeFetch(get("/api/projects"), urls);
+  expect(direct()).toHaveLength(2); // not again within 10 minutes
+  await vi.advanceTimersByTimeAsync(60_000);
+  await awakeFetch(get("/api/projects"), urls);
+  expect(direct()).toHaveLength(4);
+});
+
+test("without nudge URLs nothing is sent outside /api", async () => {
+  const calls = fakeApi({ health: [502, 502, 200] });
+  const pending = awakeFetch(get("/api/projects"), []);
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect((await pending).status).toBe(200);
+  expect(calls.every((c) => c.includes(" /api/"))).toBe(true);
+});

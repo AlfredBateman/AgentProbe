@@ -826,6 +826,14 @@ A phase is complete only when every task in it is done.
     - `pnpm verify`-equivalent run: 1,109 passed. The 21 failures and errors were one block where Neon closed the connection ("server closed the connection unexpectedly"), plus leftover e2e data that global counts tripped over. Every affected file passed after `scripts/reset_test_db.py` (82 tests).
     - `pnpm e2e`: 14 of 14 on the production build, and the visual spec now fails on any CSP violation.
     - Production build in a browser: every script carries the nonce, React hydrates, and there are no CSP violations.
+  - **Live site** (https://agent-probe-umber.vercel.app, after `f4fe6be` deployed and its smoke test passed), in a headless browser with services awake: landing, register, sign out and in, a project, an agent with a connection test, a mock run to Completed, a failing attempt's trace with its anchored Rule verdict, and a share link opened logged out. **No CSP violations or page errors.** The security headers are on both the pages and `/api`.
+  - **Found live: a cold service didn't wake through a proxy** (ADR 0036 §Cold starts through a proxy). Not caused by this pass; the code paths involved are unchanged.
+    - From India, Vercel's `bom1` edge got 502 `X-Render-Routing: no-deploy` from the sleeping API for 220 s, so registration hung behind the waking notice. From a US runner the same proxy woke it (200 at 35.6 s).
+    - The API's server-side wake of the demo agents never woke them: a connection test returned "HTTP 502 from the agent" after 116 s.
+    - A direct request (browser or curl) always woke both.
+
+    Fix: the browser pings `/health` on the API and the demo agents directly, at most every 10 minutes (`NUDGE_URLS`, `NEXT_PUBLIC_WAKE_URLS` set by deploy.yml). It's opaque `no-cors`, and the CSP allows those origins.
+  - Throwaway accounts: the three `live-check-…@example.com` users were deleted from production by a temporary workflow on the branch `tmp/live-cleanup` (the branch is deleted afterwards). A second pass found none of them.
 
 ## Next
 - **F4 follow-ups (need the Render dashboard or the operator)**: run the `PROXY_SECRET` client-IP check in docs/DEPLOY.md step 10; read the API's memory graph around a Deploy run; optionally exercise `API_EXTRAS=live` as a build arg. Details: ADR 0036 §Still unverified.
@@ -921,6 +929,7 @@ A phase is complete only when every task in it is done.
 ## Known issues
 - Every web page renders per request (the CSP nonce, ADR 0039): one Vercel function invocation per page view, no prerendered HTML.
 - The CLI isn't on PyPI, and the name `agentprobe` there belongs to an unrelated project. Install it by git URL (`packages/cli/README.md`); the Action installs from its own source.
+- A run started without the web app (API key or CLI against `/suites/{id}/runs`) on sleeping demo agents may fail as unreachable: the API's own wake (`wake.py`) doesn't wake a Render service (ADR 0036 §Cold starts through a proxy). Open the dashboard first, or curl `DEMO_AGENTS_URL/health`.
 - Neon sometimes drops the test connection mid-run ("server closed the connection unexpectedly"), failing a contiguous block of integration tests. It happened twice on 2026-10-03. Rerun the affected files; the failure looks the same each time.
 - `pnpm e2e` reuses an already-running e2e web/API/demo-agents stack (`reuseExistingServer: true`) across consecutive invocations, which is deliberate for local iteration — but a `next build` produced by a since-changed working tree won't be picked up until those processes are stopped (Windows: `Get-NetTCPConnection -LocalPort 3010,8100,9100` to find and kill them). The reset script still runs on every invocation, so stale data is never the issue; a stale build is.
 - Locally, `pnpm e2e` and `pnpm verify` share one Neon branch (`TEST_DATABASE_URL`); CI gives each its own throwaway Postgres container, so this is a local-only concern. `pnpm e2e`'s reset wipes it before *its own* run, but several of its specs leave real users and active sessions behind afterward (by design — no per-spec cleanup, unlike `01`–`06`), which sat there until the next `pnpm e2e` reset. One integration test's assertion was scoped too broadly and read that leftover data as a failure (fixed, see the E7 entry above); if `pnpm verify` ever fails right after an e2e run in a way that looks unrelated to your change, run `uv run --env-file .env python scripts/reset_test_db.py` and retry before assuming it's real.
