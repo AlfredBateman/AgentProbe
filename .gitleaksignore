@@ -1,6 +1,6 @@
 # Known, deliberately public values (checked 2026-10-03, none matches a real secret):
 # the compose stack's dev Fernet key (ADR 0033), the e2e suite's fallback key, and the
 # vulnerable demo agent's canary "API key" (fake, planted to be leaked).
-80ccbbbbc6ac2db6a017e364379c29c96bc1656e:docker-compose.yml:generic-api-key:16
-df7f63071935e9e85fd72305745b1b8421d1105f:apps/web/playwright.config.ts:generic-api-key:27
-ab6b8ff352bfa3c432116e8965273b69425485ce:demo-agents/src/agentprobe_demo_agents/secrets.py:generic-api-key:7
+442bafc9c9ff551247a5852cc90178df7a733700:docker-compose.yml:generic-api-key:16
+e38f91bf216d89b8310ec8864a702f0df4bf655c:apps/web/playwright.config.ts:generic-api-key:27
+48e9baef23d86d67b4f9dc5c704d8c2c1b377763:demo-agents/src/agentprobe_demo_agents/secrets.py:generic-api-key:7
