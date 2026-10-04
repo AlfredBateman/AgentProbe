@@ -4,7 +4,7 @@ from the CLI wrapper (`main`) so it can be unit-tested against fixtures with no 
 
 Every interpolated string here (suite/agent/branch names, case ids, cluster labels and
 summaries) can come from suite YAML an attacker edited, or from an LLM cluster summary of the
-agent's own output, so all of it counts as untrusted per CLAUDE.md and must never reopen
+agent's own output, so all of it counts as untrusted and must never reopen
 Markdown/HTML syntax in the rendered GitHub comment (ADR 0019's escaping requirement).
 """
 

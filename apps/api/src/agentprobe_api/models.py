@@ -1,4 +1,4 @@
-"""SQLAlchemy models: SPEC.md §7 with the changes in PLAN.md §3 and ADR 0007."""
+"""SQLAlchemy models, with the changes in ADR 0007."""
 
 import uuid
 from datetime import datetime
@@ -148,7 +148,7 @@ class SuiteVersion(Base):
 
 
 class TestCase(Base):
-    """Immutable per suite version (PLAN §2 #1)."""
+    """Immutable per suite version."""
 
     __tablename__ = "test_cases"
     __table_args__ = (UniqueConstraint("suite_id", "suite_version", "case_key"),)

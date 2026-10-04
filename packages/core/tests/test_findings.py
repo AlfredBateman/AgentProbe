@@ -162,7 +162,7 @@ async def test_cluster_failures_sends_the_summarizer_role_and_grouped_text() -> 
 
 
 async def test_summarizer_prompt_delimits_outputs_as_data_and_neutralizes_forged_tags() -> None:
-    """CLAUDE.md: agent outputs never steer an LLM. An attack case's output can carry
+    """Agent outputs never steer an LLM. An attack case's output can carry
     instructions aimed at the summarizer; each output is wrapped as data, and a literal
     closing tag inside one can't end the real delimiter early.
     """

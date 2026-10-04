@@ -1,4 +1,4 @@
-"""The `consistency` judge (SPEC.md §4.5): compares a case's answers across repeated
+"""The `consistency` judge: compares a case's answers across repeated
 attempts and flags unstable behavior. Unlike the other judges it scores the *case*, not one
 attempt -- `ctx.case_outputs` must hold every attempt's output for this case, supplied by
 whatever ran the repeated attempts. Its score is what `run_case_summaries.consistency_score`

@@ -18,7 +18,7 @@ import { date } from "@/lib/format";
 type Suite = components["schemas"]["SuiteOut"];
 type SuiteIssue = components["schemas"]["SuiteIssue"];
 
-/** Suites (SPEC.md §9.5, E3): create one from YAML, open it (editor, cases, versions), run it. */
+/** Suites (E3): create one from YAML, open it (editor, cases, versions), run it. */
 export default function SuitesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [suites, setSuites] = useState<Suite[] | "loading" | "error">("loading");

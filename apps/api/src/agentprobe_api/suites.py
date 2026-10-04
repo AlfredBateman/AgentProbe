@@ -1,5 +1,5 @@
 """Suites: upload/update YAML, validate without saving, sync immutable `test_cases` rows
-per version (PLAN.md §2 #1, §2 #9-13).
+per version.
 """
 
 import uuid

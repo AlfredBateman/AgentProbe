@@ -1,4 +1,4 @@
-"""Suite YAML schema (SPEC.md §4.1, PLAN.md §2 #9-#10, ADR 0006)."""
+"""Suite YAML schema (ADR 0006)."""
 
 from fractions import Fraction
 from typing import Any
@@ -74,10 +74,10 @@ class Case(BaseModel):
     input: str | None = Field(default=None, max_length=MAX_INPUT_LENGTH)
     # A category label for an author-written case; it never generates the input (ADR 0027).
     attack: str | None = None
-    # Documents/tool output for the request template's {{documents}} (PLAN.md §2 #11): plain
+    # Documents/tool output for the request template's {{documents}}: plain
     # text or JSON objects, passed through as-is (ADR 0012).
     context: list[str | dict[str, Any]] | None = None
-    # An MCP tool call (PLAN.md §2 #13, ADR 0010/0023), in place of a chat-style `input`.
+    # An MCP tool call (ADR 0010/0023), in place of a chat-style `input`.
     call: McpCall | None = None
     expect: list[JudgeSpec] = Field(min_length=1)
 

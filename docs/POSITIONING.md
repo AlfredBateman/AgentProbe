@@ -1,8 +1,7 @@
 # Positioning
 
-Status: decided 2026-09-26 (user decision). This records **what AgentProbe is for**, so that scope
-arguments and cut decisions have something to appeal to. Scope stays in [SPEC.md](../SPEC.md);
-build order in [PLAN.md](PLAN.md).
+Status: decided 2026-09-26. This records **what AgentProbe is for**, so that scope
+arguments and cut decisions have something to appeal to.
 
 ## 1. The pitch
 
@@ -43,7 +42,7 @@ measured at 2.8% worst case against a configured 5% ([docs/metrics.md](metrics.m
 
 ## 4. MCP
 
-The MCP adapter (PLAN C3) is **one adapter type, for breadth of what AgentProbe can point at** —
+The MCP adapter is **one adapter type, for breadth of what AgentProbe can point at** —
 alongside HTTP and the CLI-only Python adapter. It is not a product claim.
 
 AgentProbe is deliberately **not** marketed as an MCP-security scanner: that space already has
@@ -60,7 +59,7 @@ carries the positioning:
    the pitch needs it, and it is the single largest remaining chunk of work. Cutting it also drops
    `top_findings` from `/ci/report` (already `[]`) and the Findings dashboard page (E6).
 2. **Attack-library breadth — obfuscation variety** (base64, leetspeak, split-word,
-   Hinglish/Hindi packs; SPEC §4.4's "Obfuscation" row and the stretch packs). The attack
+   Hinglish/Hindi packs). The attack
    *categories* that the golden tests and the demo agents' planted flaws rely on stay, because
    "detected X of Y planted flaws" is evidence for the judging half of the pitch. Adding a
    tenth obfuscation variant is not.
@@ -79,15 +78,3 @@ Treat it as perishable. These products ship quickly, and "no significance testin
 kind of gap a competitor closes in one release. **Before any of this goes into the README, a
 resume, or anything else public, re-check each claim against current documentation.** A specific
 claim about a named product that has gone stale is worse than no comparison at all.
-
-## 7. SPEC.md's framing (resolved 2026-09-27)
-
-[SPEC.md](../SPEC.md) used to open with "Automated testing, red-teaming and regression detection
-for LLM agents" and "pytest + Playwright + a security scanner", and §16's first resume bullet
-said "a full-stack testing and red-teaming platform". That is the framing §2 moves away from.
-
-User decision: SPEC.md's tagline and §16's resume bullets now use §1's pitch. The rest of SPEC.md
-stays as the original scope statement. Where scope was later cut to fit the positioning, an ADR
-records it (for example [ADR 0026](decisions/0026-no-mcp-tool-description-scan.md) and
-[ADR 0027](decisions/0027-attack-ids-label-author-written-cases.md)). §6's caution still
-applies before any of this goes public.

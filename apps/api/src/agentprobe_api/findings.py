@@ -1,4 +1,4 @@
-"""Failure clustering (SPEC.md §4.8, PLAN.md C4, ADR 0024): after a run finishes, its
+"""Failure clustering (ADR 0024): after a run finishes, its
 failing outputs are embedded and grouped into findings -- "N failures -> K root causes" --
 each with an LLM-written label, summary and suggested fix. The clustering itself
 (`agentprobe_core.findings`) is pure and DB-free; this module is the persistence around it

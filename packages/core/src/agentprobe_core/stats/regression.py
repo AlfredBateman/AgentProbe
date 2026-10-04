@@ -1,5 +1,5 @@
-"""Regression detection between a baseline run and a candidate run (SPEC.md §4.6-4.7,
-ADR 0006, ADR 0014).
+"""Regression detection between a baseline run and a candidate run (ADR 0006,
+ADR 0014).
 
 A drop is flagged only when it is statistically significant AND at least `min_drop`: per
 case (one-sided Fisher exact, Tarone-Holm step-down across the shared cases) or for the

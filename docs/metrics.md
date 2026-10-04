@@ -1,6 +1,6 @@
 # Measured metrics
 
-These are numbers for the README and SPEC.md §15. Each one says how it was measured and under which assumptions.
+These are the numbers behind the README. Each one says how it was measured and under which assumptions.
 
 ## Planted-vulnerability detection: AgentProbe testing itself
 
@@ -128,7 +128,7 @@ All of this is read from GitHub Actions on `main`; nothing here is estimated. Ru
 
 The CI critical path is the `python` job, 9 min 25 s in run 37116665866, of which `pytest` is 8 min (the integration tests run on a Postgres service container and the statistics calibration tests run under coverage tracing). The other jobs run in parallel and finish sooner: `e2e` 1 min 57 s, `docker` 1 min 27 s (build 44 s, `compose up --wait` 20 s), `web` 48 s, `audit` 29 s, `packaging` 15 s, `workflow-lint` 7 s.
 
-CI has been getting slower as the suite grew: the green runs on 2026-10-01 took 6 to 8 minutes and the latest ones 8 to 10. Splitting the `python` job is the next item in `docs/PROGRESS.md`.
+CI has been getting slower as the suite grew: the green runs on 2026-10-01 took 6 to 8 minutes and the latest ones 8 to 10. Splitting the `python` job is the planned fix.
 
 ### Reproduce
 ```bash
@@ -185,7 +185,7 @@ These parameters were fixed before the first run and were not changed afterwards
 
 **Suite size: 30 cases.** A small-to-medium agent regression suite. The sensitivity section also covers 10 and 100 cases.
 
-**Runs per case: 5.** The value in SPEC.md §15, and the smallest at which a single broken case can be flagged. The sensitivity section also covers 3 and 10. The example suites themselves run 10 per case since 2026-10-03, for the regression demo and the detection numbers above.
+**Runs per case: 5.** The smallest at which a single broken case can be flagged. The sensitivity section also covers 3 and 10. The example suites themselves run 10 per case since 2026-10-03, for the regression demo and the detection numbers above.
 
 **Flaky fraction: 20%.**
 - *Context for the choice:* in conventional software, Google reported that about 16% of its tests showed some flakiness, and about 1.5% of all test runs gave a flaky result (Micco, "Flaky Tests at Google and How We Mitigate Them", Google Testing Blog, 2016). LLM agents are much less deterministic than that. τ-bench (Yao et al., 2024) reports gpt-4o succeeding on fewer than 50% of retail tasks, and passing all 8 of 8 repeated trials (pass^8) on fewer than 25%.

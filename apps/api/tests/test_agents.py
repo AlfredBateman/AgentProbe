@@ -142,7 +142,7 @@ async def test_create_and_get_mcp_agent_over_http(sign_up: SignUp) -> None:
 
 
 async def test_mcp_agent_over_stdio_is_rejected(sign_up: SignUp) -> None:
-    """SPEC.md §4.2, ADR 0023: stdio means launching an arbitrary local command, so the
+    """ADR 0023: stdio means launching an arbitrary local command, so the
     server only ever accepts MCP agents over Streamable HTTP. `McpAgentConfig` has no stdio
     fields at all, so this is a plain 422, not a runtime check.
     """

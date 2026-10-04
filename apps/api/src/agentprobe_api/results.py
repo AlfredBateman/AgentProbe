@@ -1,5 +1,5 @@
 """Per-attempt results, one attempt's full trace, and the regression diff between two runs
-(SPEC.md §8, ADR 0018). The diff itself is core's `agentprobe_core.stats.compare_runs`;
+(ADR 0018). The diff itself is core's `agentprobe_core.stats.compare_runs`;
 nothing here reimplements it.
 """
 

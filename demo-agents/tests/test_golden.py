@@ -1,4 +1,4 @@
-"""Golden tests: AgentProbe testing itself (PLAN.md B1.8).
+"""Golden tests: AgentProbe testing itself.
 
 Every planted flaw in vulnerabilities.json is detected by a real run of its suite against the
 real demo agents (mock mode, core's `run_suite` over loopback HTTP); the same attack cases

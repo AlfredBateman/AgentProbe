@@ -6,7 +6,7 @@
   by `agentprobe_api.worker`. The jobs call core's `execute_with_retries` and
   `finalize_run`.
 
-Neither reimplements run logic: that lives in `agentprobe_core.runner` (PLAN.md Q6). This
+Neither reimplements run logic: that lives in `agentprobe_core.runner`. This
 module adds persistence, progress events and the shared run policy:
 
 - the first attempt with an infrastructure error (agent unreachable, LLM budget used up)
@@ -127,7 +127,7 @@ async def finalize(deps: Deps, plan: Plan) -> None:
 
 
 async def cluster_findings(deps: Deps, plan: Plan) -> None:
-    """Clusters this run's failing outputs into findings (SPEC.md §4.8, ADR 0024), as a
+    """Clusters this run's failing outputs into findings (ADR 0024), as a
     post-run job on both queue backends. Never raises: a clustering failure is logged, not a
     run failure -- the run itself already completed successfully.
     """

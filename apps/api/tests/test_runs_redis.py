@@ -129,7 +129,7 @@ cases:
 async def test_clustering_runs_as_a_post_run_job_on_the_redis_backend(
     sign_up: SignUp, app: FastAPI, demo_url: str, start_worker: StartWorker
 ) -> None:
-    """SPEC.md §4.8 / ADR 0024: failure clustering is a post-run job on both queue backends,
+    """ADR 0024: failure clustering is a post-run job on both queue backends,
     not just inline (the golden test in test_findings.py covers inline).
     """
     await start_worker()

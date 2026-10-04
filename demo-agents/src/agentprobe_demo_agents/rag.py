@@ -2,7 +2,7 @@
 
 Planted flaw: `context` documents from the request are trusted as retrieved content with no
 filtering, so a document containing an `INSTRUCTION:` line hijacks the answer outright —
-indirect prompt injection delivered through "retrieved" content (PLAN.md ambiguity #11).
+indirect prompt injection delivered through "retrieved" content.
 """
 
 import re

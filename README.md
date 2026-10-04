@@ -251,7 +251,7 @@ pnpm dev:web                    # terminal 3: dashboard on :3000
 
 Open <http://localhost:3000> (use `localhost`; the API only accepts that origin), register, and add an agent at `http://127.0.0.1:9000/support/v1/chat` with "Allow private targets" on. To get the data in the screenshots above in one step, run `python3 scripts/seed_demo.py` (set `SIGNUP_ALLOWED_EMAILS=demo@example.com` first). It registers `demo@example.com`, creates a project and runs the smoke suite three times: support prompt v1 as the `main` baseline, then v2 (the regression), then the vulnerable bot.
 
-`pnpm check` is the offline gate (lint, types, unit tests, mock LLM). `pnpm verify` adds the integration tests against a Neon test database; see [CLAUDE.md](CLAUDE.md) for the guards around it.
+`pnpm check` is the offline gate (lint, types, unit tests, mock LLM). `pnpm verify` adds the integration tests against a Neon test database; it refuses to run unless `TEST_DATABASE_URL` is set, differs from `DATABASE_URL`, and `ALLOW_DB_TESTS=1` (see [conftest.py](conftest.py)).
 
 ### 3. `docker compose up`
 
@@ -334,12 +334,8 @@ Every number below is copied from [docs/metrics.md](docs/metrics.md) (each says 
 
 | | |
 |---|---|
-| [SPEC.md](SPEC.md) | Scope. [docs/SPEC_COMPLIANCE.md](docs/SPEC_COMPLIANCE.md) maps each item to code and tests. |
 | [docs/POSITIONING.md](docs/POSITIONING.md) | What AgentProbe is for, and what it is not. |
 | [docs/metrics.md](docs/metrics.md) | Every measured number, with its method and limits. |
 | [docs/decisions/](docs/decisions/) | Architecture decision records (ADRs). |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | The production deployment, environment variables and cold starts. |
-| [docs/INTERVIEW.md](docs/INTERVIEW.md) | A walkthrough of every module, and likely questions. |
-| [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | A 60 to 90 second demo, shot by shot. |
-| [docs/PROGRESS.md](docs/PROGRESS.md) | Build log, known issues and what is next. |
 | [DESIGN.md](DESIGN.md) | The dashboard's design system. |

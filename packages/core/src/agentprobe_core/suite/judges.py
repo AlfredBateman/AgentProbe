@@ -1,4 +1,4 @@
-"""Judge specs (SPEC.md §4.5): what a case's `expect:` list can contain.
+"""Judge specs: what a case's `expect:` list can contain.
 
 A discriminated union keyed by `judge`. Each spec only describes *what to check*; the judge
 implementations (running the check against a run's output/trace) come in Prompt 8's follow-up
@@ -14,7 +14,7 @@ class _JudgeSpecBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# --- rule-based judges (SPEC.md §4.5) --------------------------------------------------
+# --- rule-based judges --------------------------------------------------
 
 
 class ContainsJudge(_JudgeSpecBase):

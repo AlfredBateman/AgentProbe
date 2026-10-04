@@ -22,7 +22,7 @@ type Data = { runs: RunRow[]; baselines: Baseline[]; suites: Suite[] };
 const TREND_RUNS = 200;
 const LATEST = 10;
 
-/** Project overview (SPEC.md §9.3, E2): one suite's pass-rate, cost and latency trends, the
+/** Project overview (E2): one suite's pass-rate, cost and latency trends, the
  * project's latest runs, baselines, and a way to start a run. */
 export default function ProjectOverview() {
   const { projectId } = useParams<{ projectId: string }>();

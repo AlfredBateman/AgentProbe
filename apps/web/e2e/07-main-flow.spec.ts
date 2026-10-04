@@ -9,7 +9,7 @@ import { SuitesPage } from "./pages/suites-page";
 import { DEMO_AGENTS_URL, MAIN_FLOW_EMAIL } from "./fixtures";
 import { gatedAgent } from "./gated-agent";
 
-// SPEC.md §11's main flow, end to end through the real UI (no API shortcuts for setup): register
+// The main user flow, end to end through the real UI (no API shortcuts for setup): register
 // -> create project -> add agent -> test connection -> create suite from YAML -> run -> watch
 // live progress -> open a failing trace -> run against /support/v2 -> compare shows a
 // regression -> create a share link -> open it logged out.

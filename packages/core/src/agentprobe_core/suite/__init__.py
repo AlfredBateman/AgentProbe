@@ -1,4 +1,4 @@
-"""Suite YAML schema, parser and judge/attack specs (SPEC.md §4.1, §4.5)."""
+"""Suite YAML schema, parser and judge/attack specs."""
 
 from agentprobe_core.suite.attacks import ATTACKS
 from agentprobe_core.suite.judges import (

@@ -1,4 +1,4 @@
-"""Initial schema: SPEC.md §7 + PLAN.md §3 + ADR 0007.
+"""Initial schema (ADR 0007).
 
 Revision ID: 0001
 Revises:

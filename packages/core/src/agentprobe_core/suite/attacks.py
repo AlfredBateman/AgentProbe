@@ -1,4 +1,4 @@
-"""The attack ids a suite may name in `Case.attack`, with their SPEC.md §4.4 category.
+"""The attack ids a suite may name in `Case.attack`, with their category.
 
 An attack id classifies an author-written case (its literal `input` or `call`); nothing generates
 payloads from it (ADR 0027). The schema validates `Case.attack` against these keys, and the suite

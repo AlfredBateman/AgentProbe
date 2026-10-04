@@ -1,4 +1,4 @@
-"""SSRF guard for outbound requests to agents under test (SPEC.md §10, ADR 0012).
+"""SSRF guard for outbound requests to agents under test (ADR 0012).
 
 `GuardedBackend` sits under httpcore's connection pool, so it sees every new connection,
 including each redirect hop and each retry. For every connection it resolves the host once,

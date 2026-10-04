@@ -1,4 +1,4 @@
-"""Failure clustering (SPEC.md §4.8, PLAN.md C4, ADR 0024): `GET /runs/{id}/findings`, the
+"""Failure clustering (ADR 0024): `GET /runs/{id}/findings`, the
 post-run job on both queue backends, `/ci/report`'s `top_findings`, and that a clustering
 failure never fails the run it follows.
 """

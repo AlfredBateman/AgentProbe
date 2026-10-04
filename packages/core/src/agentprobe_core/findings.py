@@ -1,4 +1,4 @@
-"""Failure clustering (SPEC.md §4.8, PLAN.md C4, ADR 0024): after a run finishes, its
+"""Failure clustering (ADR 0024): after a run finishes, its
 failing outputs are embedded and grouped into a small number of findings, so "40 failures"
 becomes "5 root causes" instead of 40 things to read. For each group, the summarizer role
 writes a label, a root-cause summary and a suggested fix.
@@ -29,8 +29,8 @@ from agentprobe_core.llm.types import AGENT_OUTPUT_TAG, LLMClient, Message
 # Cosine distance below which two clusters merge (cosine similarity >= 0.75). Chosen against
 # the mock embedding's word/trigram feature hashing (ADR 0024): outputs that share most of
 # their wording land well under it, unrelated ones well over. A real embedding model may
-# want a different value; there is no suite-level config for it yet (PLAN.md C4 has no such
-# knob), so this is the one place to tune it.
+# want a different value; there is no suite-level config for it yet, so this is the one
+# place to tune it.
 DEFAULT_DISTANCE_THRESHOLD = 0.25
 
 _SUMMARY_MARKER = "Summary:"

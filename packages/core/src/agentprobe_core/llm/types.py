@@ -7,7 +7,7 @@ from typing import Any, Literal, Protocol, TypedDict
 Role = Literal["agent", "judge", "summarizer", "embedding"]
 ROLES: tuple[Role, ...] = ("agent", "judge", "summarizer", "embedding")
 
-# The judge's structured verdict (SPEC.md §4.5). Judge prompts wrap the text under judgment in
+# The judge's structured verdict. Judge prompts wrap the text under judgment in
 # <agent_output>…</agent_output> so it's delimited as data; the mock judge reads the same tags.
 AGENT_OUTPUT_TAG = "agent_output"
 JUDGE_VERDICT_SCHEMA: dict[str, Any] = {

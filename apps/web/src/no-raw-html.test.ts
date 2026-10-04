@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
-// Agent output, attack payloads and tool results are untrusted (CLAUDE.md): nothing in the app
+// Agent output, attack payloads and tool results are untrusted: nothing in the app
 // may inject HTML, and nothing may turn text into markup.
 test("no source file injects raw HTML", () => {
   const root = path.dirname(fileURLToPath(import.meta.url));

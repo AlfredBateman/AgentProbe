@@ -1,7 +1,7 @@
 """The `agentprobe` CLI: run suites locally, keep baselines, compare runs.
 
 Every run goes through `agentprobe_core.runner.run_suite`, the single run implementation
-shared with the server (PLAN.md B1.7, ADR 0016); nothing here reimplements run logic.
+shared with the server (ADR 0016); nothing here reimplements run logic.
 """
 
 import asyncio

@@ -301,7 +301,7 @@
       },
       "McpCall": {
         "additionalProperties": false,
-        "description": "A case's `call:` field (SPEC.md \u00a74.2, ADR 0010): which MCP tool to invoke and with what\narguments, in place of a chat-style `input`.",
+        "description": "A case's `call:` field (ADR 0010): which MCP tool to invoke and with what\narguments, in place of a chat-style `input`.",
         "properties": {
           "tool": {
             "maxLength": 200,

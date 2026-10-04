@@ -1,5 +1,5 @@
-"""Agents CRUD (SPEC.md §4.2, §7). Config is validated per adapter_type; the server refuses
-`python` (CLI-only, PLAN.md §2 #14). Auth headers are encrypted into `secrets` (ADR 0003) and
+"""Agents CRUD. Config is validated per adapter_type; the server refuses
+`python` (CLI-only). Auth headers are encrypted into `secrets` (ADR 0003) and
 never returned, only whether one is set.
 """
 
@@ -34,7 +34,7 @@ from agentprobe_core.adapters.mcp import McpHttpConfig
 
 router = APIRouter(tags=["agents"])
 
-# --- adapter configs (SPEC.md §4.2) -----------------------------------------------------
+# --- adapter configs -----------------------------------------------------
 
 
 class HttpAgentConfig(HttpAdapterConfig):
@@ -53,7 +53,7 @@ class McpAgentConfig(McpHttpConfig):
 
 
 def _server_adapters_only(value: Any) -> Any:
-    """A python agent never registers (PLAN.md §2 #14, ADR 0020): say so, not "bad tag"."""
+    """A python agent never registers (ADR 0020): say so, not "bad tag"."""
     if isinstance(value, dict) and value.get("adapter_type") == "python":
         raise ValueError("python adapters are CLI-only; the server only accepts http and mcp")
     return value

@@ -1,5 +1,4 @@
-"""How much does failure clustering actually collapse a run's failures? (SPEC.md §4.8,
-docs/metrics.md)
+"""How much does failure clustering actually collapse a run's failures? (docs/metrics.md)
 
     uv run python scripts/measure_clustering.py
 

@@ -1,4 +1,4 @@
-"""MCP adapter (SPEC.md §4.2, PLAN.md C3): connects over stdio or Streamable HTTP, lists
+"""MCP adapter: connects over stdio or Streamable HTTP, lists
 tools, and calls one per case's `call: {tool, arguments}` (ADR 0010) instead of chat-style
 `input`. Every call becomes a `ToolCallStep` + `ToolResultStep` trace pair (ADR 0012's shared
 step model), so `tool_called` / `tool_not_called` / `tool_args_match` judges work unchanged,

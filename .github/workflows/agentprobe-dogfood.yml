@@ -2,9 +2,9 @@ name: AgentProbe dogfood
 
 # Runs AgentProbe's own GitHub Action (action/) against the bundled demo agents, using this
 # repo's own example suites, so a change to demo-agents/ or suites/examples/ gets the same
-# PR comment and required-check gate any user of the action would see (PLAN.md F2).
+# PR comment and required-check gate any user of the action would see.
 #
-# No AgentProbe server is deployed yet (PLAN.md F4), so there is nothing to `--push` against.
+# No AgentProbe server is deployed yet, so there is nothing to `--push` against.
 # The baseline is instead the result of the same suite/agent from the most recent successful
 # run of this workflow on `main`, kept as a workflow artifact and downloaded here
 # (ADR 0032) -- a placeholder for the server-side baseline the action already supports via

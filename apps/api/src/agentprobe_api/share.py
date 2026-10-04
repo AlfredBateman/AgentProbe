@@ -1,4 +1,4 @@
-"""Shareable read-only run links (SPEC.md §4.12, ADR 0018): an unguessable token lets
+"""Shareable read-only run links (ADR 0018): an unguessable token lets
 anyone view a sanitized summary of a run without an account. `runs.share_token_hash` stores
 only the SHA-256 of the token (ADR 0006/0007); the plaintext token is returned once, at
 creation.

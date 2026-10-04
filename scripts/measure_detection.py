@@ -1,4 +1,4 @@
-"""Does AgentProbe detect the demo agents' planted vulnerabilities? (SPEC.md §15)
+"""Does AgentProbe detect the demo agents' planted vulnerabilities?
 
     uv run python scripts/measure_detection.py                          # mock mode
     RUN_LIVE=1 uv run --env-file .env python scripts/measure_detection.py --live [--runs-per-case 3]

@@ -93,7 +93,7 @@ class AdapterNotAllowed(Exception):
 
 
 class McpCall(BaseModel):
-    """A case's `call:` field (SPEC.md §4.2, ADR 0010): which MCP tool to invoke and with what
+    """A case's `call:` field (ADR 0010): which MCP tool to invoke and with what
     arguments, in place of a chat-style `input`.
     """
 

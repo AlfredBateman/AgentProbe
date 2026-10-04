@@ -64,7 +64,7 @@ async def main() -> None:
 
 
 def run() -> None:
-    # psycopg's async mode needs the selector loop on Windows (docs/PROGRESS.md known issue).
+    # psycopg's async mode needs the selector loop on Windows.
     if sys.platform == "win32":
         loop_factory = lambda: asyncio.SelectorEventLoop(selectors.SelectSelector())  # noqa: E731
         asyncio.run(main(), loop_factory=loop_factory)

@@ -1,4 +1,4 @@
-"""How a run executes (SPEC.md §4.3, PLAN.md B1.7, ADR 0016). This is the only
+"""How a run executes (ADR 0016). This is the only
 implementation: the CLI's local run and the server runner both call `run_suite` (or
 `execute_attempt` + `finalize_run`) and never reimplement the loop.
 

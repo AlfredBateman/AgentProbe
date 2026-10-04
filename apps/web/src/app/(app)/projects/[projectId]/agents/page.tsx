@@ -26,7 +26,7 @@ type AuthMode = "keep" | "set" | "clear";
 const urlOf = (agent: Agent) => String((agent.config as { url?: unknown }).url ?? "");
 const ADAPTERS: Record<AdapterType, string> = { http: "HTTP", mcp: "MCP (HTTP transport)" };
 
-/** Agents (SPEC.md §9.4, E3): add and edit HTTP and MCP agents with their full config and an
+/** Agents (E3): add and edit HTTP and MCP agents with their full config and an
  * optional write-only auth header, test a draft or a saved agent, delete with a warning. */
 export default function AgentsPage() {
   const { projectId } = useParams<{ projectId: string }>();

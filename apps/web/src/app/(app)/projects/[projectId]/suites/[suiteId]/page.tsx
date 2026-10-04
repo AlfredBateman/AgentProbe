@@ -24,7 +24,7 @@ type Validation = { valid: true; cases: number } | { valid: false; issues: Issue
 
 const VALIDATE_AFTER_MS = 400;
 
-/** One suite (SPEC.md §9.5, E3): its YAML editor (validated as you type; saving makes a new
+/** One suite (E3): its YAML editor (validated as you type; saving makes a new
  * version), its cases, and its version history. */
 export default function SuitePage() {
   const { projectId, suiteId } = useParams<{ projectId: string; suiteId: string }>();

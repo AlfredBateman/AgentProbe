@@ -1,4 +1,4 @@
-"""`POST /ci/report` (SPEC.md §8, PLAN.md §2 #2, ADRs 0018-0020): the CLI/GitHub Action
+"""`POST /ci/report` (ADRs 0018-0020): the CLI/GitHub Action
 upload a run it already executed (the agent is often only reachable from the user's own
 CI), the server persists it and compares it with the baseline for the same suite, branch
 and agent. It is the only run-ingest endpoint (ADR 0019), and it returns structured data
@@ -38,7 +38,7 @@ from agentprobe_core.suite import SuiteParseError, parse_suite_yaml
 
 log = logging.getLogger("agentprobe.ci")
 router = APIRouter(tags=["ci"])
-MAX_RESULTS = 500 * 20  # a run's own limit (SPEC's suite MAX_CASES x MAX_RUNS_PER_CASE)
+MAX_RESULTS = 500 * 20  # a run's own limit
 TOP_FINDINGS = 5  # the largest clusters, by member count
 
 

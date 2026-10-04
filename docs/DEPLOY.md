@@ -172,7 +172,7 @@ Mock judges are the default. To judge with Gemini, on the API service in Render:
 2. Set `GEMINI_API_KEY`, `LLM_PROVIDER=litellm` and `RUN_LIVE=1`, and check `LLM_BUDGET_USD_PER_RUN` and `LLM_GLOBAL_USD_PER_DAY`.
 3. Save, rebuild and deploy. Then check memory under a live run against the 512 MB limit.
 
-Only runs started with `mock: false` (and CI reports with `mock: false`, which cluster with the LLM) call Gemini. `LLM_GLOBAL_USD_PER_DAY` refuses a live run once the worst case of the last 24 hours would pass it. Only send fake data (CLAUDE.md).
+Only runs started with `mock: false` (and CI reports with `mock: false`, which cluster with the LLM) call Gemini. `LLM_GLOBAL_USD_PER_DAY` refuses a live run once the worst case of the last 24 hours would pass it. Only send fake data.
 
 ## Manual steps
 Do these in order. None of them asks for a card. Where a name is taken, use the one you get, and carry it through the later steps.
@@ -212,7 +212,7 @@ Do these in order. None of them asks for a card. Where a name is taken, use the 
 10. **Check.**
     - Run `curl <API_URL>/ready`. It returns `{"status":"ready","commit":"<sha>"}`, after up to a minute if the API was asleep.
     - Open `<WEB_ORIGIN>` with the API asleep (15 idle minutes). The "Waking the server" notice shows, then the page loads.
-    - Run the production smoke test from the repo root. It wakes both services and prints how long each took (record those cold starts in docs/PROGRESS.md). It then registers a throwaway user through the web proxy, tests and runs an agent on the public demo agents, checks results, a trace, findings and a share link, and deletes the user from the production database afterwards, even when a check fails:
+    - Run the production smoke test from the repo root. It wakes both services and prints how long each took. It then registers a throwaway user through the web proxy, tests and runs an agent on the public demo agents, checks results, a trace, findings and a share link, and deletes the user from the production database afterwards, even when a check fails:
       ```bash
       WEB_ORIGIN=<WEB_ORIGIN> API_URL=<API_URL> DEMO_AGENTS_URL=<DEMO_URL> \
       PRODUCTION_DATABASE_URL='<NEON_URL>' uv run python scripts/smoke_prod.py

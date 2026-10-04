@@ -1,5 +1,5 @@
-"""Seeds a running AgentProbe stack with the data the README's screenshots and the demo script
-(docs/DEMO_SCRIPT.md) use. Stdlib only.
+"""Seeds a running AgentProbe stack with the data the README's screenshots use.
+Stdlib only.
 
     python3 scripts/seed_demo.py                                  # local dev stack
     python3 scripts/seed_demo.py --web http://localhost:3000 --agents-url http://127.0.0.1:9000

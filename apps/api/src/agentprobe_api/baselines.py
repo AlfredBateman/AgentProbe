@@ -1,4 +1,4 @@
-"""Baselines (SPEC.md §8, PLAN.md §2 #2, ADRs 0018 and 0020): the run a suite's agent on a
+"""Baselines (ADRs 0018 and 0020): the run a suite's agent on a
 branch is compared against, keyed on (project, suite, branch, agent_id or agent_name). Set
 explicitly (e.g. on merge to the trunk branch), never automatically by `/ci/report`, so one
 bad PR run can't silently become the new baseline.

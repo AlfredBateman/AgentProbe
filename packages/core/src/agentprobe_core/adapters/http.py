@@ -1,4 +1,4 @@
-"""HTTP adapter (SPEC.md §4.2, PLAN.md §2 #11-#12, ADR 0012).
+"""HTTP adapter (ADR 0012).
 
 One JSON request per attempt, built from `request_template`; the JSON response is mapped
 through JSONPath expressions. Every connection, including redirect hops and retries, goes

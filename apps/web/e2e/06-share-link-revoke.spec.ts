@@ -41,8 +41,8 @@ test("a share link works in a logged-out browser context; after revoking, it sho
   await page.getByRole("button", { name: "Share" }).click();
   await page.getByRole("button", { name: "Create link" }).click();
   const link = await page.getByLabel(/Copy it now/).inputValue();
-  // The dialog shows the server's own PUBLIC_WEB_URL when set (a fake domain in dev, per
-  // docs/PROGRESS.md's Known issues); only the token is real, so navigate to it locally.
+  // The dialog shows the server's own PUBLIC_WEB_URL when set (a fake domain in
+  // dev); only the token is real, so navigate to it locally.
   const token = link.split("/shared/").pop();
 
   await test.step("logged out, the link shows the sanitized read-only view", async () => {

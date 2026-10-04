@@ -1,4 +1,4 @@
-"""False-alarm rate of regression checks on flaky agents that did NOT change (SPEC.md §15).
+"""False-alarm rate of regression checks on flaky agents that did NOT change.
 
     uv run python scripts/measure_false_alarms.py [--trials 5000] [--grid-trials 1000]
                                                   [--seed 20260924]

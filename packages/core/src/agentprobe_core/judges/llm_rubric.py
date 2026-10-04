@@ -1,4 +1,4 @@
-"""The `llm_rubric` judge: rubric-based scoring with a structured JSON verdict (SPEC.md §4.5).
+"""The `llm_rubric` judge: rubric-based scoring with a structured JSON verdict.
 
 The agent's output (and its input) are untrusted: they're wrapped in `<agent_output>` /
 `<agent_input>` tags and the judge is told to treat everything inside as data, never as

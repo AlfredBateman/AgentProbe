@@ -54,7 +54,7 @@ async def delete_user(database_url: str, email: str) -> uuid.UUID | None:
 
 
 def run_async[T](coro: Coroutine[Any, Any, T]) -> T:
-    # psycopg's async mode needs the selector loop on Windows (docs/PROGRESS.md known issue).
+    # psycopg's async mode needs the selector loop on Windows.
     if sys.platform == "win32":
         loop_factory = lambda: asyncio.SelectorEventLoop(selectors.SelectSelector())  # noqa: E731
         return asyncio.run(coro, loop_factory=loop_factory)

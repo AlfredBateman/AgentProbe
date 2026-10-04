@@ -1,6 +1,6 @@
-"""Python adapter: calls a local `module:callable` in-process (SPEC.md §4.2). CLI only.
+"""Python adapter: calls a local `module:callable` in-process. CLI only.
 
-Loading it imports and runs arbitrary code, so the server must never do it (PLAN.md §2 #14):
+Loading it imports and runs arbitrary code, so the server must never do it:
 `agentprobe_core.adapters` doesn't import this module, `build_adapter` refuses `python`, the
 API rejects python configs, and as a backstop the adapter refuses to load in any process that
 has imported the API server package.

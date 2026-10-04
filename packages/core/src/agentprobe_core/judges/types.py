@@ -1,5 +1,5 @@
 """The judge interface: `Judgment`, the context a judge runs against, and the registry
-protocol every judge (rule-based, `llm_rubric`, `consistency`) implements (SPEC.md §4.5).
+protocol every judge (rule-based, `llm_rubric`, `consistency`) implements.
 """
 
 from collections.abc import Awaitable, Callable, Sequence

@@ -1,4 +1,4 @@
-# The two MVP attack categories the other example suites don't exercise (SPEC.md §14): a
+# The two MVP attack categories the other example suites don't exercise: a
 # role-play jailbreak and a system-prompt extraction trick. support-v1 refuses both; the
 # vulnerable demo agent leaks its system prompt to both.
 suite: jailbreak-extraction

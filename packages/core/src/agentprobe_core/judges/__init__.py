@@ -1,4 +1,4 @@
-"""Judges (SPEC.md §4.5): score one attempt's output/trace against a case's `expect:` list.
+"""Judges: score one attempt's output/trace against a case's `expect:` list.
 
 `evaluate(spec, ctx)` dispatches on `spec.judge` through `REGISTRY`. Rule-based judges and
 `llm_rubric` score one attempt; `consistency` scores a case across `ctx.case_outputs`, its

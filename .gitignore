@@ -39,3 +39,17 @@ playwright-report/
 .DS_Store
 Thumbs.db
 *.pem
+
+# Local working notes, kept out of the public repo
+/CLAUDE.md
+/SPEC.md
+/docs/PLAN.md
+/docs/PROGRESS.md
+/docs/INTERVIEW.md
+/docs/DEMO_SCRIPT.md
+/docs/RESUME.md
+/docs/SPEC_COMPLIANCE.md
+# Only the README's screenshots are published
+/docs/screenshots/*
+!/docs/screenshots/readme-*
+!/docs/screenshots/pr-comment-blocked.png

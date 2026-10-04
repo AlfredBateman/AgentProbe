@@ -109,7 +109,7 @@ def test_attack_labels_a_literal_case() -> None:
     assert ATTACKS[case.attack] == "tool_misuse"
 
 
-# SPEC.md §4.4's categories, all represented; every id sits under its own category.
+# The attack categories, all represented; every id sits under its own category.
 @pytest.mark.parametrize(
     "category",
     ["prompt_injection", "jailbreak", "extraction", "leakage", "tool_misuse", "scope_drift"],

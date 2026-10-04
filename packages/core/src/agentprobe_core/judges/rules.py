@@ -1,4 +1,4 @@
-"""Rule-based judges (SPEC.md §4.5): contains, contains_any, not_contains, regex,
+"""Rule-based judges: contains, contains_any, not_contains, regex,
 json_schema, max_length, latency_under, tool_called, tool_not_called, tool_args_match.
 
 Tool judges honor `AgentResponse.tool_calls_reported` (ADR 0012): when an agent doesn't

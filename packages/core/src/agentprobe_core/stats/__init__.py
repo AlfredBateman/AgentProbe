@@ -1,4 +1,4 @@
-"""Statistics (SPEC.md §4.6-4.7, ADR 0006, ADR 0014): per-case pass rates, labels and Wilson
+"""Statistics (ADR 0006, ADR 0014): per-case pass rates, labels and Wilson
 intervals; the suite pass rate with a case-level bootstrap CI; and regression detection
 between a baseline and a candidate run.
 

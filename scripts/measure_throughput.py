@@ -1,4 +1,4 @@
-"""How fast does the engine run N cases x 5 attempts? (SPEC.md §15, docs/metrics.md)
+"""How fast does the engine run N cases x 5 attempts? (docs/metrics.md)
 
     uv run python scripts/measure_throughput.py
 

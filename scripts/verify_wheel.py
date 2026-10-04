@@ -1,7 +1,7 @@
 """Builds the `agentprobe-core` and `agentprobe` wheels and checks that they install and run
 in a fresh virtual environment -- isolated from this repo's own uv workspace and its editable
 installs -- so "uv build produces a wheel that installs into a fresh venv, where `agentprobe
---help` and a mock run both work" (PLAN.md D2.1) is verified, not just asserted in a README.
+--help` and a mock run both work" is verified, not just asserted in a README.
 
     uv run python scripts/verify_wheel.py
 """

@@ -1,4 +1,4 @@
-"""Runs (SPEC.md §8, ADR 0017): start a suite run, read it, cancel it, and stream its
+"""Runs (ADR 0017): start a suite run, read it, cancel it, and stream its
 progress over Server-Sent Events, with the stream-token fallback of ADR 0009 §5.
 
 Starting a run stores a config snapshot (suite YAML, agent config, secret id) and hands

@@ -1,5 +1,5 @@
 """Per-case pass rates, labels and Wilson intervals, and the suite pass rate with its
-case-level bootstrap confidence interval (SPEC.md §4.6, ADR 0006, ADR 0014).
+case-level bootstrap confidence interval (ADR 0006, ADR 0014).
 """
 
 import math

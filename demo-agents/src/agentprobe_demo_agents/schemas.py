@@ -2,7 +2,7 @@
 
 Support and vulnerable share one flat response shape (`ChatResponse`). RAG deliberately uses
 a different, nested shape (`RagResponse`) so the future HTTP adapter's dotted-path response
-mapping is genuinely exercised against more than one layout (PLAN.md ambiguity #12).
+mapping is genuinely exercised against more than one layout.
 """
 
 from typing import Any

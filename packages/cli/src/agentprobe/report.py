@@ -226,7 +226,7 @@ def render_comparison(
 
 
 INIT_CONFIG = """\
-# AgentProbe project config. Docs: SPEC.md section 4.
+# AgentProbe project config. Docs: https://github.com/AlfredBateman/AgentProbe#readme
 llm:
   provider: mock  # mock | litellm (live model for llm_rubric; also needs RUN_LIVE=1)
 

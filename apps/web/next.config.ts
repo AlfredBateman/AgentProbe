@@ -3,7 +3,7 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
 export default function config(phase: string): NextConfig {
   return {
-    // `next dev` would otherwise write AGENTS.md/CLAUDE.md here; agent instructions live in the root CLAUDE.md.
+    // `next dev` would otherwise write AGENTS.md/CLAUDE.md agent-instruction files here.
     agentRules: false,
     // Docker only (apps/web/Dockerfile sets NEXT_OUTPUT): a self-contained server for a small
     // image. Off elsewhere: standalone copies node_modules as symlinks, which Windows restricts.

@@ -1,6 +1,5 @@
-"""SPEC.md §10 (security considerations), one named test per bullet that had none, plus the
-API's security headers, CORS and CSRF guarantees. The bullets already covered elsewhere are
-mapped in docs/SPEC_COMPLIANCE.md §10.
+"""Security considerations, one named test per item not covered elsewhere, plus the
+API's security headers, CORS and CSRF guarantees.
 """
 
 import re

@@ -1,4 +1,4 @@
-"""Agent adapters (SPEC.md §4.2, ADR 0012): the HTTP adapter with its SSRF guard, the MCP
+"""Agent adapters (ADR 0012): the HTTP adapter with its SSRF guard, the MCP
 adapter, and `build_adapter` for the server. The protocol and trace step model are in
 `.types`.
 

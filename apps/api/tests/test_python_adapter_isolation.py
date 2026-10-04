@@ -1,4 +1,4 @@
-"""The server must be unable to load the CLI-only Python adapter (PLAN.md §2 #14, ADR 0012):
+"""The server must be unable to load the CLI-only Python adapter (ADR 0012):
 it never imports the module, and its source never references it.
 """
 

@@ -86,7 +86,7 @@ jobs:
       - run: test ! -e apps/web/.next/server/app/dev
 
   e2e:
-    # SPEC.md §11's main flow, end to end: its own Postgres service container (never Neon, and
+    # The main user flow, end to end: its own Postgres service container (never Neon, and
     # never the other jobs' database), migrated and reset before the run (playwright.config.ts's
     # globalSetup), with the API (QUEUE_BACKEND=inline, LLM_PROVIDER=mock) and the demo agents
     # (mock mode, seeded flakiness) started as Playwright webServers alongside a production
