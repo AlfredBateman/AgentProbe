@@ -9,7 +9,7 @@ a pass rate below threshold — using the `agentprobe` CLI's own exit codes ([AD
 Minimal, no server (mock LLM judges, no baseline comparison):
 
 ```yaml
-- uses: AlfredBateman/AgentProbe/action@main
+- uses: AlfredBateman/AgentProbe/action@v0.1.0
   with:
     suite: suites/regression.yaml
 ```
@@ -17,7 +17,7 @@ Minimal, no server (mock LLM judges, no baseline comparison):
 With an AgentProbe server, comparing against `main`'s recorded baseline:
 
 ```yaml
-- uses: AlfredBateman/AgentProbe/action@main
+- uses: AlfredBateman/AgentProbe/action@v0.1.0
   with:
     suite: suites/regression.yaml
     baseline-branch: main

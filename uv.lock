@@ -13,7 +13,7 @@ members = [
 
 [[package]]
 name = "agentprobe"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "packages/cli" }
 dependencies = [
     { name = "agentprobe-core" },
@@ -78,7 +78,7 @@ provides-extras = ["live"]
 
 [[package]]
 name = "agentprobe-core"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "anyio" },

@@ -1,6 +1,6 @@
 [project]
 name = "agentprobe-core"
-version = "0.0.0"
+version = "0.1.0"
 description = "AgentProbe engine: suite schema, adapters, judges, attacks, statistics, LLM layer."
 requires-python = ">=3.12"
 dependencies = [

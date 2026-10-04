@@ -164,8 +164,8 @@ Python 3.12 or 3.13 (3.14 was tried and could not build the pinned PyYAML 6.0.2 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install \
-  "agentprobe-core @ git+https://github.com/AlfredBateman/AgentProbe#subdirectory=packages/core" \
-  "agentprobe @ git+https://github.com/AlfredBateman/AgentProbe#subdirectory=packages/cli"
+  "agentprobe-core @ git+https://github.com/AlfredBateman/AgentProbe@v0.1.0#subdirectory=packages/core" \
+  "agentprobe @ git+https://github.com/AlfredBateman/AgentProbe@v0.1.0#subdirectory=packages/cli"
 agentprobe --help
 ```
 
@@ -282,7 +282,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Start your agent here, on a port your agentprobe.yaml points at.
-      - uses: AlfredBateman/AgentProbe/action@main
+      - uses: AlfredBateman/AgentProbe/action@v0.1.0
         with:
           suite: suites/regression.yaml
           fail-under: "0.9"

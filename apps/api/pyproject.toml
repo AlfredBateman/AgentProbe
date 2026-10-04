@@ -4,7 +4,7 @@ version = "0.0.0"
 description = "AgentProbe FastAPI backend and workers."
 requires-python = ">=3.12"
 dependencies = [
-    "agentprobe-core==0.0.0",
+    "agentprobe-core==0.1.0",
     "alembic==1.20.0",
     "argon2-cffi==25.1.0",
     "cryptography==50.0.1",
@@ -24,7 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 # Live LLM judging on the server (docs/DEPLOY.md): opt-in, since LiteLLM's tree is large. The
 # API image installs it only when built with --build-arg API_EXTRAS=live.
-live = ["agentprobe-core[live]==0.0.0"]
+live = ["agentprobe-core[live]==0.1.0"]
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13"]

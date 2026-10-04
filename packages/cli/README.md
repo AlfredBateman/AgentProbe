@@ -12,7 +12,7 @@ Not on PyPI yet, and the PyPI name `agentprobe` belongs to an unrelated project:
 `pip install agentprobe`. Install the CLI and its engine from this repository instead:
 
 ```bash
-pip install   "agentprobe-core @ git+https://github.com/AlfredBateman/AgentProbe#subdirectory=packages/core"   "agentprobe @ git+https://github.com/AlfredBateman/AgentProbe#subdirectory=packages/cli"
+pip install   "agentprobe-core @ git+https://github.com/AlfredBateman/AgentProbe@v0.1.0#subdirectory=packages/core"   "agentprobe @ git+https://github.com/AlfredBateman/AgentProbe@v0.1.0#subdirectory=packages/cli"
 ```
 
 Requires Python 3.12+. `agentprobe --help` should work right after install, with no config.
