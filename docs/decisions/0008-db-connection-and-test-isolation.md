@@ -56,3 +56,10 @@ Runs execute in the background (inline tasks, or worker jobs run in-process), ea
 - each block ends with a rollback, as closing a real session would, so a missing commit fails in tests as it would in production.
 
 The worker is never a separate process in tests, because it couldn't see the test's transaction.
+
+## Amendment (2026-10-13): the session refuses a test database that is not empty
+Rollback isolates tests from each other, not from rows committed before the session started. Locally `pnpm e2e` shares the test database: it resets it before a run and leaves its users and runs behind. `test_limits.py` asserts caps that count every user and every live run of the last 24 hours, so a `pnpm verify` within a day of an e2e run failed two tests with 429s, and the migration round trip later in the same session dropped the rows that explained them.
+- The session's `engine` fixture asks `apitest.leftover_tables` which app tables hold rows. If any do, it exits with code 2 before any DB test runs, naming the tables and the command that empties them (`scripts/reset_test_db.py`).
+- It refuses and does not truncate, like the root guard: an e2e run in progress on the same database would lose its data, and a refusal says so instead.
+- CI needs no change. Its `python` and `e2e` jobs have separate databases, and the `redis` step starts from the database the first step leaves, which is empty: every test rolls back.
+- `test_db.py::test_leftover_rows_are_detected` covers the probe.

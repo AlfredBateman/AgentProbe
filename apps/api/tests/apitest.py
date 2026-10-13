@@ -9,9 +9,11 @@ import httpx
 from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from pydantic import SecretStr
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import literal, select, union_all
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from agentprobe_api.db import get_db
+from agentprobe_api.models import Base
 from agentprobe_api.settings import Settings
 
 WEB_ORIGIN = "https://web.test"
@@ -37,6 +39,17 @@ def make_settings(**overrides: Any) -> Settings:
         **overrides,
     }
     return Settings(**values)
+
+
+async def leftover_tables(conn: AsyncConnection) -> list[str]:
+    """The app tables that hold rows. A test's rollback hides only its own writes: rows some
+    earlier process committed (an e2e run, an interrupted session) are visible to every test,
+    and the global caps count them.
+    """
+    probes = union_all(
+        *(select(literal(t.name)).where(select(t).exists()) for t in Base.metadata.sorted_tables)
+    )
+    return sorted((await conn.execute(probes)).scalars())
 
 
 ClientFactory = Callable[..., httpx.AsyncClient]

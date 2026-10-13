@@ -3,6 +3,8 @@ DB fixture runs, and they only connect when an `integration` test requests them.
 
 Isolation (ADR 0008): one connection per session; each test runs inside a transaction
 that is rolled back. The session joins it via savepoints, so code under test can commit.
+That isolates tests from each other, not from rows already committed, so the session refuses
+to start on a test database that is not empty.
 """
 
 import os
@@ -21,7 +23,15 @@ from agentprobe_api.db import make_engine
 from agentprobe_api.main import create_app
 from agentprobe_demo_agents import flaky
 from agentprobe_demo_agents.main import serve_in_background
-from apitest import ClientFactory, SignUp, bind_db, client_for, make_settings, signed_up
+from apitest import (
+    ClientFactory,
+    SignUp,
+    bind_db,
+    client_for,
+    leftover_tables,
+    make_settings,
+    signed_up,
+)
 
 ALEMBIC_INI = Path(__file__).parents[1] / "alembic.ini"
 # --- integration fixtures ---------------------------------------------------------------
@@ -43,6 +53,16 @@ def migrated(alembic_config: Config) -> None:
 @pytest.fixture(scope="session")
 async def engine(migrated: None) -> AsyncIterator[AsyncEngine]:
     engine = make_engine(os.environ["TEST_DATABASE_URL"])  # same config as production
+    async with engine.connect() as conn:
+        leftovers = await leftover_tables(conn)
+    if leftovers:
+        await engine.dispose()
+        pytest.exit(
+            "Refusing to run DB tests: the test database already has rows in "
+            f"{', '.join(leftovers)}, and every test would see them. Empty it with "
+            "`uv run --env-file .env python scripts/reset_test_db.py`.",
+            returncode=2,
+        )
     yield engine
     await engine.dispose()
 
