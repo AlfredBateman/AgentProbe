@@ -27,6 +27,13 @@ in those lockfiles has a published advisory.
 - The first run (2026-09-29) found nothing. `pip-audit` covered 113 packages with 0 skipped;
   `pnpm audit` was clean.
 
+## Fixed findings
+- **2026-10-13: `next` < 16.3.8 (six advisories, the highest GHSA-cjq9-62q9-8jv4, SSRF in image
+  optimization), `sharp` < 0.35.5 (GHSA-wq5f-xc86-pv6w) and `source-map-js` < 1.2.2
+  (GHSA-68fv-2mgg-jv7q).** CI had been red on `audit` since 2026-10-11. Fixed by upgrading:
+  `next` and `eslint-config-next` 16.3.6 to 16.3.8, and the two transitive packages to their
+  patched releases inside their existing ranges, so no override was needed.
+
 ## Accepted risks
 - **GHSA-vfj7-8cjw-p6xm, `braces` <= 3.0.3** (high: stack exhaustion on deeply nested brace
   patterns). Accepted 2026-10-03, when CI first flagged it. No patched release exists: npm's
