@@ -566,10 +566,6 @@ This file describes a marketing site; AgentProbe is a data-dense dashboard. [ADR
 - **Charts.** Categorical series use `{colors.chart-1}` to `{colors.chart-4}` in that order; a fifth series folds into "Other". Ink is the single-series and "current" line, ink-muted the dashed "baseline". Pass green and fail red are indistinguishable to deuteranopes (OKLab ΔE 1.1), so results are never encoded by those two colors alone: badges carry labels and status dots differ in shape.
 - **Gradient cards.** Violet only; white text on the magenta, orange and coral anchors fails WCAG AA. Those anchors remain chart series colors.
 
-## Landing Hero
-
-The landing page's hero is the one scoped exception to this file: a warm, amber-lit video stage with its own palette, a squared CTA and a white focus outline. [ADR 0040](docs/decisions/0040-landing-hero-scoped-palette.md) lists every deviation. Its colors are properties of the hero's own stylesheet, not tokens; nothing outside the hero may use them.
-
 ## Do's and Don'ts
 
 ### Do

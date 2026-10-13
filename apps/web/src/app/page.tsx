@@ -1,4 +1,5 @@
-import { Hero } from "@/components/landing/hero";
+import Link from "next/link";
+import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code";
 import { GradientCard } from "@/components/ui/gradient-card";
@@ -31,7 +32,36 @@ const CLI_EXAMPLE = `$ agentprobe run suites/regression.yaml \\
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col">
-      <Hero />
+      <header className="mx-auto flex h-56 w-full max-w-1440 shrink-0 items-center justify-between px-16 tablet:px-30">
+        <span className="font-display text-[20px] font-medium tracking-[-0.6px] text-ink">AgentProbe</span>
+        <div className="flex items-center gap-8">
+          <Link href="/login" className={buttonClasses("secondary")}>
+            Sign in
+          </Link>
+          <Link href="/register" className={buttonClasses("primary")}>
+            Get started
+          </Link>
+        </div>
+      </header>
+
+      <section className="mx-auto flex w-full max-w-1440 flex-col items-start gap-20 px-16 py-40 tablet:px-30 tablet:py-96">
+        <h1 className="font-display max-w-900 text-display-md tablet:text-display-lg desktop:text-display-xxl">
+          Statistically-corrected, flakiness-aware regression detection for LLM agents.
+        </h1>
+        <p className="max-w-640 text-body-lg text-ink-muted">
+          AgentProbe runs every case in your suite many times, judges traces and tool calls — not just final text —
+          and fails a pull request only when a drop is statistically meaningful. Not when a flaky case happened to
+          fail this time.
+        </p>
+        <div className="flex flex-wrap items-center gap-12">
+          <Link href="/register" className={buttonClasses("primary")}>
+            Get started
+          </Link>
+          <Link href="/login" className={buttonClasses("secondary")}>
+            Sign in
+          </Link>
+        </div>
+      </section>
 
       <section className="mx-auto w-full max-w-1440 px-16 py-40 tablet:px-30">
         <h2 className="font-display text-display-md">How it works</h2>

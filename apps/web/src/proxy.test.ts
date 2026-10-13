@@ -98,7 +98,6 @@ test("the CSP blocks inline and foreign scripts, framing, plugins and base-tag h
   expect(csp.get("object-src")).toBe("object-src 'none'");
   expect(csp.get("base-uri")).toBe("base-uri 'none'");
   expect(csp.get("form-action")).toBe("form-action 'self'");
-  expect(csp.get("media-src")).toBe("media-src 'self'"); // the hero video is self-hosted, never hotlinked
   expect(contentSecurityPolicy("n0nce", true)).toContain("'unsafe-eval'"); // next dev only
 });
 
