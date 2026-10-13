@@ -72,6 +72,7 @@ export function generate(tokens = readTokens()) {
       `line-height: ${t.lineHeight}`,
       `letter-spacing: ${t.letterSpacing}`,
       `text-transform: ${t.textTransform ?? "none"}`,
+      ...(t.wordSpacing ? [`word-spacing: ${t.wordSpacing}`] : []),
       ...(t.fontStretch ? [`font-stretch: ${t.fontStretch}`] : []),
     ];
     return `@utility type-${name} {\n${rules.map((r) => `  ${r};`).join("\n")}\n}\n`;

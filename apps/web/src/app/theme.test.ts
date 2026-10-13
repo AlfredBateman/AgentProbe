@@ -4,7 +4,11 @@ import { expect, test } from "vitest";
 import { contrast } from "@/lib/contrast";
 import { generate, OUTPUT, readTokens } from "../../scripts/gen-theme.mjs";
 
-const { colors, aliases } = readTokens() as { colors: Record<string, string>; aliases: { colors: Record<string, string> } };
+const { colors, aliases, typography } = readTokens() as {
+  colors: Record<string, string>;
+  aliases: { colors: Record<string, string> };
+  typography: Record<string, { letterSpacing: string; wordSpacing?: string }>;
+};
 const hex = (name: string) => colors[aliases.colors[name] ?? name];
 const surfaces = ["canvas", "surface-1", "surface-2"];
 const onSurfaces = (names: string[]) => names.flatMap((n) => surfaces.map((s) => [n, s]));
@@ -28,4 +32,11 @@ test.each([
 // Non-text marks and control borders: WCAG 1.4.11 asks 3:1 against the surface they sit on.
 test.each(onSurfaces(["hairline-strong", "chart-1", "chart-2", "chart-3", "chart-4"]))("%s on %s is at least 3:1", (fg, bg) => {
   expect(contrast(hex(fg), hex(bg))).toBeGreaterThanOrEqual(3);
+});
+
+// Tracking applies to the space glyph too, and Archivo kerns against it, so a tier tracked
+// below zero closes its word gaps ("AT YOUR" reads "ATYOUR") unless it adds word-spacing back.
+// 0.16em brings the narrowest kerned space to about 0.28em; the boards measure it.
+test.each(Object.entries(typography).filter(([, t]) => parseFloat(t.letterSpacing) < 0))("%s sets a word-spacing that wins its tracking back", (_name, t) => {
+  expect(parseFloat(t.wordSpacing ?? "0")).toBeGreaterThanOrEqual(0.16);
 });

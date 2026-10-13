@@ -67,3 +67,14 @@ anime.js is rejected: it would duplicate GSAP. Neither `gsap` nor `three` is ins
 - Until a page is rebuilt it mixes the new tokens with its old layout. The landing headline is the roughest case: its old `display-xxl` class now resolves to the new fluid size.
 - `next build` downloads Archivo and JetBrains Mono, so it still needs network access.
 - A new token goes into DESIGN.md first, then `pnpm --filter web gen:theme`. `theme.css` is never edited by hand.
+
+## Amendment 2026-10-14 (D1 review)
+The design boards were reviewed and approved with revisions. Only tokens, global CSS and `/dev/design` changed; no page was rebuilt.
+
+1. **Word spacing is part of each tight tier.** Heavy caps at −0.02 to −0.04em tracking, and Archivo's kerning against the space glyph, left word gaps of 0.08em at the 75%-width tiers and 0.12 to 0.17em elsewhere, so "AT YOUR" read "ATYOUR". `display-xxl`/`xl` get `wordSpacing: 0.2em`, `display-lg` 0.18em, `display-md` 0.17em and `headline` 0.16em, which brings the narrowest kerned space to 0.28em or more (measured in a browser on kerned phrases). `gen-theme.mjs` emits `word-spacing`, and `theme.test.ts` fails when a tier tracked below zero has none.
+2. **`display-xxl` is sized against its container.** `clamp(56px, 15vw, 232px)` overflowed at 320 to 414px and at 810px, because the 56px floor and the fixed gutters around the hero are not proportional to the viewport (REGRESSIONS is 5.75em wide). It is now `clamp(28px, 15cqi, 232px)`, used inside an `@container`; with no container it falls back to the viewport width, as before. `display-xl`'s floor went from 44px to 36px. Checked: no display text overflows at 320, 360, 390, 414, 600, 809, 810, 1199, 1200 and 1440px.
+3. **Marks gained a shape cue and grew from 8px to 10px.** Fail is a filled square with a knocked-out cross (`mark-fail`) and error is a hollow square with a `!` (`mark-error`). At 8px the `!` does not resolve, so all five marks are 10px; pass, flaky and stable keep their shapes. The error mark's `ink-muted` is 7.04, 6.66 and 6.19:1 on the three surfaces, above the 4.5:1 text floor, and `theme.test.ts` already checks it. The attempt matrix uses the same marks and has a legend.
+4. **`IMPROVEMENT` is a lime outline, not a fill.** A solid lime fill now means only the primary action or the single emphasised hero panel. This supersedes §2's "improvement is a lime fill".
+5. **Mono uppercase is for labels and data.** Text longer than about 8 words is Archivo in sentence case (`body`/`body-sm`). `design.test.tsx` enforces it on the boards.
+6. **`REV` marks read the package version** (`apps/web/package.json`) instead of a typed number.
+

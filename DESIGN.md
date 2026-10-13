@@ -24,18 +24,20 @@ fonts:
 typography:
   display-xxl:
     fontFamily: Archivo
-    fontSize: clamp(56px, 15vw, 232px)
+    fontSize: clamp(28px, 15cqi, 232px)
     fontWeight: 900
     lineHeight: 0.85
     letterSpacing: -0.04em
+    wordSpacing: 0.2em
     textTransform: uppercase
     fontStretch: 75%
   display-xl:
     fontFamily: Archivo
-    fontSize: clamp(44px, 9vw, 120px)
+    fontSize: clamp(36px, 9vw, 120px)
     fontWeight: 900
     lineHeight: 0.88
     letterSpacing: -0.04em
+    wordSpacing: 0.2em
     textTransform: uppercase
     fontStretch: 75%
   display-lg:
@@ -44,6 +46,7 @@ typography:
     fontWeight: 800
     lineHeight: 0.9
     letterSpacing: -0.04em
+    wordSpacing: 0.18em
     textTransform: uppercase
   display-md:
     fontFamily: Archivo
@@ -51,6 +54,7 @@ typography:
     fontWeight: 800
     lineHeight: 0.95
     letterSpacing: -0.03em
+    wordSpacing: 0.17em
     textTransform: uppercase
   headline:
     fontFamily: Archivo
@@ -58,6 +62,7 @@ typography:
     fontWeight: 800
     lineHeight: 1.1
     letterSpacing: -0.02em
+    wordSpacing: 0.16em
     textTransform: uppercase
   body-lg:
     fontFamily: Archivo
@@ -284,8 +289,9 @@ components:
     rounded: "{rounded.none}"
     padding: 3px 8px
   verdict-improvement:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.on-accent}"
+    backgroundColor: "{colors.canvas}"
+    textColor: "{colors.accent}"
+    borderColor: "{colors.accent}"
     typography: "{typography.label}"
     rounded: "{rounded.none}"
     padding: 3px 8px
@@ -315,7 +321,7 @@ The system is dark only. [ADR 0042](docs/decisions/0042-industrial-brutalist-des
 | `{colors.hairline-strong}` | #707070 | Borders that mark a control or an outer frame: inputs, buttons, dialogs. At least 3:1 on every surface. |
 | `{colors.ink}` | #EAEAEA | Text, and the pass state. |
 | `{colors.ink-muted}` | #9A9A9A | Labels, metadata, secondary text. The only grey used for text. |
-| `{colors.accent}` | #CAFF00 | Brand, primary action, focus ring, selection, the active nav item, an improvement verdict. |
+| `{colors.accent}` | #CAFF00 | Brand, primary action (the one fill), focus ring, selection, the active nav item, an improvement verdict (outline only). |
 | `{colors.on-accent}` | #0A0A0A | Text on a lime fill. |
 | `{colors.fail}` | #FF2A2A | Failure, regression, destructive actions. As text, border or fill. |
 | `{colors.on-fail}` | #0A0A0A | Text on a red fill. |
@@ -323,22 +329,25 @@ The system is dark only. [ADR 0042](docs/decisions/0042-industrial-brutalist-des
 Rules:
 - No other hue. There is no green and no amber. Greys are neutral; none is tinted.
 - Lime is never a "pass" colour. A passing case is plain `ink`, so a table of passes stays quiet and a failure stands out.
+- A solid lime fill means exactly two things: the primary action, and the single emphasised panel of a hero. Everything else that is lime (a verdict, a link, a rule, a nav item) is an outline or text, never a fill.
 - Red is never decoration. If nothing failed and nothing is being destroyed, there is no red on the page.
 - Text uses `ink`, `ink-muted`, `accent` or `fail` on the three surfaces, or `on-accent` / `on-fail` on their fills. `theme.test.ts` checks every one of those pairs at 4.5:1.
 
 ### Status encoding
 
-A status is never told by colour alone. Each has its own mark and always carries its text label.
+A status is never told by colour alone. Each has its own mark, a shape that still reads in greyscale, and always carries its text label. Marks are 10px squares (`mark-fail` and `mark-error` in `globals.css` draw the two glyph marks, and scale down to attempt-matrix cells).
 
-| Status | Mark (8px) | Colour | Chip border |
+| Status | Mark (10px) | Colour | Chip border |
 |---|---|---|---|
 | Pass | filled square | `ink` | 1px `hairline-strong` |
-| Fail | filled square | `fail` | 1px `fail` |
+| Fail | filled square with a knocked-out cross (`mark-fail`) | `fail` | 1px `fail` |
 | Flaky | hatched square (`///`) | `ink` | 1px dashed `ink` |
-| Error | hollow square | `ink-muted` | 1px `hairline-strong` |
+| Error | hollow square with a `!` (`mark-error`) | `ink-muted` | 1px `hairline-strong` |
 | Stable | 2px bar | `ink` | 1px `hairline-strong` |
 
-Verdicts: `REGRESSION` is a red fill with `on-fail` text, `IMPROVEMENT` is a lime fill with `on-accent` text, `NO CHANGE` is an `ink` outline.
+The cross is `on-fail` on a `fail` fill (5.30:1). The error mark's grey is `ink-muted`, 7.04:1 on `canvas`, 6.66:1 on `surface-1` and 6.19:1 on `surface-2`, all above the 4.5:1 text floor and the 3:1 mark floor. A legend for a chart or matrix uses the same marks.
+
+Verdicts: `REGRESSION` is a red fill with `on-fail` text, `IMPROVEMENT` is a lime outline with lime text and no fill, `NO CHANGE` is an `ink` outline.
 
 ## Typography
 
@@ -349,8 +358,8 @@ Two families, both loaded with `next/font` and served from the app's own origin.
 
 | Token | Font | Size | Weight | Line height | Tracking | Case | Use |
 |---|---|---|---|---|---|---|---|
-| `{typography.display-xxl}` | Archivo, 75% width | clamp(56px, 15vw, 232px) | 900 | 0.85 | −0.04em | upper | The landing headline. |
-| `{typography.display-xl}` | Archivo, 75% width | clamp(44px, 9vw, 120px) | 900 | 0.88 | −0.04em | upper | Section openers on the landing page. |
+| `{typography.display-xxl}` | Archivo, 75% width | clamp(28px, 15cqi, 232px) | 900 | 0.85 | −0.04em | upper | The landing headline. |
+| `{typography.display-xl}` | Archivo, 75% width | clamp(36px, 9vw, 120px) | 900 | 0.88 | −0.04em | upper | Section openers on the landing page. |
 | `{typography.display-lg}` | Archivo | clamp(34px, 5vw, 64px) | 800 | 0.9 | −0.04em | upper | Stat values, large numbers. |
 | `{typography.display-md}` | Archivo | clamp(24px, 3vw, 36px) | 800 | 0.95 | −0.03em | upper | Page titles. |
 | `{typography.headline}` | Archivo | 18px | 800 | 1.1 | −0.02em | upper | Panel and dialog titles. |
@@ -358,14 +367,18 @@ Two families, both loaded with `next/font` and served from the app's own origin.
 | `{typography.body}` | Archivo | 15px | 400 | 1.5 | 0 | sentence | Prose: descriptions, findings, errors. |
 | `{typography.body-sm}` | Archivo | 13px | 400 | 1.45 | 0 | sentence | Help text. |
 | `{typography.label}` | JetBrains Mono | 11px | 500 | 1.3 | 0.08em | upper | Field labels, nav, chips, column groups. |
-| `{typography.micro}` | JetBrains Mono | 10px | 500 | 1.2 | 0.1em | upper | Table headers, REV/UNIT marks, footnotes. |
+| `{typography.micro}` | JetBrains Mono | 10px | 500 | 1.2 | 0.1em | upper | Table headers, REV/UNIT marks, short footnotes. |
 | `{typography.data}` | JetBrains Mono | 13px | 400 | 1.4 | 0.05em | upper | Table cells and readouts. |
 | `{typography.button}` | JetBrains Mono | 12px | 700 | 1 | 0.08em | upper | Buttons. |
 | `{typography.code}` | JetBrains Mono | 13px | 400 | 1.5 | 0 | as written | Ids, YAML, JSON, traces, agent output. |
 
 Rules:
-- Use one `type-<token>` class per element (`type-label`, `type-display-md`). It sets family, size, weight, line height, tracking, case and width together.
+- Use one `type-<token>` class per element (`type-label`, `type-display-md`). It sets family, size, weight, line height, tracking, case, width and word spacing together.
 - Display sizes are fluid `clamp()` values. Do not add breakpoint overrides for them.
+- `display-xxl` is sized against its container (`cqi`), so the widest headline word fits at any width and in any nesting. Put the headline inside an `@container` element; without one it falls back to the viewport width, as `vw` would.
+- **Word spacing is part of the tier.** Tight tracking and heavy caps close up the space glyph (Archivo also kerns against it: "AT YOUR" collapses to "ATYOUR"), so every tier tracked below zero sets `wordSpacing` to bring the narrowest kerned space back to about 0.28em. `theme.test.ts` fails if a tier tracked below zero has none.
+- **Mono uppercase is for labels and data only.** Anything longer than about 8 words is prose: set it in `{typography.body}` or `{typography.body-sm}`, Archivo, sentence case. That includes card descriptions, explanatory notes and captions with a full sentence in them. A chart or board note that is a short label (`Fig. 01 /// Attempt matrix`) stays in `{typography.micro}`.
+- A `REV` mark shows the app's package version, read from `package.json`. Never type a version number into a design.
 - **Verbatim data is never case-changed.** Case ids, suite YAML, tool arguments and agent output are shown exactly as written, in `{typography.code}`. Uppercase is for the interface's own words.
 - Prose stays in sentence case and under about 65 characters per line.
 - An outlined word (`text-outline`) is a display-size device only: stroke, no fill, so what is behind it shows through.
@@ -431,13 +444,13 @@ Motion is short and mechanical.
 | Tablet | 810px | Two- and three-column grids. Full nav. |
 | Desktop | 1199px | Full layouts; callouts sit beside display type. |
 
-Display type scales by its own `clamp()`; it is never swapped for a smaller tier at a breakpoint.
+Display type scales by its own `clamp()`; it is never swapped for a smaller tier at a breakpoint. It must not overflow its container from 320 to 1440px; check the widest word (REGRESSIONS is 5.75em at `display-xxl`).
 
 ## Do's and Don'ts
 
 ### Do
 - Give every region a visible edge.
-- Put one lime element in a view where the eye should land first.
+- Put one lime element in a view where the eye should land first. Fill it only if it is the primary action or the one emphasised hero panel.
 - Keep failures loud and passes quiet.
 - Label every status and every placeholder figure.
 - Write short, plain, uppercase labels: attempts, cases, suites, baseline, candidate, regression, flaky, verdict.
@@ -448,6 +461,9 @@ Display type scales by its own `clamp()`; it is never swapped for a smaller tier
 - Don't use red for emphasis, links or branding.
 - Don't fade, blur or glow.
 - Don't uppercase data the user or an agent wrote.
+- Don't set sentences in mono uppercase. Prose is Archivo in sentence case.
+- Don't use a lime fill for a status or verdict.
+- Don't tell a status by colour alone: every status has its own shape.
 - Don't show an invented number. A figure is real, or it is marked as illustrative.
 
 ## Iteration Guide

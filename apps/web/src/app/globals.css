@@ -114,6 +114,33 @@
   background-image: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 4px);
 }
 
+/* Status marks (DESIGN.md "Status encoding"): shapes drawn in the current color, so a status
+   is never told by hue alone. Size the element yourself (10px in a chip, a grid cell in the
+   attempt matrix). */
+
+/* Fail: a filled square with a cross knocked out of it, in on-fail. */
+@utility mark-fail {
+  background-color: currentColor;
+  background-image:
+    linear-gradient(45deg, transparent calc(50% - 5%), var(--color-on-fail) calc(50% - 5%) calc(50% + 5%), transparent calc(50% + 5%)),
+    linear-gradient(-45deg, transparent calc(50% - 5%), var(--color-on-fail) calc(50% - 5%) calc(50% + 5%), transparent calc(50% + 5%));
+}
+
+/* Error: a hollow square with a "!" in it: a 2px stem, a 1px gap and a 2px dot on the 10px
+   mark. On a cell too small for that the stem and dot run together, still a bar in a hollow
+   square. */
+@utility mark-error {
+  border: 1px solid currentColor;
+  background-image: linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-size:
+    2px 3px,
+    2px 2px;
+  background-position:
+    50% 1px,
+    50% calc(100% - 1px);
+}
+
 /* The one global grain layer. Mount it once per page, aria-hidden. */
 @utility noise {
   position: fixed;

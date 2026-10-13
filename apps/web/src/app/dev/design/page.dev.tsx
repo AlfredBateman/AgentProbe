@@ -7,7 +7,7 @@ import { parse } from "yaml";
 import { contrast } from "@/lib/contrast";
 import { cx } from "@/lib/cx";
 
-type Tier = { fontFamily: string; fontSize: string; fontWeight: number; lineHeight: number; letterSpacing: string; fontStretch?: string };
+type Tier = { fontFamily: string; fontSize: string; fontWeight: number; lineHeight: number; letterSpacing: string; wordSpacing?: string; fontStretch?: string };
 type Tokens = {
   colors: Record<string, string>;
   typography: Record<string, Tier>;
@@ -23,6 +23,9 @@ function readTokens(): Tokens {
   return parse(source.match(/^---\r?\n([\s\S]*?)\r?\n---/)![1]);
 }
 
+// The REV marks show the app's package version (the dev server runs in apps/web), never a typed number.
+const REV: string = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version;
+
 // Class names are spelled out so Tailwind finds them.
 const SPECIMENS: Record<string, { className: string; sample: string }> = {
   "display-xxl": { className: "type-display-xxl", sample: "Probe" },
@@ -34,7 +37,7 @@ const SPECIMENS: Record<string, { className: string; sample: string }> = {
   body: { className: "type-body", sample: "A flaky case that happened to fail this time is not a regression. Prose stays in sentence case." },
   "body-sm": { className: "type-body-sm", sample: "Help text: use five or more runs per case." },
   label: { className: "type-label", sample: "Runs per case" },
-  micro: { className: "type-micro", sample: "REV 0.1 /// Unit D-01" },
+  micro: { className: "type-micro", sample: `REV ${REV} /// Unit D-01` },
   data: { className: "type-data", sample: "5/5 · 412 ms · p = 0.0040" },
   button: { className: "type-button", sample: ">>> Start run" },
   code: { className: "type-code", sample: 'tool_call(lookup_order, {"order_id": "SAMPLE-0042"})' },
@@ -74,12 +77,13 @@ function SampleButton({ variant, children }: { variant: keyof typeof BUTTON; chi
   );
 }
 
+// A mark is a shape, so it reads without its colour (DESIGN.md "Status encoding").
 const STATUS = {
-  pass: { label: "Pass", chip: "border-hairline-strong text-ink", mark: "size-8 bg-current" },
-  fail: { label: "Fail", chip: "border-fail text-fail", mark: "size-8 bg-current" },
-  flaky: { label: "Flaky", chip: "border-dashed border-ink text-ink", mark: "size-8 hatch" },
-  error: { label: "Error", chip: "border-hairline-strong text-ink-muted", mark: "size-8 border border-current" },
-  stable: { label: "Stable", chip: "border-hairline-strong text-ink", mark: "h-2 w-8 bg-current" },
+  pass: { label: "Pass", chip: "border-hairline-strong text-ink", mark: "size-10 bg-current" },
+  fail: { label: "Fail", chip: "border-fail text-fail", mark: "size-10 mark-fail" },
+  flaky: { label: "Flaky", chip: "border-dashed border-ink text-ink", mark: "size-10 hatch" },
+  error: { label: "Error", chip: "border-hairline-strong text-ink-muted", mark: "size-10 mark-error" },
+  stable: { label: "Stable", chip: "border-hairline-strong text-ink", mark: "h-2 w-10 bg-current" },
 };
 type StatusName = keyof typeof STATUS;
 
@@ -87,7 +91,7 @@ function Chip({ status }: { status: StatusName }) {
   const s = STATUS[status];
   return (
     <span className={cx("inline-flex items-center gap-6 border px-8 py-3 type-label whitespace-nowrap", s.chip)}>
-      <span aria-hidden className={s.mark} />
+      <span aria-hidden className={cx("shrink-0", s.mark)} />
       {s.label}
     </span>
   );
@@ -95,7 +99,7 @@ function Chip({ status }: { status: StatusName }) {
 
 const VERDICT = {
   regression: { label: "Regression", className: "border-fail bg-fail text-on-fail" },
-  improvement: { label: "Improvement", className: "border-accent bg-accent text-on-accent" },
+  improvement: { label: "Improvement", className: "border-accent text-accent" },
   "no-change": { label: "No change", className: "border-ink text-ink" },
 };
 type VerdictName = keyof typeof VERDICT;
@@ -111,7 +115,9 @@ function Board({ n, id, title, children }: { n: string; id: string; title: strin
         <h2 id={`${id}-title`} className="text-ink">
           [ Board {n} / {title} ]
         </h2>
-        <span>REV 0.1 {"///"} Placeholder data</span>
+        <span>
+          REV {REV} {"///"} Placeholder data
+        </span>
       </header>
       {children}
     </section>
@@ -137,6 +143,7 @@ function TypeBoard({ typography }: { typography: Tokens["typography"] }) {
               <span className="normal-case">{t.fontSize}</span>
               <span>
                 LH {t.lineHeight} / TR {t.letterSpacing}
+                {t.wordSpacing ? ` / WS ${t.wordSpacing}` : ""}
               </span>
             </div>
             <p className={cx("min-w-0 overflow-x-clip", SPECIMENS[name]?.className)}>{SPECIMENS[name]?.sample}</p>
@@ -166,7 +173,10 @@ function TokenBoard({ tokens }: { tokens: Tokens }) {
   );
   return (
     <Board n="02" id="board-tokens" title="Tokens">
-      <Strip>{"///"} Colour (contrast against canvas, or against its own fill for on-accent and on-fail)</Strip>
+      <Strip>{"///"} Colour and contrast</Strip>
+      <p className="border-b border-hairline px-16 py-8 type-body-sm text-ink-muted">
+        Contrast is against canvas, or against its own fill for on-accent and on-fail.
+      </p>
       <div className="grid-lines grid-cols-2 border-b border-hairline tablet:grid-cols-4 desktop:grid-cols-6">
         {Object.entries(colors).map(([name, value]) => (
           <div key={name} className="flex flex-col gap-6 p-12">
@@ -214,7 +224,7 @@ function TokenBoard({ tokens }: { tokens: Tokens }) {
                 <span className="w-96 shrink-0 type-label">
                   {name} <span className="text-ink-muted normal-case">{value}</span>
                 </span>
-                <span className="h-8 bg-accent" style={{ width: value }} />
+                <span className="h-8 bg-ink" style={{ width: value }} />
               </div>
             ))}
           </div>
@@ -444,8 +454,18 @@ function RunBoard() {
   );
 }
 
-// A fixed pattern, not data: mostly passes, a few failures and flaky cells.
-const CELLS = Array.from({ length: 180 }, (_, i) => ((i * 37 + 11) % 23 === 0 ? "bg-fail" : (i * 17 + 5) % 19 === 0 ? "hatch text-ink" : "bg-hairline-strong"));
+// What an attempt-matrix cell looks like for each status; the legend uses the same classes.
+const CELL = {
+  pass: "bg-hairline-strong",
+  flaky: "hatch text-ink",
+  fail: "mark-fail text-fail",
+  error: "mark-error text-ink-muted",
+};
+
+// A fixed pattern, not data: mostly passes, a few failures, flaky and error cells.
+const CELLS = Array.from({ length: 180 }, (_, i) =>
+  (i * 37 + 11) % 23 === 0 ? CELL.fail : (i * 17 + 5) % 19 === 0 ? CELL.flaky : (i * 29 + 3) % 31 === 0 ? CELL.error : CELL.pass,
+);
 
 const PANELS = [
   { title: "Point it at your agent", body: "HTTP, MCP or a Python adapter. Nothing to install inside the agent." },
@@ -463,30 +483,46 @@ function HeroBoard() {
             ®
           </span>
         </span>
-        <span className="hidden type-micro text-ink-muted tablet:inline">Regression detection for LLM agents {"///"} REV 0.1</span>
+        <span className="hidden type-micro text-ink-muted tablet:inline">
+          Regression detection for LLM agents {"///"} REV {REV}
+        </span>
         <SampleButton variant="secondary">[ Sign in ]</SampleButton>
       </div>
       <div className="overflow-hidden px-16 pt-24 pb-32 tablet:px-32 tablet:pt-48 tablet:pb-48">
-        <div className="relative">
-          <div className="relative py-24 tablet:py-48">
-            <figure aria-hidden className="scanlines absolute top-1/2 left-1/2 w-[min(560px,72%)] -translate-x-1/2 -translate-y-1/2 border border-hairline-strong bg-surface-1 p-12">
+        {/* An @container, so display-xxl is sized against this width and cannot overflow it. Rows:
+            the headline over the matrix, the matrix caption and legend (outside the headline),
+            then the stats, which sit beside the second line on desktop. */}
+        <div className="@container grid grid-cols-[minmax(0,1fr)]">
+          <div className="relative col-start-1 row-start-1 grid py-24 tablet:py-48">
+            <div aria-hidden className="scanlines col-start-1 row-start-1 w-[min(560px,72%)] place-self-center border border-hairline-strong bg-surface-1 p-12">
               <div className="grid grid-cols-[repeat(20,1fr)] gap-3">
                 {CELLS.map((cell, i) => (
                   <span key={i} className={cx("aspect-square", cell)} />
                 ))}
               </div>
-              <figcaption className="mt-12 flex justify-between gap-12 type-micro text-ink-muted">
-                <span>Fig. 01 {"///"} attempt matrix</span>
-                <span>Illustrative</span>
-              </figcaption>
-            </figure>
-            <p className="relative type-display-xxl text-accent">Regressions</p>
-            <p className="relative type-display-xxl">
-              not <span className="text-outline text-accent">noise</span>
-            </p>
+            </div>
+            <div className="relative col-start-1 row-start-1 self-center">
+              <p className="type-display-xxl text-accent">Regressions</p>
+              <p className="type-display-xxl">
+                not <span className="text-outline text-accent">noise</span>
+              </p>
+            </div>
           </div>
-          {/* Beside the second line on desktop, with leader lines back to it; below the headline otherwise. */}
-          <dl className="mt-16 grid grid-cols-2 gap-16 desktop:absolute desktop:right-0 desktop:bottom-64 desktop:mt-0 desktop:w-[25%] desktop:grid-cols-1">
+          <div aria-hidden className="col-start-1 row-start-2 flex flex-wrap items-center justify-between gap-x-24 gap-y-8 border-t border-hairline pt-8 type-micro text-ink-muted">
+            <p>
+              Fig. 01 {"///"} Attempt matrix {"///"} Illustrative
+            </p>
+            <ul className="flex flex-wrap items-center gap-x-16 gap-y-4">
+              {(["pass", "flaky", "fail", "error"] as const).map((status) => (
+                <li key={status} className="inline-flex items-center gap-6">
+                  <span className={cx("size-10 shrink-0", CELL[status])} />
+                  {STATUS[status].label}
+                </li>
+              ))}
+            </ul>
+          </div>
+          {/* Beside the second line on desktop, with leader lines back to it; below the caption otherwise. */}
+          <dl className="col-start-1 row-start-3 mt-24 grid grid-cols-2 gap-16 desktop:row-start-1 desktop:mt-0 desktop:mb-64 desktop:w-[25%] desktop:grid-cols-1 desktop:self-end desktop:justify-self-end">
             {[
               ["XX.X%", "False alarms"],
               ["XX / XX", "Planted flaws caught"],
@@ -528,13 +564,13 @@ function HeroBoard() {
         {PANELS.map((panel, i) => {
           const lime = i === 2;
           return (
-            <a key={panel.title} href="#board-hero" className={cx("relative flex min-h-200 flex-col gap-12 p-16", lime ? "bg-accent text-on-accent" : "text-ink hover:bg-surface-1")}>
-              <svg aria-hidden viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" className="absolute top-16 right-16 size-20">
+            <a key={panel.title} href="#board-hero" className={cx("relative flex flex-col gap-12 p-16 tablet:p-24", lime ? "bg-accent text-on-accent" : "text-ink hover:bg-surface-1")}>
+              <svg aria-hidden viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" className="absolute top-16 right-16 size-20 tablet:top-24 tablet:right-24">
                 <path d="M4 16 16 4M7 4h9v9" />
               </svg>
               <span className={cx("type-micro", !lime && "text-ink-muted")}>0{i + 1}</span>
               <h3 className="max-w-240 pr-32 type-headline">{panel.title}</h3>
-              <p className={cx("mt-auto max-w-320 type-label", !lime && "text-ink-muted")}>{panel.body}</p>
+              <p className={cx("max-w-320 type-body", !lime && "text-ink-muted")}>{panel.body}</p>
             </a>
           );
         })}
@@ -552,7 +588,7 @@ export default function DesignBoards() {
         <header className="flex flex-wrap items-end justify-between gap-16 border-b-2 border-ink pb-16">
           <h1 className="type-display-lg">Design boards</h1>
           <p className="type-micro text-ink-muted">
-            AgentProbe® {"///"} Unit D-01 {"///"} REV 0.1 {"///"} dev server only {"///"} every figure is a placeholder
+            AgentProbe® {"///"} Unit D-01 {"///"} REV {REV} {"///"} Placeholder data
           </p>
         </header>
         <TypeBoard typography={tokens.typography} />
