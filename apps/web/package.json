@@ -11,6 +11,7 @@
     "test": "vitest run",
     "e2e": "node scripts/reset-e2e-db.mjs && playwright test",
     "gen:theme": "node scripts/gen-theme.mjs",
+    "gen:facts": "node scripts/gen-landing-facts.mjs",
     "gen:api": "openapi-typescript src/lib/api/openapi.json -o src/lib/api/schema.d.ts"
   },
   "dependencies": {
