@@ -56,7 +56,7 @@ function TraceView() {
   return (
     <>
       <p className="text-data-label text-ink-muted">
-        <Link href={`/projects/${projectId}/runs/${runId}`} className="rounded-xs outline-none hover:text-ink focus-visible:shadow-focus">
+        <Link href={`/projects/${projectId}/runs/${runId}`} className="outline-none hover:text-ink focus-visible:shadow-focus">
           Run <span className="font-mono">{runId.slice(0, 8)}</span>
         </Link>{" "}
         / attempt {trace.attempt + 1}
@@ -64,7 +64,7 @@ function TraceView() {
       <h1 className="mt-4 font-display text-dash-title-sm break-words tablet:text-dash-title">{trace.case}</h1>
       <AttemptMeta trace={trace} className="mt-8" />
 
-      <section aria-labelledby="input-title" className="mt-20 rounded-xl bg-surface-1 p-20">
+      <section aria-labelledby="input-title" className="mt-20 bg-surface-1 p-20">
         <h2 id="input-title" className="mb-8 text-data-label text-ink-muted">
           Input
         </h2>
@@ -78,7 +78,7 @@ function TraceView() {
       </section>
 
       <div className="mt-20 flex flex-wrap items-end justify-between gap-12">
-        <div role="group" aria-label="Step density" className="inline-flex gap-4 rounded-pill bg-canvas p-4">
+        <div role="group" aria-label="Step density" className="inline-flex gap-4 bg-canvas p-4">
           {[
             { value: false, label: "Expanded" },
             { value: true, label: "Compact" },
@@ -89,7 +89,7 @@ function TraceView() {
               aria-pressed={compact === o.value}
               onClick={() => setCompact(o.value)}
               className={cx(
-                "min-h-40 cursor-pointer rounded-pill px-14 py-8 text-button outline-none transition-colors focus-visible:shadow-focus",
+                "min-h-40 cursor-pointer px-14 py-8 text-button outline-none transition-colors focus-visible:shadow-focus",
                 compact === o.value ? "bg-surface-2 text-ink" : "text-ink-muted hover:text-ink",
               )}
             >
@@ -146,7 +146,7 @@ function CompareColumn({ name, trace, compact, against }: { name: string; trace:
   const differs = differingSteps(trace.steps, against.steps);
   return (
     <section aria-label={`Attempt ${name}`} className="min-w-0">
-      <header className="mb-12 rounded-lg bg-surface-1 p-15">
+      <header className="mb-12 bg-surface-1 p-15">
         <h2 className="font-display text-dash-heading">
           {name} · run <span className="font-mono">{trace.run_id.slice(0, 8)}</span>, attempt {trace.attempt + 1}
         </h2>

@@ -2,16 +2,16 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Card } from "./card";
 import { GradientCard } from "./gradient-card";
+import { Panel } from "./panel";
 
-test("Card lifts one surface step and renders a panel header", () => {
-  const { container, rerender } = render(<Card>body</Card>);
-  expect(container.firstElementChild!.className).toContain("bg-surface-1");
-  rerender(
+test("Card is the Panel under its old name, props unchanged", () => {
+  expect(Card).toBe(Panel);
+  const { container } = render(
     <Card lifted title="Latest runs" actions={<button>View all</button>}>
       body
     </Card>,
   );
-  expect(container.firstElementChild!.className).toContain("bg-surface-2");
+  expect(container.firstElementChild!.className).toContain("bg-surface-1");
   expect(screen.getByRole("heading", { name: "Latest runs" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "View all" })).toBeTruthy();
 });

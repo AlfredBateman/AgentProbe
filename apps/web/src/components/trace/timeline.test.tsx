@@ -56,7 +56,7 @@ test("a verdict sits with the step it concerns; rule and LLM verdicts say which 
   render(<Timeline trace={trace()} compact={false} />);
   const steps = within(screen.getByRole("list", { name: "Trace steps" })).getAllByRole("listitem");
   const leak = steps.filter((li) => li.parentElement?.getAttribute("aria-label") === "Trace steps")[3];
-  expect(within(leak).getByText(/AP-CANARY-APIKEY51D8F0A3C2/, { selector: "pre" })).toBeTruthy();
+  expect(within(leak).getByText(/AP-CANARY-APIKEY51D8F0A3C2/, { selector: "pre > samp" })).toBeTruthy();
 
   const verdicts = within(leak).getByRole("list", { name: "Verdicts on step 4" });
   const [rule, llm] = within(verdicts).getAllByRole("listitem");

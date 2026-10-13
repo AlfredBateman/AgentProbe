@@ -581,22 +581,20 @@ function HeroBoard() {
 
 export default function DesignBoards() {
   const tokens = readTokens();
+  // The grain layer comes from the root layout.
   return (
-    <>
-      <div aria-hidden className="noise" />
-      <main className="mx-auto flex w-full max-w-1440 flex-col gap-48 px-16 py-32 tablet:px-32 tablet:py-48">
-        <header className="flex flex-wrap items-end justify-between gap-16 border-b-2 border-ink pb-16">
-          <h1 className="type-display-lg">Design boards</h1>
-          <p className="type-micro text-ink-muted">
-            AgentProbe® {"///"} Unit D-01 {"///"} REV {REV} {"///"} Placeholder data
-          </p>
-        </header>
-        <TypeBoard typography={tokens.typography} />
-        <TokenBoard tokens={tokens} />
-        <ShellBoard />
-        <RunBoard />
-        <HeroBoard />
-      </main>
-    </>
+    <main className="mx-auto flex w-full max-w-1440 flex-col gap-48 px-16 py-32 tablet:px-32 tablet:py-48">
+      <header className="flex flex-wrap items-end justify-between gap-16 border-b-2 border-ink pb-16">
+        <h1 className="type-display-lg">Design boards</h1>
+        <p className="type-micro text-ink-muted">
+          AgentProbe® {"///"} Unit D-01 {"///"} REV {REV} {"///"} Placeholder data
+        </p>
+      </header>
+      <TypeBoard typography={tokens.typography} />
+      <TokenBoard tokens={tokens} />
+      <ShellBoard />
+      <RunBoard />
+      <HeroBoard />
+    </main>
   );
 }

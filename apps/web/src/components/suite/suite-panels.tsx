@@ -189,7 +189,7 @@ function YamlDiff({ before, after }: { before: string; after: string }) {
     else rows.push(1);
   });
   return (
-    <pre data-testid="yaml-diff" className="overflow-x-auto rounded-lg bg-canvas py-8 font-mono text-code">
+    <pre data-testid="yaml-diff" className="overflow-x-auto bg-canvas py-8 font-mono text-code">
       {rows.map((row, i) =>
         typeof row === "number" ? (
           <div key={i} className="px-12 text-ink-muted">

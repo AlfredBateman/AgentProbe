@@ -55,7 +55,7 @@ export default function SuitePage() {
       <header className="flex flex-col gap-15 tablet:flex-row tablet:items-start tablet:justify-between">
         <div className="min-w-0">
           <p className="text-data-label text-ink-muted">
-            <Link href={`/projects/${projectId}/suites`} className="rounded-xs outline-none hover:text-ink focus-visible:shadow-focus">
+            <Link href={`/projects/${projectId}/suites`} className="outline-none hover:text-ink focus-visible:shadow-focus">
               Suites
             </Link>{" "}
             / <span className="font-mono">{suite.name}</span>
@@ -187,14 +187,14 @@ function SuiteEditor({ suite, onSaved }: { suite: Suite; onSaved: () => void }) 
         aria-describedby={invalid ? "suite-issues" : undefined}
       />
       {invalid && (
-        <ul id="suite-issues" data-testid="suite-issues" className="flex flex-col gap-4 rounded-lg bg-surface-2 p-12 text-body-sm text-fail">
+        <ul id="suite-issues" data-testid="suite-issues" className="flex flex-col gap-4 bg-surface-2 p-12 text-body-sm text-fail">
           {validation.issues.map((issue, i) => (
             <li key={i}>
               {issue.line != null ? (
                 <button
                   type="button"
                   onClick={() => jumpTo(issue.line!)}
-                  className="cursor-pointer rounded-xs text-left underline-offset-2 outline-none hover:underline focus-visible:shadow-focus"
+                  className="cursor-pointer text-left underline-offset-2 outline-none hover:underline focus-visible:shadow-focus"
                 >
                   Line {issue.line}: {issue.message}
                 </button>

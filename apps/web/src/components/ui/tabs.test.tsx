@@ -16,11 +16,20 @@ function Harness() {
 
 const selected = () => screen.getAllByRole("tab").filter((t) => t.getAttribute("aria-selected") === "true");
 
-test("click selects a tab; selected is a surface lift", () => {
+test("a tablist with one tab per item", () => {
+  render(<Harness />);
+  expect(screen.getByRole("tablist", { name: "Filter" })).toBeTruthy();
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["All", "Failed", "Flaky"]);
+});
+
+test("click selects a tab; selected is lime, bracketed and one surface up", () => {
   render(<Harness />);
   fireEvent.click(screen.getByRole("tab", { name: "Failed" }));
   expect(selected().map((t) => t.textContent)).toEqual(["Failed"]);
-  expect(screen.getByRole("tab", { name: "Failed" }).className).toContain("bg-surface-2");
+  const failed = screen.getByRole("tab", { name: "Failed" });
+  expect(failed.className).toContain("bg-surface-2");
+  expect(failed.className).toContain("text-accent");
+  expect(failed.className).toContain("bracketed");
   expect(screen.getByRole("tab", { name: "All" }).className).toContain("text-ink-muted");
 });
 
@@ -35,6 +44,12 @@ test("arrow keys, Home and End move selection and focus, wrapping around", () =>
   fireEvent.keyDown(document.activeElement!, { key: "End" });
   expect(selected()[0].textContent).toBe("Flaky");
   fireEvent.keyDown(document.activeElement!, { key: "Home" });
+  expect(selected()[0].textContent).toBe("All");
+});
+
+test("a key that is not a tab key does nothing", () => {
+  render(<Harness />);
+  fireEvent.keyDown(screen.getByRole("tab", { name: "All" }), { key: "a" });
   expect(selected()[0].textContent).toBe("All");
 });
 

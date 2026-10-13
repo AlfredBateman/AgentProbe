@@ -314,7 +314,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
           Allow private targets (localhost, RFC 1918) — needed for the bundled demo agents
         </label>
 
-        <fieldset className="flex flex-col gap-8 rounded-lg border border-hairline p-12">
+        <fieldset className="flex flex-col gap-8 border border-hairline p-12">
           <legend className="px-4 text-data-label text-ink-muted">Auth header (stored encrypted, never shown again)</legend>
           {stored?.has_secret && auth.mode !== "set" ? (
             <div className="flex flex-wrap items-center justify-between gap-8">

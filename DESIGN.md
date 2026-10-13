@@ -344,6 +344,9 @@ A status is never told by colour alone. Each has its own mark, a shape that stil
 | Flaky | hatched square (`///`) | `ink` | 1px dashed `ink` |
 | Error | hollow square with a `!` (`mark-error`) | `ink-muted` | 1px `hairline-strong` |
 | Stable | 2px bar | `ink` | 1px `hairline-strong` |
+| Running | hollow square, left half filled (`mark-running`) | `ink` | 1px `ink` |
+| Queued | two stacked 2px bars (`mark-queued`) | `ink-muted` | 1px `hairline-strong` |
+| Quarantined | hollow square struck through (`mark-quarantined`) | `ink-muted` | 1px dotted `hairline-strong` |
 
 The cross is `on-fail` on a `fail` fill (5.30:1). The error mark's grey is `ink-muted`, 7.04:1 on `canvas`, 6.66:1 on `surface-1` and 6.19:1 on `surface-2`, all above the 4.5:1 text floor and the 3:1 mark floor. A legend for a chart or matrix uses the same marks.
 
@@ -415,6 +418,12 @@ Used sparingly; each is graphic, not informational.
 - **Stat tiles** sit in a `grid-lines` row: a `{typography.label}` name, a `{typography.display-lg}` value, a `{typography.micro}` note.
 - **Inputs** are `canvas` with a `hairline-strong` border and mono text. An invalid input has a red border and a red message linked with `aria-describedby`.
 - **Dialogs and toasts** are `surface-2` with a 1px `hairline-strong` border. No shadow.
+- **Checkboxes and switches** are native inputs. A checkbox is an 18px square, checked is an `ink` square inside it; a switch has a sliding square thumb. Neither is ever a lime fill.
+- **Tabs** are a bordered strip. The selected tab is lime, bracketed (`bracketed`) and one surface step up.
+- **Tooltips** are `surface-2` with a 1px `hairline-strong` border, in `{typography.body-sm}`. They show on hover and on focus, and Escape dismisses them.
+- **Pagination** is a row of 40px squares; the current page is a lime outline with lime text.
+- **Skeletons** step through two greys in four hard steps. They never shimmer.
+- **Sparklines** are a 1.5px line in the current colour with a square marker on the last value.
 - **Navigation** is a 56px top bar. The active item is lime and bracketed. Below 810px the links collapse into a menu.
 
 ## Motion

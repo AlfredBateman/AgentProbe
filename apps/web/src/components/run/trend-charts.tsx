@@ -19,7 +19,7 @@ type Props = { points: TrendPoint[] };
 
 function Frame({ title, legend, empty, children }: { title: string; legend?: ReactNode; empty?: string | false; children: ReactNode }) {
   return (
-    <figure className="min-w-0 rounded-xl bg-surface-1 p-20">
+    <figure className="min-w-0 bg-surface-1 p-20">
       <figcaption className="mb-12 flex flex-wrap items-baseline justify-between gap-x-15 gap-y-4">
         <span className="font-display text-dash-heading text-ink">{title}</span>
         {legend && !empty && <span className="flex flex-wrap gap-x-12 gap-y-4 text-data-label text-ink-muted">{legend}</span>}
@@ -39,7 +39,7 @@ function Frame({ title, legend, empty, children }: { title: string; legend?: Rea
 function Key({ color, kind = "line", children }: { color: string; kind?: "line" | "dashed" | "band"; children: ReactNode }) {
   const swatch =
     kind === "band" ? (
-      <span aria-hidden className="inline-block h-10 w-16 rounded-xs opacity-20" style={{ background: color }} />
+      <span aria-hidden className="inline-block h-10 w-16 opacity-20" style={{ background: color }} />
     ) : (
       <span aria-hidden className="inline-block w-16 border-t-2" style={{ borderColor: color, borderStyle: kind === "dashed" ? "dashed" : "solid" }} />
     );

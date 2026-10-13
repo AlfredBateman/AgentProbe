@@ -84,7 +84,7 @@ export default function RunPage() {
       <header className="flex flex-col gap-15 desktop:flex-row desktop:items-start desktop:justify-between">
         <div className="min-w-0">
           <p className="text-data-label text-ink-muted">
-            <Link href={`/projects/${projectId}/runs`} className="rounded-xs outline-none hover:text-ink focus-visible:shadow-focus">
+            <Link href={`/projects/${projectId}/runs`} className="outline-none hover:text-ink focus-visible:shadow-focus">
               Runs
             </Link>{" "}
             / <span className="font-mono">{run.id.slice(0, 8)}</span>
@@ -107,7 +107,7 @@ export default function RunPage() {
       </header>
 
       {run.error && (
-        <p role="alert" className="mt-20 rounded-lg bg-surface-1 p-15 text-body-sm text-fail">
+        <p role="alert" className="mt-20 bg-surface-1 p-15 text-body-sm text-fail">
           {run.error}
         </p>
       )}
@@ -182,7 +182,7 @@ function LivePanel({ run, attempts, connection }: { run: Run; attempts: Readonly
         max={total}
         value={done}
         aria-label="Attempts finished"
-        className="mt-12 block h-8 w-full appearance-none overflow-hidden rounded-pill bg-hairline [&::-moz-progress-bar]:rounded-pill [&::-moz-progress-bar]:bg-ink [&::-webkit-progress-bar]:bg-hairline [&::-webkit-progress-value]:rounded-pill [&::-webkit-progress-value]:bg-ink [&::-webkit-progress-value]:transition-[width] motion-reduce:[&::-webkit-progress-value]:transition-none"
+        className="mt-12 block h-8 w-full appearance-none overflow-hidden bg-hairline [&::-moz-progress-bar]:bg-ink [&::-webkit-progress-bar]:bg-hairline [&::-webkit-progress-value]:bg-ink [&::-webkit-progress-value]:transition-[width] motion-reduce:[&::-webkit-progress-value]:transition-none"
       />
       <dl className="mt-15 grid grid-cols-2 gap-x-20 gap-y-12 text-data tabular-nums tablet:grid-cols-4 desktop:grid-cols-7">
         <Stat term="Attempts">
@@ -244,7 +244,7 @@ function SummaryTiles({ run, verdict, projectId }: { run: Run; verdict: Verdict;
               vs{" "}
               <Link
                 href={`/projects/${projectId}/runs/${verdict.baseline_run_id}`}
-                className="rounded-xs text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+                className="text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
               >
                 {verdict.branch} baseline
               </Link>
@@ -275,7 +275,7 @@ function SummaryTiles({ run, verdict, projectId }: { run: Run; verdict: Verdict;
 
 function Tile({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
   return (
-    <section aria-label={label} className={`min-w-0 rounded-xl bg-surface-1 p-20 ${className ?? ""}`}>
+    <section aria-label={label} className={`min-w-0 bg-surface-1 p-20 ${className ?? ""}`}>
       <h2 className="mb-8 text-data-label text-ink-muted">{label}</h2>
       {children}
     </section>

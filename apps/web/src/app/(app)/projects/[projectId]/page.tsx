@@ -89,7 +89,7 @@ export default function ProjectOverview() {
               ) : (
                 <Link
                   href={`/projects/${projectId}/suites`}
-                  className="rounded-xs text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+                  className="text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
                 >
                   Go to Suites
                 </Link>
@@ -142,7 +142,7 @@ export default function ProjectOverview() {
               <p className="mt-4 text-data text-ink-muted">
                 <Link
                   href={`/projects/${projectId}/runs/${baseline.run_id}`}
-                  className="rounded-xs text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+                  className="text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
                 >
                   {baseline.branch} baseline
                 </Link>
@@ -179,7 +179,7 @@ export default function ProjectOverview() {
         actions={
           <Link
             href={`/projects/${projectId}/runs`}
-            className="rounded-xs text-body-sm text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+            className="text-body-sm text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
           >
             All runs
           </Link>
@@ -196,7 +196,7 @@ const signed = (delta: number) => `${delta > 0 ? "+" : delta < 0 ? "−" : "±"}
 
 function Tile({ label, testId, children }: { label: string; testId?: string; children: ReactNode }) {
   return (
-    <section aria-label={label} data-testid={testId} className="min-w-0 rounded-xl bg-surface-1 p-20">
+    <section aria-label={label} data-testid={testId} className="min-w-0 bg-surface-1 p-20">
       <h2 className="mb-8 text-data-label text-ink-muted">{label}</h2>
       {children}
     </section>

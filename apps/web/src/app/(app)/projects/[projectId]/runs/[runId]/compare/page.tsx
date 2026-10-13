@@ -74,7 +74,7 @@ export default function ComparePage() {
   return (
     <>
       <p className="text-data-label text-ink-muted">
-        <Link href={`/projects/${projectId}/runs/${runId}`} className="rounded-xs outline-none hover:text-ink focus-visible:shadow-focus">
+        <Link href={`/projects/${projectId}/runs/${runId}`} className="outline-none hover:text-ink focus-visible:shadow-focus">
           Run <span className="font-mono">{runId.slice(0, 8)}</span>
         </Link>{" "}
         / Compare
@@ -223,7 +223,7 @@ function CompareView({
 
 function Tile({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section aria-label={label} className="min-w-0 rounded-xl bg-surface-1 p-20">
+    <section aria-label={label} className="min-w-0 bg-surface-1 p-20">
       <h2 className="mb-8 text-data-label text-ink-muted">{label}</h2>
       {children}
     </section>
@@ -308,7 +308,7 @@ function DiffLink({
       type="button"
       onClick={() => void go()}
       disabled={busy}
-      className="inline-flex items-center gap-6 rounded-pill bg-surface-2 px-10 py-6 font-mono text-code text-ink outline-none hover:bg-surface-1 focus-visible:shadow-focus disabled:opacity-50"
+      className="inline-flex items-center gap-6 bg-surface-2 px-10 py-6 font-mono text-code text-ink outline-none hover:bg-surface-1 focus-visible:shadow-focus disabled:opacity-50"
     >
       {caseId}
     </button>

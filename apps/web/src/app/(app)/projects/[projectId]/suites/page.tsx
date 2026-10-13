@@ -44,7 +44,7 @@ export default function SuitesPage() {
       render: (s) => (
         <Link
           href={`/projects/${projectId}/suites/${s.id}`}
-          className="rounded-xs font-mono text-code text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+          className="font-mono text-code text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
         >
           {s.name}
         </Link>
@@ -199,7 +199,7 @@ function SuiteDialog({
           />
         </div>
         {issues.length > 0 && (
-          <ul data-testid="suite-yaml-issues" className="flex flex-col gap-4 rounded-lg bg-surface-2 p-12 text-body-sm text-fail">
+          <ul data-testid="suite-yaml-issues" className="flex flex-col gap-4 bg-surface-2 p-12 text-body-sm text-fail">
             {issues.map((issue, i) => (
               <li key={i}>
                 {issue.line != null ? `Line ${issue.line}: ` : issue.path ? `${issue.path}: ` : ""}

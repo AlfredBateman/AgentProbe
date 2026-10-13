@@ -93,7 +93,7 @@ export default function ProjectsPage() {
         ) : (
           <div className="grid grid-cols-1 gap-15 tablet:grid-cols-2 desktop:grid-cols-3">
             {session.projects.map((p) => (
-              <Link key={p.id} href={`/projects/${p.id}`} className="rounded-xl outline-none focus-visible:shadow-focus">
+              <Link key={p.id} href={`/projects/${p.id}`} className="outline-none focus-visible:shadow-focus">
                 <Card className="h-full hover:bg-surface-2">
                   <h2 className="font-display text-dash-heading">{p.name}</h2>
                   {p.description && <p className="mt-6 line-clamp-2 text-body-sm text-ink-muted">{p.description}</p>}

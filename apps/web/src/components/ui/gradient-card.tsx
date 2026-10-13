@@ -6,9 +6,9 @@ import { cx } from "@/lib/cx";
 let mounted = 0;
 
 /**
- * The page's one emphasized panel: flat, with a 2px accent border (DESIGN.md allows no
- * gradient; the name is from before ADR 0042). At most one per viewport; a second one warns
- * in development.
+ * The page's one emphasized panel: flat, with a 2px accent border. The name is from before
+ * ADR 0042, when it was a colour ramp; the props stay so pages keep compiling. At most one
+ * per viewport; a second one warns in development.
  */
 export function GradientCard({ className, ...props }: HTMLAttributes<HTMLElement>) {
   useEffect(() => {
@@ -21,5 +21,5 @@ export function GradientCard({ className, ...props }: HTMLAttributes<HTMLElement
     };
   }, []);
 
-  return <section className={cx("border-2 border-accent bg-surface-1 p-32 text-subhead text-ink", className)} {...props} />;
+  return <section className={cx("border-2 border-accent bg-surface-1 p-32 type-body-lg text-ink", className)} {...props} />;
 }

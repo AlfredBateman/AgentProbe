@@ -29,8 +29,8 @@ export function CopyButton({ text, className }: { text: string; className?: stri
   const label = { idle: "Copy", copied: "Copied", failed: "Copy failed" }[state];
   return (
     <>
-      <Button variant="icon" aria-label={label} title={label} onClick={copy} className={cx("size-32 pointer-coarse:size-44", className)}>
-        {state === "copied" ? <CheckIcon className="text-pass" /> : <CopyIcon />}
+      <Button variant="icon" aria-label={label} title={label} onClick={copy} className={className}>
+        {state === "copied" ? <CheckIcon /> : <CopyIcon />}
       </Button>
       <span aria-live="polite" className="sr-only">
         {state === "idle" ? "" : label}
@@ -38,6 +38,12 @@ export function CopyButton({ text, className }: { text: string; className?: stri
     </>
   );
 }
+
+/**
+ * What a piece of text is, in HTML terms: `samp` is output (an agent's reply, a tool result),
+ * `kbd` is input typed at something (an attack payload, the case input), `code` is source (YAML).
+ */
+export type TextKind = "samp" | "kbd" | "code";
 
 const PLAIN_TEXT_LIMIT = 2000;
 
@@ -49,27 +55,30 @@ export function PlainText({
   text,
   limit = PLAIN_TEXT_LIMIT,
   mono = true,
+  as: Tag = "samp",
   className,
 }: {
   text: string;
   limit?: number;
   /** Body type instead of code type, for prose such as judge reasons. */
   mono?: boolean;
+  as?: TextKind;
   className?: string;
 }) {
   const [full, setFull] = useState(false);
   const long = text.length > limit;
   return (
     <div className={cx("min-w-0", className)}>
-      <pre className={cx("break-words whitespace-pre-wrap", mono ? "font-mono text-code text-ink" : "font-sans text-body-sm")}>
-        {long && !full ? `${text.slice(0, limit)}…` : text}
+      {/* The type classes go on the inner element: samp, kbd and code carry their own monospace default. */}
+      <pre className="break-words whitespace-pre-wrap">
+        <Tag className={cx(mono ? "type-code" : "type-body-sm", "text-ink")}>{long && !full ? `${text.slice(0, limit)}…` : text}</Tag>
       </pre>
       {long && (
         <button
           type="button"
           aria-expanded={full}
           onClick={() => setFull(!full)}
-          className="mt-4 cursor-pointer rounded-xs text-data-label text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+          className="mt-4 cursor-pointer type-label text-accent hover:underline"
         >
           {full ? "Show less" : `Show full (${text.length.toLocaleString()} characters)`}
         </button>
@@ -85,15 +94,16 @@ export const jsonText = (value: unknown) => (typeof value === "string" ? value :
  * Traces, YAML and payloads. The text is rendered as a text child only: agent output and attack
  * payloads are untrusted and must never become HTML.
  */
-export function CodeBlock({ code, label, className }: { code: string; label?: string; className?: string }) {
+export function CodeBlock({ code, label, as: Tag = "code", className }: { code: string; label?: string; as?: TextKind; className?: string }) {
   return (
-    <figure className={cx("min-w-0 overflow-hidden rounded-lg bg-surface-1", className)}>
-      <figcaption className="flex min-h-40 items-center justify-between gap-8 border-b border-hairline-soft py-4 pr-4 pl-15 text-data-label text-ink-muted">
+    <figure className={cx("min-w-0 overflow-hidden border border-hairline-strong bg-canvas", className)}>
+      <figcaption className="flex items-center justify-between gap-8 border-b border-hairline bg-surface-1 py-4 pr-4 pl-16 type-micro text-ink-muted">
         {label ?? ""}
-        <CopyButton text={code} className="bg-transparent" />
+        <CopyButton text={code} />
       </figcaption>
-      <pre className="overflow-x-auto p-15 font-mono text-code text-ink">
-        <code>{code}</code>
+      {/* Focusable, so a keyboard user can scroll a long line. */}
+      <pre tabIndex={0} className="overflow-x-auto p-16">
+        <Tag className="type-code text-ink">{code}</Tag>
       </pre>
     </figure>
   );

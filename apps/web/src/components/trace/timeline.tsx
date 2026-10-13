@@ -70,7 +70,7 @@ export function Timeline({ trace, compact, layout = "wide", differs, idPrefix = 
   return (
     <>
       {trace.steps.length === 0 ? (
-        <p className="rounded-lg bg-surface-1 p-15 text-body-sm text-ink-muted">No trace: the agent never answered.</p>
+        <p className="bg-surface-1 p-15 text-body-sm text-ink-muted">No trace: the agent never answered.</p>
       ) : (
         <ol aria-label="Trace steps" className="flex flex-col">
           {trace.steps.map((step, i) => {
@@ -90,7 +90,7 @@ export function Timeline({ trace, compact, layout = "wide", differs, idPrefix = 
                 <span
                   aria-hidden
                   className={cx(
-                    "absolute top-8 left-0 flex size-32 items-center justify-center rounded-full font-mono text-code",
+                    "absolute top-8 left-0 flex size-32 items-center justify-center font-mono text-code",
                     step.type === "error" ? "bg-surface-2 text-fail" : "bg-surface-2 text-ink",
                   )}
                 >
@@ -104,12 +104,12 @@ export function Timeline({ trace, compact, layout = "wide", differs, idPrefix = 
                 >
                   <details
                     open={!compact}
-                    className={cx("group min-w-0 rounded-lg", different ? "bg-surface-2" : "bg-surface-1")}
+                    className={cx("group min-w-0", different ? "bg-surface-2" : "bg-surface-1")}
                   >
-                    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-12 gap-y-4 rounded-lg px-15 py-10 outline-none focus-visible:shadow-focus [&::-webkit-details-marker]:hidden">
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-12 gap-y-4 px-15 py-10 outline-none focus-visible:shadow-focus [&::-webkit-details-marker]:hidden">
                       <span className="text-data text-ink-muted tabular-nums">{i + 1}</span>
                       <span className="font-medium text-body-sm text-ink">{title(step)}</span>
-                      {different && <span className="rounded-sm border border-ink-muted px-6 text-data-label text-ink">Differs</span>}
+                      {different && <span className="border border-ink-muted px-6 text-data-label text-ink">Differs</span>}
                       {step.type === "error" && <JudgmentBadge status="error" />}
                       <span className="ml-auto text-data text-ink-muted tabular-nums">
                         {!!offset && `+${ms(offset)} · `}
@@ -149,7 +149,7 @@ function Verdicts({ judgments, label }: { judgments: Judgment[]; label: string }
         return (
           <li
             key={i}
-            className={cx("rounded-lg border p-12", llm ? "border-dashed border-ink-muted" : "border-hairline bg-canvas")}
+            className={cx("border p-12", llm ? "border-dashed border-ink-muted" : "border-hairline bg-canvas")}
           >
             <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
               <JudgmentBadge status={j.status} />

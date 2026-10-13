@@ -37,7 +37,7 @@ export default function FindingsPage() {
   return (
     <>
       <p className="text-data-label text-ink-muted">
-        <Link href={`/projects/${projectId}/runs/${runId}`} className="rounded-xs outline-none hover:text-ink focus-visible:shadow-focus">
+        <Link href={`/projects/${projectId}/runs/${runId}`} className="outline-none hover:text-ink focus-visible:shadow-focus">
           Run <span className="font-mono">{runId.slice(0, 8)}</span>
         </Link>{" "}
         / Findings
@@ -102,7 +102,7 @@ function FindingCard({
         </p>
       )}
       <details className="group mt-12">
-        <summary className="cursor-pointer list-none rounded-xs text-data-label text-accent-blue outline-none hover:underline focus-visible:shadow-focus [&::-webkit-details-marker]:hidden">
+        <summary className="cursor-pointer list-none text-data-label text-accent-blue outline-none hover:underline focus-visible:shadow-focus [&::-webkit-details-marker]:hidden">
           <span className="group-open:hidden">Show {finding.member_result_ids.length} members</span>
           <span className="hidden group-open:inline">Hide members</span>
         </summary>
@@ -110,14 +110,14 @@ function FindingCard({
           {finding.member_result_ids.map((id) => {
             const r = results.get(id);
             return (
-              <li key={id} className="rounded-lg bg-canvas p-12">
+              <li key={id} className="bg-canvas p-12">
                 <div className="flex flex-wrap items-center gap-x-12 gap-y-6 text-data">
                   <span className="font-mono text-code text-ink">{r?.case ?? id.slice(0, 8)}</span>
                   {r && <AttemptBadge status={r.status} />}
                   {r && <span className="text-ink-muted">Attempt {r.attempt + 1}</span>}
                   <Link
                     href={`/projects/${projectId}/runs/${runId}/results/${id}`}
-                    className="ml-auto rounded-xs text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+                    className="ml-auto text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
                   >
                     View trace
                   </Link>

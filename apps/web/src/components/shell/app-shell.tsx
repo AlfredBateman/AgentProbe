@@ -51,7 +51,7 @@ export function AppShell({ projects, projectId, email, pathname, onProjectChange
       aria-current={l.current ? "page" : undefined}
       onClick={() => setMenuOpen(false)}
       className={cx(
-        "rounded-pill outline-none focus-visible:shadow-focus",
+        "outline-none focus-visible:shadow-focus",
         l.current ? "bg-surface-2 text-ink" : "text-ink-muted hover:text-ink",
         className,
       )}
@@ -72,7 +72,7 @@ export function AppShell({ projects, projectId, email, pathname, onProjectChange
             aria-label="Project"
             value={projectId}
             onChange={(e) => onProjectChange(e.target.value)}
-            className="min-w-0 max-w-160 shrink [&_select]:rounded-pill [&_select]:py-6 [&_select]:text-body-sm"
+            className="min-w-0 max-w-160 shrink [&_select]:py-6 [&_select]:text-body-sm"
           >
             {projects.map((p) => (
               <option key={p.id} value={p.id}>

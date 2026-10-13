@@ -69,7 +69,7 @@ export function RunSuiteDialog({
       {suites.length === 0 ? (
         <p>
           There are no suites in this project yet.{" "}
-          <Link href={`/projects/${projectId}/suites`} className="rounded-xs text-accent-blue outline-none hover:underline focus-visible:shadow-focus">
+          <Link href={`/projects/${projectId}/suites`} className="text-accent-blue outline-none hover:underline focus-visible:shadow-focus">
             Create one
           </Link>{" "}
           first.

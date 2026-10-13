@@ -70,7 +70,7 @@ function SharedRun({ run }: { run: Shared }) {
         </span>
       </div>
 
-      <section aria-label="Pass rate" className="mt-20 rounded-xl bg-surface-1 p-20">
+      <section aria-label="Pass rate" className="mt-20 bg-surface-1 p-20">
         <h2 className="mb-8 text-data-label text-ink-muted">Pass rate</h2>
         <p className="font-display text-dash-title">{pct(run.pass_rate)}</p>
         <p className="mt-4 text-data text-ink-muted tabular-nums">
@@ -91,7 +91,7 @@ function SharedRun({ run }: { run: Shared }) {
               {run.results
                 .filter((r) => r.case === c.case)
                 .map((r) => (
-                  <li key={r.attempt} className="rounded-lg bg-canvas p-12">
+                  <li key={r.attempt} className="bg-canvas p-12">
                     <div className="flex flex-wrap items-center gap-x-12 gap-y-6 text-data">
                       <span className="font-medium text-ink">Attempt {r.attempt + 1}</span>
                       <AttemptBadge status={r.status} />

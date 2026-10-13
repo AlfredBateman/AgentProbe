@@ -87,7 +87,7 @@ function ApiKeysCard({ projectId }: { projectId: string }) {
   return (
     <Card title="API keys" actions={<Button onClick={() => setCreateOpen(true)}>Create key</Button>}>
       {justCreated && (
-        <div className="mb-15 rounded-lg bg-surface-2 p-15">
+        <div className="mb-15 bg-surface-2 p-15">
           <p className="text-body-sm text-ink">
             <strong>{justCreated.label}</strong> — copy this key now. You won&rsquo;t be able to see it again.
           </p>

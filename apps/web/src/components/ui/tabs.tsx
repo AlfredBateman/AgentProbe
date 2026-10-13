@@ -14,7 +14,7 @@ type Props<V extends string> = {
 };
 
 /**
- * DESIGN.md pricing-tab pill toggle: selected = surface lift, not color.
+ * A bordered strip of tabs: the selected one is lime, bracketed and one surface step up.
  * WAI-ARIA tabs with a roving tabindex; panels are the caller's (use `tabId(value)` as their label).
  */
 export function Tabs<V extends string>({ items, value, onValueChange, className, ...aria }: Props<V>) {
@@ -34,7 +34,7 @@ export function Tabs<V extends string>({ items, value, onValueChange, className,
     <div
       role="tablist"
       aria-label={aria["aria-label"]}
-      className={cx("inline-flex max-w-full gap-4 overflow-x-auto rounded-pill bg-canvas p-4", className)}
+      className={cx("inline-flex max-w-full overflow-x-auto border border-hairline-strong bg-canvas", className)}
     >
       {items.map((item, i) => {
         const selected = item.value === value;
@@ -52,8 +52,8 @@ export function Tabs<V extends string>({ items, value, onValueChange, className,
             onClick={() => onValueChange(item.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cx(
-              "min-h-40 shrink-0 cursor-pointer rounded-pill px-14 py-8 text-button outline-none transition-colors focus-visible:shadow-focus",
-              selected ? "bg-surface-2 text-ink" : "text-ink-muted hover:text-ink",
+              "min-h-40 shrink-0 cursor-pointer px-12 type-label whitespace-nowrap transition-[background-color,border-color,color] duration-120 ease-linear motion-reduce:transition-none pointer-coarse:min-h-44",
+              selected ? "bracketed bg-surface-2 text-accent" : "text-ink-muted hover:text-ink",
             )}
           >
             {item.label}

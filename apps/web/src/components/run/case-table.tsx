@@ -138,7 +138,7 @@ function CaseAttempts({ runId, projectId, caseId, version }: { runId: string; pr
   return (
     <ol className="flex flex-col gap-12 whitespace-normal" aria-label={`Attempts of ${caseId}`}>
       {results.map((r) => (
-        <li key={r.id} className="rounded-lg bg-canvas p-12">
+        <li key={r.id} className="bg-canvas p-12">
           <div className="flex flex-wrap items-center gap-x-12 gap-y-6 text-data tabular-nums">
             <span className="font-medium text-ink">Attempt {r.attempt + 1}</span>
             <AttemptBadge status={r.status} />
@@ -148,7 +148,7 @@ function CaseAttempts({ runId, projectId, caseId, version }: { runId: string; pr
             {r.error_kind && <span className="text-ink-muted">{r.error_kind} error</span>}
             <Link
               href={`/projects/${projectId}/runs/${runId}/results/${r.id}`}
-              className="ml-auto rounded-xs text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+              className="ml-auto text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
             >
               View trace
             </Link>

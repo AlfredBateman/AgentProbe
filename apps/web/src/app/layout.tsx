@@ -27,6 +27,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <ToastProvider>{children}</ToastProvider>
         <WakingNotice />
+        {/* The one grain layer, for every page (DESIGN.md Details). */}
+        <div aria-hidden className="noise" />
       </body>
     </html>
   );
