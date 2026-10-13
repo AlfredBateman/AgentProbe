@@ -53,3 +53,6 @@ Thumbs.db
 /docs/screenshots/*
 !/docs/screenshots/readme-*
 !/docs/screenshots/pr-comment-blocked.png
+
+# Local design references
+design-refs/

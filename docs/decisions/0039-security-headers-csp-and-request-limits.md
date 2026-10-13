@@ -33,6 +33,8 @@ CSRF (ADR 0009) and CORS were already right, but only CSRF had tests.
   - `style-src 'self' 'unsafe-inline'`: React renders style attributes, which a nonce can't
     cover;
   - `connect-src 'self'` plus the API's public origin, for live progress (ADR 0031);
+  - `media-src 'self'`, for the landing hero's self-hosted video (added 2026-10-13,
+    [ADR 0040](0040-landing-hero-scoped-palette.md));
   - `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`.
 
   The root layout is `force-dynamic`: a page prerendered at build time would carry no nonce,

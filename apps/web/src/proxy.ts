@@ -37,9 +37,10 @@ function forwardToApi(request: NextRequest) {
  * The page's Content-Security-Policy. Scripts run only with this response's nonce, which Next
  * puts on its own scripts (it reads the nonce from the request's CSP header), and whatever
  * those load ('strict-dynamic'): an injected <script> or inline handler never runs. Styles
- * allow inline, because React renders style attributes, which a nonce can't cover. The only
- * other origins are the API's own, for live run progress (ADR 0031), and the services the
- * browser pings awake (lib/api/wake.ts). `next dev` needs eval.
+ * allow inline, because React renders style attributes, which a nonce can't cover. Media is
+ * the landing hero's self-hosted video and nothing else. The only other origins are the API's
+ * own, for live run progress (ADR 0031), and the services the browser pings awake
+ * (lib/api/wake.ts). `next dev` needs eval.
  */
 export function contentSecurityPolicy(nonce: string, dev = process.env.NODE_ENV === "development") {
   const others = [...new Set(NUDGE_URLS.map((u) => new URL(u).origin))].map((o) => ` ${o}`).join("");
@@ -48,6 +49,7 @@ export function contentSecurityPolicy(nonce: string, dev = process.env.NODE_ENV 
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
+    "media-src 'self'",
     "font-src 'self'",
     `connect-src 'self'${others}`,
     "object-src 'none'",

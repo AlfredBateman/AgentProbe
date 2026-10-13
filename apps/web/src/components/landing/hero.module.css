@@ -1,0 +1,670 @@
+/*
+ * The landing hero (ADR 0040): one full-viewport stage drawn on a 1280 × 800 design frame.
+ * --u is one design pixel, the largest uniform scale that fits the whole frame in the viewport,
+ * so heights map 1:1 to the screen and extra width goes to the edge-anchored elements and the
+ * extended backdrop. The warm palette below exists only inside .hero; every other page, and
+ * the rest of this one, stays on the DESIGN.md tokens.
+ */
+.hero {
+  --vh: 1vh;
+  --ink: #ffffff;
+  --base-bot: #130e09;
+  --scrim: 13 9 5;
+  --rule: rgba(255, 255, 255, 0.115);
+  --grid: rgba(255, 255, 255, 0.0265);
+  --menu-bg: #fcfcfc;
+  --menu-ink: #141414;
+  --small-min: 10px;
+  --u: min(100vw / 1280, var(--vh) * 100 / 800);
+  --small: max(var(--small-min), 12.6 * var(--u));
+  --ls: -0.01em;
+  --svc-top: calc(211.75 * var(--u));
+  --rule-top: calc(239 * var(--u));
+  /* The headline: --n lines (set by the component), baselines 0.7839em apart, caps 0.72em tall. */
+  --hl-size: calc(170.94 * var(--u));
+  --hl-bottom: calc(0.4914 * var(--hl-size));
+  --hl-stack: calc(((var(--n) - 1) * 0.7839 + 0.72) * var(--hl-size));
+  /* Under the headline, where the arc sweeps behind the letters (3:1 for large text). */
+  --hl-scrim: linear-gradient(
+    0deg,
+    rgb(var(--scrim) / 0.5) calc(var(--hl-bottom) + var(--hl-stack) + 0.05 * var(--hl-size)),
+    rgb(var(--scrim) / 0) calc(var(--hl-bottom) + var(--hl-stack) + 0.6 * var(--hl-size))
+  );
+
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  flex-shrink: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 320px;
+  color: var(--ink);
+  background: linear-gradient(
+    180deg,
+    #0d0905 0%,
+    #0f0a05 15%,
+    #0d0a05 30%,
+    #0d0905 45%,
+    #0e0a06 60%,
+    #0f0c07 75%,
+    #130e08 90%,
+    var(--base-bot) 100%
+  );
+  text-rendering: geometricPrecision;
+  font-kerning: normal;
+}
+
+@supports (height: 1dvh) {
+  .hero {
+    --vh: 1dvh;
+  }
+}
+
+@media (min-height: 480px) {
+  .hero {
+    --small-min: 11.28px;
+  }
+}
+
+.hero :where(a) {
+  position: relative;
+  color: inherit;
+  text-decoration: none;
+}
+
+.hero a:focus-visible {
+  outline: 1px solid #ffffff;
+  outline-offset: 3px;
+}
+
+/* Backdrop: the video plate, the scrim over it, then the grid. None of them animate. */
+.photo {
+  --pw: max(min(100vw, 1536 * var(--u)), var(--vh) * 160);
+  --fade: clamp(0px, 100vw - var(--pw), var(--pw) * 0.08);
+  position: absolute;
+  z-index: -3;
+  top: var(--photo-top, 0px);
+  /* Keeps the helmet at 52.93% across, however much of the plate is cropped. */
+  left: calc((100vw - var(--pw)) * 0.5293);
+  width: var(--pw);
+  /* The box is reserved before the video or its poster loads: no layout shift. */
+  aspect-ratio: 16 / 10;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+}
+
+.photo video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: var(--hl-scrim);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: flex;
+  pointer-events: none;
+  /* The lines recede behind the subject and the headline. */
+  -webkit-mask-image: radial-gradient(ellipse 62% 95% at 50% 62%, rgba(0, 0, 0, 0.83) 0%, #000 100%);
+  mask-image: radial-gradient(ellipse 62% 95% at 50% 62%, rgba(0, 0, 0, 0.83) 0%, #000 100%);
+}
+
+.grid i {
+  position: relative;
+  flex: 1 1 0;
+}
+
+.grid i::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(75% - 0.5px);
+  width: 2px;
+  background: var(--grid);
+}
+
+/* Top bar */
+.small {
+  margin: 0;
+  font-size: var(--small);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: var(--ls);
+}
+
+.hero .logo {
+  position: absolute;
+  left: calc(20.65 * var(--u));
+  top: calc(12.8 * var(--u));
+  font-family: var(--font-geist), sans-serif;
+  font-size: max(16px, 20 * var(--u));
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.tagline {
+  position: absolute;
+  left: calc(100% * 386.5 / 1280);
+  top: calc(12.6 * var(--u));
+}
+
+.tagline span {
+  display: block;
+}
+
+.contact {
+  position: absolute;
+  left: calc(100% * 798.5 / 1280);
+  top: calc(12.5 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.7em;
+}
+
+.badge {
+  padding: 0.28em 0.55em;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  --gap: 1.22em;
+  position: absolute;
+  right: calc(32 * var(--u));
+  top: calc(13 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  font-size: var(--small);
+  letter-spacing: var(--ls);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.hero .menu {
+  display: block;
+  min-width: 6.349em;
+  height: 1.508em;
+  padding: 0 0.33em;
+  background: var(--menu-bg);
+  color: var(--menu-ink);
+  line-height: 1.508em;
+  text-align: left;
+}
+
+@media (hover: hover) {
+  .hero .menu:hover {
+    background: #ffffff;
+  }
+}
+
+/* Services and rule */
+.services {
+  position: absolute;
+  left: 0;
+  top: var(--svc-top);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: max(var(--small-min) * 1.06, 13.3 * var(--u));
+}
+
+.services li {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+}
+
+.services li:nth-child(1) {
+  left: calc(20 * var(--u));
+}
+
+.services li:nth-child(2) {
+  left: calc(50% - 3 * var(--u));
+  transform: translateX(-50%);
+}
+
+.services li:nth-child(3) {
+  right: calc(33.25 * var(--u));
+}
+
+/* A soft pad behind each label: the helmet's highlights and the arc pass under them (4.5:1). */
+.services li::before {
+  content: "";
+  position: absolute;
+  inset: -0.7em -1em;
+  z-index: -1;
+  border-radius: 1em;
+  background: rgb(var(--scrim) / 0.72);
+  filter: blur(0.55em);
+}
+
+.rc,
+.rv {
+  display: inline-block;
+}
+
+.rule {
+  position: absolute;
+  left: 0;
+  top: var(--rule-top);
+  z-index: -1;
+  width: 100%;
+  height: 1px;
+  background: var(--rule);
+  box-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.038),
+    0 1px 0 rgba(255, 255, 255, 0.014);
+}
+
+/* Headline */
+.hl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--hl-bottom);
+  height: var(--hl-stack);
+  margin: 0;
+  font-family: var(--font-geist), sans-serif;
+  font-size: var(--hl-size);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  --hl-ls: -0.05em;
+}
+
+/* A zero-size origin at the centre of each line's baseline; --i counts lines from the top. */
+.hl__line,
+.hl__clip {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+.hl__line {
+  bottom: calc((var(--n) - 1 - var(--i)) * 0.7839em);
+  left: 50%;
+}
+
+.hl__track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  /* With no line height, the line box ends at the empty inline-block below, whose bottom edge
+     is the baseline: the box's bottom is the text baseline in any font. */
+  line-height: 0;
+  letter-spacing: var(--hl-ls);
+  /* Centred on the letters: the last one's tracking is not part of the word. */
+  transform: translateX(calc(-50% + var(--hl-ls) / 2));
+}
+
+.hl__track::before {
+  content: "";
+  display: inline-block;
+}
+
+/* Composition breakpoints, not device widths. Portrait-leaning tablets and phones: */
+@media (max-aspect-ratio: 114/100) {
+  .hero {
+    --small-min: 12px;
+    --m: clamp(16px, 3.2vw, 32px);
+    --bar-top: calc(var(--m) * 0.64);
+    --photo-top: calc(var(--vh) * 15);
+    --svc-top: calc(var(--vh) * 44);
+    --rule-top: calc(var(--svc-top) + 2.1 * var(--small));
+    --hl-size: calc((100vw - 2 * var(--m)) / 6.3063);
+    --hl-bottom: max(0.4914 * var(--hl-size), 18px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .hero .logo,
+  .tagline,
+  .contact,
+  .actions {
+    top: var(--bar-top);
+  }
+
+  .hero .logo {
+    left: var(--m);
+  }
+
+  .actions {
+    right: var(--m);
+  }
+
+  .photo {
+    --pw: calc(var(--vh) * 138.6);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 11%);
+    mask-image: linear-gradient(180deg, transparent 0, #000 11%);
+  }
+
+  .services li:nth-child(1) {
+    left: var(--m);
+  }
+
+  .services li:nth-child(2) {
+    left: 50%;
+  }
+
+  .services li:nth-child(3) {
+    right: var(--m);
+  }
+}
+
+/* ...narrow enough for two rows. The labels are longer than a third of the row here, so they
+   wrap to two lines and the rule moves down a line. */
+@media (max-aspect-ratio: 114/100) and (max-width: 679px) {
+  .hero {
+    --small-min: 11.5px;
+    --bar-top: calc(var(--m) * 0.64 + env(safe-area-inset-top, 0px));
+    --row-2: calc(70px + env(safe-area-inset-top, 0px));
+    --rule-top: calc(var(--svc-top) + 3.1 * var(--small));
+  }
+
+  .actions {
+    --gap: 14px;
+  }
+
+  .tagline {
+    left: var(--m);
+    top: var(--row-2);
+  }
+
+  .contact {
+    left: auto;
+    right: var(--m);
+    top: var(--row-2);
+    align-items: flex-end;
+  }
+
+  .services li {
+    width: max-content;
+    max-width: 30%;
+    white-space: normal;
+    text-wrap: balance;
+  }
+
+  .services li:nth-child(2) {
+    text-align: center;
+  }
+
+  .services li:nth-child(3) {
+    text-align: right;
+  }
+}
+
+@media (max-aspect-ratio: 114/100) and (max-width: 309px) {
+  .hero {
+    --photo-top: max(
+      var(--vh) * 15,
+      min(
+        150px + env(safe-area-inset-top, 0px),
+        var(--vh) * 71 - var(--hl-bottom) - 2.3 * var(--hl-size) - 56px
+      )
+    );
+    --svc-top: calc(var(--photo-top) + var(--vh) * 29);
+    /* One word per line: the longest label is five words. */
+    --rule-top: calc(var(--svc-top) + 6.1 * var(--small));
+  }
+
+  .contact {
+    top: calc(var(--row-2) + 3em + 12px);
+  }
+
+  .services li {
+    width: min-content;
+    max-width: none;
+  }
+}
+
+/* Landscape phones keep the desktop composition, inside the safe area. */
+@media (max-height: 479px) and (min-aspect-ratio: 1141/1000) {
+  .hero {
+    --small-min: 11.5px;
+    --mL: max(16px, env(safe-area-inset-left, 0px));
+    --mR: max(16px, env(safe-area-inset-right, 0px));
+    --bar-top: calc(16px * 0.64);
+    --bar-lines: 3.8;
+    --hl-bottom: max(0.4914 * var(--hl-size), 8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* This short, the bar's text lies across the helmet and the arc: a wash behind the bar too. */
+  .scrim {
+    background:
+      linear-gradient(
+        180deg,
+        rgb(var(--scrim) / 0.72) calc(var(--bar-top) + var(--bar-lines) * var(--small)),
+        rgb(var(--scrim) / 0) calc(var(--bar-top) + (var(--bar-lines) + 3) * var(--small))
+      ),
+      var(--hl-scrim);
+  }
+
+  .hero .logo,
+  .tagline,
+  .contact,
+  .actions {
+    top: var(--bar-top);
+  }
+
+  .hero .logo {
+    left: var(--mL);
+  }
+
+  .tagline {
+    left: calc(var(--mL) + 96px + 2em);
+  }
+
+  /* Right-anchored just clear of the two links, which are 10.7em wide. */
+  .contact {
+    left: auto;
+    right: calc(var(--mR) + 10.7em + 2em);
+  }
+
+  .actions {
+    right: var(--mR);
+  }
+
+  .services li:nth-child(1) {
+    left: var(--mL);
+  }
+
+  .services li:nth-child(2) {
+    left: calc(var(--mL) + (100% - var(--mL) - var(--mR)) / 2);
+  }
+
+  .services li:nth-child(3) {
+    right: var(--mR);
+  }
+
+  .hl {
+    left: var(--mL);
+    right: var(--mR);
+  }
+}
+
+@media (max-height: 479px) and (min-aspect-ratio: 1141/1000) and (max-width: 559px) {
+  .hero {
+    --bar-lines: 6.6;
+  }
+
+  .contact {
+    right: var(--mR);
+    top: calc(var(--bar-top) + 2.6em);
+    align-items: flex-end;
+  }
+}
+
+/* Coarse pointers: larger hit areas, the same drawn shapes. */
+@media (pointer: coarse) {
+  .hero .logo::after,
+  .actions a::after,
+  .contact a::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    height: max(100%, 44px);
+    translate: 0 -50%;
+  }
+
+  .hero .logo::after {
+    inset-inline: -10px;
+  }
+
+  .actions a:first-child::after {
+    left: -12px;
+    right: calc(var(--gap) / -2);
+  }
+
+  .hero .menu::after {
+    left: calc(var(--gap) / -2);
+    right: -10px;
+  }
+
+  /* Two stacked links: 24px each keeps their areas apart. */
+  .contact a::after {
+    inset-inline: -6px;
+    height: max(100%, 24px);
+  }
+}
+
+/*
+ * Entrance, once on load, foreground only. It is pure CSS, so it starts with the first paint
+ * and needs no script; with reduced motion, or without animation support, the page is simply
+ * static. Nothing is left running: every animation fills backwards only, and the clips exist
+ * only while their line is rising.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .hero {
+    --e-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --e-quint: cubic-bezier(0.22, 1, 0.36, 1);
+    --e-sweep: cubic-bezier(0.76, 0, 0.24, 1);
+  }
+
+  .rule {
+    transform-origin: 0 50%;
+    animation: au-draw 0.85s var(--e-sweep) 0.24s backwards;
+  }
+
+  .hl__clip {
+    animation: au-clip-hl 1.4s;
+  }
+
+  .hl__track {
+    --rise: 1em;
+    animation: au-rise 1.05s var(--e-expo) calc(0.1s + var(--i) * 0.08s) backwards;
+  }
+
+  .rc {
+    animation: au-clip-rv 1.5s;
+  }
+
+  .rv {
+    --rise: calc(100% + 0.6em);
+    animation: au-rise 0.8s var(--e-quint) calc(0.56s + var(--i) * 0.06s) backwards;
+  }
+
+  .hero .logo {
+    animation: au-on 0.14s ease-out 0.7s backwards;
+  }
+
+  .tagline span,
+  .contact a,
+  .actions a:first-child {
+    --rise: 0.55em;
+    animation: au-soft 0.75s var(--e-quint) calc(0.78s + var(--i, 0) * 0.05s) backwards;
+  }
+
+  .contact a {
+    animation-delay: calc(0.88s + var(--i) * 0.05s);
+  }
+
+  .actions a:first-child {
+    animation-duration: 0.6s;
+    animation-delay: 0.98s;
+  }
+
+  .hero .menu {
+    transition: background-color 0.15s;
+    animation: au-wipe 0.6s cubic-bezier(0.25, 1, 0.5, 1) 1.02s backwards;
+  }
+}
+
+@keyframes au-rise {
+  from {
+    translate: 0 var(--rise);
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes au-soft {
+  from {
+    translate: 0 var(--rise);
+    opacity: 0;
+  }
+  to {
+    translate: 0 0;
+    opacity: 1;
+  }
+}
+
+@keyframes au-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes au-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes au-on {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes au-clip-hl {
+  from,
+  to {
+    clip-path: inset(-0.8em -3.6em -0.05em -3.6em);
+  }
+}
+
+@keyframes au-clip-rv {
+  from,
+  to {
+    clip-path: inset(-0.25em -0.4em -0.35em -0.4em);
+  }
+}
