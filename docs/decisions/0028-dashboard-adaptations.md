@@ -1,6 +1,6 @@
 # 0028: Dashboard adaptations of DESIGN.md
 
-Status: accepted (2026-09-28). Implements PLAN.md §4 (E0).
+Status: superseded by [ADR 0042](0042-industrial-brutalist-design-system.md) (2026-10-13). Accepted 2026-09-28; implemented PLAN.md §4 (E0).
 
 ## Context
 DESIGN.md describes Framer's marketing site: one accent color, poster-sized type and a 5px spacing rhythm. A test-results dashboard needs things that document never had to express: pass/fail/flaky states, dense tables, charts, focus and error states. Every rule this ADR bends is listed here, so DESIGN.md stays the reference and the deviations stay visible.
