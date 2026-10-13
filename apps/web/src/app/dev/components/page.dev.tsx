@@ -24,6 +24,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { ToastProvider, useToast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cx } from "@/lib/cx";
+import { MotionSection } from "./motion-section";
 
 const STATUSES: Status[] = ["pass", "fail", "flaky", "error", "stable", "running", "queued", "quarantined"];
 
@@ -439,6 +440,10 @@ function Showcase() {
             </ResponsiveContainer>
           </div>
         </Panel>
+      </Section>
+
+      <Section n="10" title="Motion">
+        <MotionSection />
       </Section>
 
       <Dialog

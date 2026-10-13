@@ -65,6 +65,15 @@
   }
 }
 
+/* lib/motion: a server-rendered element marked data-motion="hidden" starts clipped, so it never
+   shows its end state before its hook takes over (the hook removes the attribute). Only where
+   scripts run and motion is allowed; otherwise it is simply there. */
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  [data-motion="hidden"] {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
 /* The patterns below (hatch, scanlines, noise) are SVG tiles and masks, not CSS colour ramps:
    the system has no colour fade, so a source search for one finds nothing. */
 

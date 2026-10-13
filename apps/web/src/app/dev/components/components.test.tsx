@@ -24,3 +24,14 @@ test("every control in the catalogue has an accessible name", () => {
     }
   }
 });
+
+test("each motion effect has a replay button, and the page is in its final state when motion is off", () => {
+  const { container } = render(<ComponentsPage />);
+  const section = container.querySelector("#s-10")?.closest("section");
+  expect(section).not.toBeNull();
+  const labels = [...section!.querySelectorAll("button")].map((b) => b.textContent);
+  expect(labels.filter((l) => l === "Replay")).toHaveLength(6);
+  expect(labels).toContain("Replay all");
+  expect(section!.textContent).toContain("97.5%"); // the count-up's end value, not a mid-count
+  expect(section!.querySelector("[style*='clip-path']")).toBeNull();
+});
