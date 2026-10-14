@@ -9,9 +9,9 @@ imports; persistence is the caller's job, in `apps/api`):
 - `agglomerative_cluster` groups embedding vectors by a fixed cosine-distance threshold, not
   a model that needs a cluster count chosen up front -- a run's number of distinct failures
   isn't known ahead of time. Single-linkage, stdlib only: `packages/core` has no numpy/scipy
-  dependency, and a run's failing outputs number in the tens to low hundreds, where an
-  O(n^3) scan costs nothing measurable (ponytail: swap in a real clustering library if that
-  stops being true).
+  dependency, and a run's failing outputs number in the tens to low hundreds. Each pair's
+  distance is computed once and merges work on that matrix: O(n^2 * dim + n^3) comparisons
+  (ponytail: a library with a priority queue, if runs reach thousands of failures).
 - `cluster_failures` embeds the failing outputs, clusters them, and asks the summarizer role
   to describe each group. With the mock provider, whose summarizer answer is a hash, each
   group is described from its own facts instead (`describe_locally`): the failing judges,
@@ -78,25 +78,28 @@ def agglomerative_cluster(
     vectors -> one cluster (their distance is 0, always within any positive threshold).
     """
     clusters: list[list[int]] = [[i] for i in range(len(vectors))]
+    # Every pair's distance once. Single linkage then never needs a vector again: the distance
+    # from a merged cluster to another is the smaller of its two parts' distances to it.
+    # (Recomputing member pairs on every merge cost O(n^4 * dim); 50 outputs took minutes under
+    # coverage tracing while the caller held a database transaction open.)
+    gap = [[0.0] * len(vectors) for _ in vectors]
+    for a in range(len(vectors)):
+        for b in range(a + 1, len(vectors)):
+            gap[a][b] = gap[b][a] = cosine_distance(vectors[a], vectors[b])
     while len(clusters) > 1:
         # (distance, i, j), tuple-compared: ties go to the lowest cluster indices.
         distance, i, j = min(
-            (
-                min(
-                    cosine_distance(vectors[a], vectors[b])
-                    for a in clusters[i]
-                    for b in clusters[j]
-                ),
-                i,
-                j,
-            )
-            for i in range(len(clusters))
-            for j in range(i + 1, len(clusters))
+            (gap[i][j], i, j) for i in range(len(clusters)) for j in range(i + 1, len(clusters))
         )
         if distance > threshold:
             break
         clusters[i] = clusters[i] + clusters[j]
         del clusters[j]
+        for k in range(len(gap)):
+            gap[i][k] = gap[k][i] = min(gap[i][k], gap[j][k])
+        del gap[j]
+        for row in gap:
+            del row[j]
     return clusters
 
 

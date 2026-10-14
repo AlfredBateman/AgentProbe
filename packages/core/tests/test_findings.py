@@ -3,6 +3,11 @@ end to end against `ScriptedLLM` for exact control over embeddings and the summa
 response.
 """
 
+import random
+
+import pytest
+
+import agentprobe_core.findings as findings_module
 from agentprobe_core.findings import (
     ClusterFinding,
     FailingOutput,
@@ -274,3 +279,52 @@ async def test_the_mock_summarizer_is_readable_and_deterministic() -> None:
 
 
 _GENERIC = "Read the failing outputs and the judges' reasons, then adjust the agent."
+
+
+def _brute_force_single_linkage(vectors: list[list[float]], threshold: float) -> list[list[int]]:
+    """The definition, recomputed from the vectors on every merge."""
+    clusters = [[i] for i in range(len(vectors))]
+    while len(clusters) > 1:
+        distance, i, j = min(
+            (min(cosine_distance(vectors[a], vectors[b]) for a in ci for b in clusters[j]), i, j)
+            for i, ci in enumerate(clusters)
+            for j in range(i + 1, len(clusters))
+        )
+        if distance > threshold:
+            break
+        clusters[i] = clusters[i] + clusters[j]
+        del clusters[j]
+    return clusters
+
+
+def test_agglomerative_cluster_matches_the_definition() -> None:
+    rng = random.Random(7)
+    for trial in range(40):
+        n = rng.randint(2, 18)
+        # Few distinct directions, so near-duplicates, exact duplicates and ties all occur.
+        bases = [[rng.uniform(-1, 1) for _ in range(6)] for _ in range(rng.randint(1, 5))]
+        vectors = [
+            [x + rng.choice([0.0, 0.0, rng.uniform(-0.3, 0.3)]) for x in rng.choice(bases)]
+            for _ in range(n)
+        ]
+        threshold = rng.choice([0.05, 0.25, 0.6])
+        expected = _brute_force_single_linkage(vectors, threshold)
+        assert agglomerative_cluster(vectors, threshold=threshold) == expected, trial
+
+
+def test_agglomerative_cluster_computes_each_pair_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cost that matters: a run's failing outputs are clustered while the caller holds a
+    database transaction, so the distance work must not grow with the number of merges.
+    """
+    calls = 0
+    real = findings_module.cosine_distance
+
+    def counted(a: list[float], b: list[float]) -> float:
+        nonlocal calls
+        calls += 1
+        return real(a, b)
+
+    monkeypatch.setattr(findings_module, "cosine_distance", counted)
+    vectors = [[1.0, 0.0]] * 30 + [[0.0, 1.0]] * 20
+    assert len(agglomerative_cluster(vectors)) == 2
+    assert calls == 50 * 49 // 2
