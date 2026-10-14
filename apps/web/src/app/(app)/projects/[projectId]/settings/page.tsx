@@ -1,19 +1,20 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
-import { FieldError, Input, Label } from "@/components/ui/field";
+import { FieldError, FormError, Input, Label } from "@/components/ui/field";
+import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/status";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api/client";
 import { apiErrorMessage, apiFieldErrors } from "@/lib/api/errors";
 import type { components } from "@/lib/api/schema";
+import { useReveal, useStagger } from "@/lib/motion/hooks";
 import { requiredError } from "@/lib/validators";
 
 type ApiKey = components["schemas"]["ApiKeyOut"];
@@ -23,18 +24,30 @@ const formatDate = (iso: string | null) => (iso ? dateFormat.format(new Date(iso
 
 export default function SettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const headerRef = useRef<HTMLElement>(null);
+  useReveal(headerRef);
   return (
     <>
-      <h1 className="font-display text-dash-title-sm tablet:text-dash-title">Settings</h1>
-      <div className="mt-20 flex flex-col gap-20">
-        <ApiKeysCard projectId={projectId} />
-        <ModelConfigCard />
+      <header ref={headerRef} className="border-b border-hairline-strong pb-16">
+        <p className="type-micro text-ink-muted">
+          [ Project ] <span aria-hidden>{"///"}</span> Keys, models, alerts
+        </p>
+        <h1 className="mt-8 type-display-md">Settings</h1>
+      </header>
+      {/* Keys take the wide column. The narrow one holds read-only panels, so a new section
+          (alerts, when they exist) is one more panel in it. */}
+      <div className="mt-24 grid items-start gap-16 desktop:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <ApiKeysPanel projectId={projectId} />
+        <div className="flex flex-col gap-16">
+          <ModelConfigPanel />
+          <AlertsPanel />
+        </div>
       </div>
     </>
   );
 }
 
-function ApiKeysCard({ projectId }: { projectId: string }) {
+function ApiKeysPanel({ projectId }: { projectId: string }) {
   const toast = useToast();
   const [keys, setKeys] = useState<ApiKey[] | "loading" | "error">("loading");
   const [createOpen, setCreateOpen] = useState(false);
@@ -77,7 +90,7 @@ function ApiKeysCard({ projectId }: { projectId: string }) {
       header: "",
       render: (k) =>
         k.revoked_at ? null : (
-          <Button variant="translucent" onClick={() => revoke(k)}>
+          <Button variant="danger" onClick={() => revoke(k)}>
             Revoke
           </Button>
         ),
@@ -85,13 +98,16 @@ function ApiKeysCard({ projectId }: { projectId: string }) {
   ];
 
   return (
-    <Card title="API keys" actions={<Button onClick={() => setCreateOpen(true)}>Create key</Button>}>
+    <Panel title="API keys" actions={<Button onClick={() => setCreateOpen(true)}>Create key</Button>}>
+      {/* Reveal once: the key exists in this state only. Leaving, reloading or pressing Done
+          drops it, and the API never returns it again (only its last four characters). */}
       {justCreated && (
-        <div className="mb-15 bg-surface-2 p-15">
-          <p className="text-body-sm text-ink">
+        <div className="mb-16 border-2 border-accent p-16">
+          <p className="type-label text-accent">[ Shown once ]</p>
+          <p className="mt-8 type-body text-ink">
             <strong>{justCreated.label}</strong> — copy this key now. You won&rsquo;t be able to see it again.
           </p>
-          <CodeBlock code={justCreated.key} className="mt-8" />
+          <CodeBlock code={justCreated.key} label="API key" className="mt-12" />
           <Button variant="secondary" className="mt-12" onClick={() => setJustCreated(null)}>
             Done
           </Button>
@@ -99,15 +115,7 @@ function ApiKeysCard({ projectId }: { projectId: string }) {
       )}
       {keys === "loading" && <Skeleton className="h-120" />}
       {keys === "error" && <EmptyState title="Couldn't load API keys" description="Check your connection and reload the page." />}
-      {Array.isArray(keys) && (
-        <DataTable
-          columns={columns}
-          rows={keys}
-          rowKey={(k) => k.id}
-          caption="API keys"
-          empty={<EmptyState title="No API keys yet" description="Create one for the CLI or CI to push runs with." />}
-        />
-      )}
+      {Array.isArray(keys) && <KeysTable columns={columns} keys={keys} />}
       <CreateKeyDialog
         projectId={projectId}
         open={createOpen}
@@ -118,7 +126,23 @@ function ApiKeysCard({ projectId }: { projectId: string }) {
           load();
         }}
       />
-    </Card>
+    </Panel>
+  );
+}
+
+function KeysTable({ columns, keys }: { columns: Column<ApiKey>[]; keys: ApiKey[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useStagger(ref, "tbody tr");
+  return (
+    <div ref={ref} className="border border-hairline">
+      <DataTable
+        columns={columns}
+        rows={keys}
+        rowKey={(k) => k.id}
+        caption="API keys"
+        empty={<EmptyState title="No API keys yet" description="Create one for the CLI or CI to push runs with." />}
+      />
+    </div>
   );
 }
 
@@ -179,7 +203,7 @@ function CreateKeyDialog({
         </>
       }
     >
-      <form id="create-api-key" className="flex flex-col gap-15 text-left" onSubmit={onSubmit} noValidate>
+      <form id="create-api-key" className="flex flex-col gap-16 text-left" onSubmit={onSubmit} noValidate>
         <div className="flex flex-col gap-6">
           <Label htmlFor="key-label">Label</Label>
           <Input
@@ -192,7 +216,7 @@ function CreateKeyDialog({
           />
           <FieldError id="key-label-error">{errors.label}</FieldError>
         </div>
-        <FieldError id="create-key-error">{errors.form}</FieldError>
+        <FormError id="create-key-error">{errors.form}</FormError>
       </form>
     </Dialog>
   );
@@ -200,7 +224,7 @@ function CreateKeyDialog({
 
 type LlmConfig = components["schemas"]["LlmConfigOut"];
 
-function ModelConfigCard() {
+function ModelConfigPanel() {
   const [config, setConfig] = useState<LlmConfig | "loading" | "error">("loading");
 
   useEffect(() => {
@@ -208,25 +232,37 @@ function ModelConfigCard() {
   }, []);
 
   return (
-    <Card title="Models">
+    <Panel title="Models">
       {config === "loading" && <Skeleton className="h-80" />}
       {config === "error" && <EmptyState title="Couldn't load model config" />}
       {typeof config === "object" && (
         <>
-          <p className="text-body-sm text-ink-muted">
+          <p className="type-body-sm text-ink-muted">
             Provider: <span className="text-ink">{config.provider}</span>. Set by the server operator — never
             configurable per project.
           </p>
-          <dl className="mt-15 grid grid-cols-[auto_1fr] gap-x-20 gap-y-8 text-data">
+          <dl className="mt-16 grid grid-cols-[auto_minmax(0,1fr)] gap-x-24 gap-y-8">
             {Object.entries(config.models).map(([role, model]) => (
               <Fragment key={role}>
-                <dt className="text-ink-muted capitalize">{role}</dt>
-                <dd className="font-mono text-ink">{model}</dd>
+                <dt className="type-label text-ink-muted">{role}</dt>
+                <dd className="type-code break-words text-ink">{model}</dd>
               </Fragment>
             ))}
           </dl>
         </>
       )}
-    </Card>
+    </Panel>
+  );
+}
+
+/** Where alerts will live. There is no setting to show yet, so it says so and names what does
+ * report a regression today. */
+function AlertsPanel() {
+  return (
+    <Panel title="Alerts" actions={<span className="type-micro text-ink-muted">Not available yet</span>}>
+      <p className="type-body-sm text-ink-muted">
+        A regression fails the CLI run and the GitHub Action check. Alerts inside the app, and where they go, will be set here.
+      </p>
+    </Panel>
   );
 }

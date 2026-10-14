@@ -23,12 +23,26 @@ let lastAnswer = 0; // when the API last answered (any status but a gateway erro
 let lastNudge: number | null = null;
 let waking: Promise<void> | null = null;
 let showNotice = false;
-const listeners = new Set<() => void>();
+let health: "awake" | "down" | null = null; // null until something has answered or the budget ran out
+const listeners = new Set<() => void>(); // wakeNotice: the notice only
+const statusListeners = new Set<() => void>(); // wakeStatus: the notice and the health
 
 function setNotice(value: boolean) {
   if (showNotice === value) return;
   showNotice = value;
   listeners.forEach((l) => l());
+  statusListeners.forEach((l) => l());
+}
+
+function setHealth(value: "awake" | "down") {
+  if (health === value) return;
+  health = value;
+  statusListeners.forEach((l) => l());
+}
+
+function answered() {
+  lastAnswer = Date.now();
+  setHealth("awake");
 }
 
 /** For useSyncExternalStore: whether the "waking the server" notice should show. */
@@ -38,6 +52,21 @@ export const wakeNotice = {
     return () => void listeners.delete(listener);
   },
   get: () => showNotice,
+};
+
+export type WakeState = "checking" | "waking" | "awake" | "down";
+
+/**
+ * For useSyncExternalStore: what the app's own requests have shown about the API. It sends
+ * nothing: it reads the answers `awakeFetch` already gets, so the shell's status chip adds no
+ * traffic. "waking" is the notice's state (after NOTICE_AFTER_MS), "down" is a spent wake budget.
+ */
+export const wakeStatus = {
+  subscribe(listener: () => void) {
+    statusListeners.add(listener);
+    return () => void statusListeners.delete(listener);
+  },
+  get: (): WakeState => (showNotice ? "waking" : (health ?? "checking")),
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -51,7 +80,7 @@ async function wake(base: string): Promise<void> {
       try {
         const r = await fetch(new URL("/api/health", base), { cache: "no-store", signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
         if (r.ok) {
-          lastAnswer = Date.now();
+          answered();
           return;
         }
       } catch {
@@ -59,6 +88,7 @@ async function wake(base: string): Promise<void> {
       }
       await sleep(Math.min(1000 * 2 ** attempt, 5000));
     }
+    setHealth("down");
   } finally {
     clearTimeout(notice);
     setNotice(false);
@@ -92,7 +122,7 @@ export async function awakeFetch(request: Request, nudgeUrls = NUDGE_URLS): Prom
   try {
     const response = await fetch(request);
     if (!GATEWAY.has(response.status)) {
-      lastAnswer = Date.now();
+      answered();
       return response;
     }
     if (!retry) return response;
@@ -110,4 +140,5 @@ export function resetWake() {
   lastNudge = null;
   waking = null;
   showNotice = false;
+  health = null;
 }

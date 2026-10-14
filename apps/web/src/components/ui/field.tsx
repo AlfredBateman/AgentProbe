@@ -67,3 +67,14 @@ export function FieldError({ id, children }: { id: string; children?: string | n
     </p>
   );
 }
+
+/** A form-level failure (a bad password, a rate limit, a server error): bordered and announced
+ * as it appears, since it belongs to no single field. */
+export function FormError({ id, children }: { id: string; children?: string | null }) {
+  if (!children) return null;
+  return (
+    <p id={id} role="alert" className="border border-fail p-12 type-body-sm text-fail">
+      {children}
+    </p>
+  );
+}

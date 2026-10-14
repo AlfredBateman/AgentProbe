@@ -6,6 +6,11 @@ import {
   INVALID_YAML_EMAIL,
   MAIN_FLOW_EMAIL,
   OVERVIEW_EMAIL,
+  SHELL_1440_EMAIL,
+  SHELL_390_EMAIL,
+  SHELL_404_EMAIL,
+  SHELL_COLD_EMAIL,
+  SHELL_SHOTS_EMAIL,
   SSRF_EMAIL,
   VISUAL_EMAIL,
 } from "./e2e/fixtures";
@@ -38,6 +43,11 @@ const signupAllowedEmails = [
   VISUAL_EMAIL,
   OVERVIEW_EMAIL,
   AGENTS_SUITES_EMAIL,
+  SHELL_1440_EMAIL,
+  SHELL_390_EMAIL,
+  SHELL_404_EMAIL,
+  SHELL_COLD_EMAIL,
+  SHELL_SHOTS_EMAIL,
 ].join(",");
 
 // Fake, committed, test-only values (never used for anything real): Fernet needs a valid key

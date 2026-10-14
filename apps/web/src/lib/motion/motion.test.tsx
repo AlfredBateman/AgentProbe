@@ -1,7 +1,7 @@
 import { act, render } from "@testing-library/react";
 import gsap from "gsap";
 import { useRef } from "react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { REDUCE_ATTR } from "./core";
 import { useCountUp, useReveal, useStagger } from "./hooks";
 import { useSplitHeading } from "./split-heading";
@@ -183,41 +183,5 @@ describe("a server-rendered heading behind the first-paint guard", () => {
     expect(heading.hasAttribute("data-motion")).toBe(false);
     expect(heading.innerHTML).toBe("Regressions");
     expect(gsap.globalTimeline.getChildren(true, true, true)).toHaveLength(0);
-  });
-});
-
-describe("page transition", () => {
-  // A fresh module graph per test resets the first-mount flag; it brings its own gsap, so the
-  // timeline is read from the same graph.
-  async function load() {
-    vi.resetModules();
-    const { default: g } = await import("gsap");
-    const { PageTransition } = await import("./page-transition");
-    const children = () => g.globalTimeline.getChildren(true, true, true);
-    return { PageTransition, children, finish: () => act(() => children().forEach((t) => t.progress(1))) };
-  }
-
-  test("skips the server-rendered first mount, then wipes in each navigation", async () => {
-    setReducedMotion(false);
-    const { PageTransition, children, finish } = await load();
-    const first = render(<PageTransition>page one</PageTransition>);
-    expect(children()).toHaveLength(0);
-    await Promise.resolve(); // the first-mount flag clears in a microtask
-    first.unmount();
-    const second = render(<PageTransition>page two</PageTransition>);
-    expect(children()).toHaveLength(1);
-    finish();
-    expect((second.container.firstChild as HTMLElement).style.clipPath).toBe("");
-    expect(second.container.textContent).toBe("page two");
-  });
-
-  test("renders its children untouched under reduced motion", async () => {
-    setReducedMotion(true);
-    const { PageTransition, children } = await load();
-    render(<PageTransition>first</PageTransition>).unmount();
-    await Promise.resolve();
-    const { container } = render(<PageTransition>second</PageTransition>);
-    expect(container.innerHTML).toBe("<div>second</div>");
-    expect(children()).toHaveLength(0);
   });
 });

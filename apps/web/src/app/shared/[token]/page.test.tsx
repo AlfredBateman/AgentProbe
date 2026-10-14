@@ -33,7 +33,11 @@ const shared: components["schemas"]["SharedRunOut"] = {
 };
 
 vi.mock("next/navigation", () => ({ useParams: () => ({ token: "t0ken" }) }));
-vi.mock("@/lib/api/wake", () => ({ awakeFetch: async () => Response.json(shared) }));
+vi.mock("@/lib/api/wake", () => ({
+  awakeFetch: async () => Response.json(shared),
+  // The header's status chip reads this; nothing here wakes anything.
+  wakeStatus: { subscribe: () => () => {}, get: () => "checking" },
+}));
 
 test("XSS: every untrusted field on the public share page renders as literal text", async () => {
   const { container } = render(<SharedRunPage />);
