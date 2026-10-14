@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Hero } from "@/components/landing/hero";
+import { Reveal, Stagger } from "@/components/landing/motion";
 import { Proof } from "@/components/landing/proof";
 import { INSTALL, OWNER, REPO, TAG } from "@/components/landing/site";
 import { StatusChip } from "@/components/landing/status-chip";
@@ -72,13 +73,13 @@ export default function Home() {
       <main className="flex flex-1 flex-col">
         <Hero />
 
-        <section aria-label="How it works" className="grid gap-16 border-b border-hairline-strong px-16 py-32 tablet:grid-cols-3 tablet:px-32">
+        <Stagger as="section" aria-label="How it works" className="grid gap-16 border-b border-hairline-strong px-16 py-32 tablet:grid-cols-3 tablet:px-32">
           {CARDS.map((card, i) => (
             <Panel key={card.title} title={card.title} href={card.href} actions={<span className="type-micro text-ink-muted">{`0${i + 1}`}</span>} className={CARD}>
               <p className="mt-auto type-label text-ink-muted">{card.body}</p>
             </Panel>
           ))}
-        </section>
+        </Stagger>
 
         <Proof />
 
@@ -86,7 +87,9 @@ export default function Home() {
           <h2 id="install-title" className="type-display-xl">
             Install
           </h2>
-          <CodeBlock code={INSTALL} label="CLI /// Run /// GitHub Action" className="mt-32" />
+          <Reveal as="div" className="mt-32">
+            <CodeBlock code={INSTALL} label="CLI /// Run /// GitHub Action" />
+          </Reveal>
           <p className="mt-12 max-w-720 type-body-sm text-ink-muted">
             Install from the git URL: the PyPI name agentprobe belongs to an unrelated project.{" "}
             <a href={`${REPO}#quick-start`}>Quick start</a>

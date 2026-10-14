@@ -29,3 +29,9 @@ if (typeof window !== "undefined" && !window.matchMedia) {
     dispatchEvent: () => false,
   })) as typeof window.matchMedia;
 }
+
+// jsdom has no canvas contexts and logs "Not implemented" when asked; a browser without WebGL
+// returns null, which is what the hero's WebGL probe handles.
+if (typeof HTMLCanvasElement !== "undefined") {
+  HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
+}

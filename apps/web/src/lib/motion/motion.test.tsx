@@ -157,6 +157,35 @@ describe("motion allowed", () => {
   });
 });
 
+describe("a server-rendered heading behind the first-paint guard", () => {
+  function GuardedHeading({ expired }: { expired: boolean }) {
+    const ref = useRef<HTMLHeadingElement>(null);
+    useSplitHeading(ref);
+    // jsdom runs no CSS animations; an inline style stands in for the guard's computed clip.
+    return (
+      <h1 ref={ref} data-motion="hidden" data-testid="heading" style={{ clipPath: expired ? "none" : "inset(0 0 100% 0)" }}>
+        Regressions
+      </h1>
+    );
+  }
+
+  test("still guarded: the guard comes off and the lines reveal", () => {
+    setReducedMotion(false);
+    const { getByTestId } = render(<GuardedHeading expired={false} />);
+    expect(getByTestId("heading").hasAttribute("data-motion")).toBe(false);
+    expect(gsap.globalTimeline.getChildren(true, true, true).length).toBeGreaterThan(0);
+  });
+
+  test("guard already run out on a slow load: the heading is on screen and is not revealed again", () => {
+    setReducedMotion(false);
+    const { getByTestId } = render(<GuardedHeading expired />);
+    const heading = getByTestId("heading");
+    expect(heading.hasAttribute("data-motion")).toBe(false);
+    expect(heading.innerHTML).toBe("Regressions");
+    expect(gsap.globalTimeline.getChildren(true, true, true)).toHaveLength(0);
+  });
+});
+
 describe("page transition", () => {
   // A fresh module graph per test resets the first-mount flag; it brings its own gsap, so the
   // timeline is read from the same graph.

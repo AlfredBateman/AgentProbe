@@ -72,6 +72,18 @@
   [data-motion="hidden"] {
     clip-path: inset(0 0 100% 0);
   }
+
+  /* A headline is the page's largest paint: it waits at most 600ms for its script, then shows
+     as it is, and useSplitHeading skips a reveal that arrives later (it would flash). */
+  h1[data-motion="hidden"] {
+    animation: motion-guard-expired 0s 600ms forwards;
+  }
+}
+
+@keyframes motion-guard-expired {
+  to {
+    clip-path: none;
+  }
 }
 
 /* The patterns below (hatch, scanlines, noise) are SVG tiles and masks, not CSS colour ramps:

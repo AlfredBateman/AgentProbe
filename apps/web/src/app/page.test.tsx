@@ -34,7 +34,9 @@ test("one h1 in three lines, a real h2 for every section, and the tagline", () =
     "Install",
   ]);
   expect(screen.getByText("Regression detection for LLM agents. Statistically corrected. Flakiness-aware.")).toBeTruthy();
-  expect(screen.getByText(/Illustrative/)).toBeTruthy();
+  // The hero figure is not live data: the box itself and its caption both say so.
+  expect(screen.getByText("Illustrative").closest("[aria-hidden]")?.querySelector("svg")).not.toBeNull();
+  expect(screen.getByText(/^Fig\. 01 .* Illustrative$/)).toBeTruthy();
 });
 
 test("every link goes somewhere, and lime fills only the register action", () => {

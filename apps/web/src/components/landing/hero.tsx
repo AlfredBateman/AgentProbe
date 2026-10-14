@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { buttonClasses } from "@/components/ui/button";
 import facts from "./facts.json";
+import { HeroVisual } from "./hero-visual";
+import { CountUp, SplitHeading } from "./motion";
 import { demoUrl } from "./site";
 
 const { detection, falseAlarms, runsPerCase } = facts;
@@ -21,29 +23,17 @@ export function Hero() {
             composition keeps its proportions at every width and cannot overflow. */}
         <div className="@container grid grid-cols-[minmax(0,1fr)]">
           <div className="col-start-1 row-start-1 grid py-24 tablet:py-48">
-            {/* The box the 3D piece will take over. Its size is fixed by aspect ratio, so swapping
+            {/* The 3D grid, or its static figure. Its size is fixed by aspect ratio, so swapping
                 the content moves nothing. Squares, not round dots: the system has no radius. */}
-            <div
-              aria-hidden
-              className="scanlines col-start-1 row-start-1 ml-[22cqi] aspect-4/3 w-[40cqi] self-end border border-hairline-strong bg-surface-1 text-hairline-strong"
-            >
-              <svg viewBox="0 0 320 240" className="block size-full">
-                <defs>
-                  <pattern id="hero-dots" width="16" height="16" patternUnits="userSpaceOnUse">
-                    <rect x="7" y="7" width="2" height="2" fill="currentColor" />
-                  </pattern>
-                </defs>
-                <rect width="320" height="240" fill="url(#hero-dots)" />
-              </svg>
-            </div>
-            <h1 id="hero-title" className="relative col-start-1 row-start-1 self-end type-display-xxl">
+            <HeroVisual className="scanlines col-start-1 row-start-1 ml-[22cqi] aspect-4/3 w-[40cqi] self-end border border-hairline-strong bg-surface-1 text-hairline-strong" />
+            <SplitHeading id="hero-title" className="relative col-start-1 row-start-1 self-end type-display-xxl">
               <span className="block text-accent">Regressions</span>
               <span className="block">not</span>
               <span className="ml-[27cqi] block text-outline text-accent">noise</span>
-            </h1>
+            </SplitHeading>
           </div>
           <p aria-hidden className="col-start-1 row-start-2 border-t border-hairline pt-8 type-micro text-ink-muted">
-            Fig. 01 {"///"} Dot grid {"///"} Illustrative
+            Fig. 01 {"///"} Attempt grid {"///"} Illustrative
           </p>
           {/* Beside the last two lines on desktop, with leader lines back to them; a row under
               the caption otherwise. */}
@@ -53,7 +43,9 @@ export function Hero() {
                 <span aria-hidden className="hidden h-px min-w-24 flex-1 bg-ink-muted desktop:block" />
                 {/* One width, so the three leader lines end on the same vertical. */}
                 <div className="desktop:w-240 desktop:shrink-0">
-                  <dd className="type-display-md tabular-nums">{value}</dd>
+                  <dd className="type-display-md tabular-nums">
+                    <CountUp value={value} />
+                  </dd>
                   <dt className="mt-4 type-micro text-ink-muted">
                     {label} {"///"} {condition}
                   </dt>
