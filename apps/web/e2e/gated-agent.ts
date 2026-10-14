@@ -39,6 +39,10 @@ export async function gatedAgent(target: string) {
       open = false;
     },
     releaseOne: () => held.shift()?.(),
+    /** Releases every call waiting now; later calls still wait. */
+    releaseHeld: () => {
+      for (const release of held.splice(0)) release();
+    },
     open: () => {
       open = true;
       for (const release of held.splice(0)) release();

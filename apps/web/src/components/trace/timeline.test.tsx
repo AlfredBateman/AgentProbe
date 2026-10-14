@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { expect, test } from "vitest";
-import { differingSteps, type Trace, Timeline } from "./timeline";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { differingSteps, type Trace, Timeline, VerdictPanel } from "./timeline";
 
 const XSS = `<img src=x onerror="alert(1)"><script>alert(2)</script><a href="javascript:alert(3)">x</a>**bold** [link](javascript:alert(4))`;
 
@@ -49,7 +49,111 @@ test("untrusted content renders as literal text: no HTML, no links, no markdown"
   const texts = [...container.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
   expect(texts.filter((t) => t.includes(XSS))).toHaveLength(3);
   expect(texts.filter((t) => t.includes(JSON.stringify(XSS)))).toHaveLength(2);
-  expect(screen.getByText("Tool call · lookup<b>")).toBeTruthy();
+  // A tool name is data: shown verbatim, in code type, never parsed.
+  expect(screen.getAllByText("lookup<b>")[0].className).toContain("type-code");
+});
+
+// Every way agent output could try to be more than text: markup, event handlers, markdown,
+// entities, terminal escapes (CSI, OSC 8 hyperlinks, an 8-bit CSI) and a bidi override.
+const PAYLOADS = {
+  script: "<script>window.__pwned = 1</script>",
+  img: `<img src=x onerror="window.__pwned = 2">`,
+  svg: "<svg onload=window.__pwned=3><circle r=9 /></svg>",
+  link: `<a href="javascript:window.__pwned=4">click</a>`,
+  markdown: "**bold** _em_ [link](javascript:alert(4)) ![x](https://evil.example/x.png)\n# Heading\n```js\nalert(1)\n```",
+  entity: "&lt;b&gt;not bold&lt;/b&gt; &amp;",
+  ansi: "\u001b[31mRED\u001b[0m \u001b]8;;https://evil.example\u0007click\u001b]8;;\u0007 \u009b2J\u0000",
+  bidi: "invoice‮fdp.exe ⁦isolate⁩",
+};
+const ALL = Object.values(PAYLOADS).join("\n");
+const RAW_CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F‪-‮⁦-⁩]/;
+
+function hostile(): Trace {
+  return trace({
+    case: PAYLOADS.img,
+    input: ALL,
+    output: ALL,
+    error: PAYLOADS.ansi,
+    steps: [
+      { type: "message", role: "user", content: ALL },
+      { type: "tool_call", tool: PAYLOADS.svg, arguments: { q: ALL, [PAYLOADS.link]: PAYLOADS.bidi } },
+      { type: "tool_result", tool: PAYLOADS.bidi, result: [ALL, { nested: PAYLOADS.ansi }] },
+      { type: "error", message: ALL },
+    ],
+    judgments: [
+      { judge: "not_contains", status: "fail", score: 0, reason: ALL, step: 0 },
+      { judge: "llm_rubric", status: "pass", score: 1, reason: PAYLOADS.markdown, step: null },
+    ],
+  });
+}
+
+describe("hostile trace text", () => {
+  beforeEach(() => {
+    delete (window as { __pwned?: number }).__pwned;
+  });
+
+  function renderBoth() {
+    const t = hostile();
+    return render(
+      <>
+        <Timeline trace={t} compact={false} layout="narrow" />
+        <VerdictPanel trace={t} />
+      </>,
+    );
+  }
+
+  test("creates no element, attribute or link from the text", () => {
+    const { container } = renderBoth();
+    expect(container.querySelector("script, img, iframe, object, embed, b, strong, em, h1, code[class*=language]")).toBeNull();
+    // The only svgs are the copy buttons' own icons, with no handler on anything.
+    for (const el of container.querySelectorAll("*")) {
+      expect([...el.attributes].filter((a) => a.name.startsWith("on"))).toEqual([]);
+    }
+    for (const a of container.querySelectorAll("a")) expect(a.getAttribute("href")).toMatch(/^#step-\d+$/);
+    expect((window as { __pwned?: number }).__pwned).toBeUndefined();
+  });
+
+  test("shows markup, markdown and entities exactly as written", () => {
+    const { container } = renderBoth();
+    const text = container.textContent ?? "";
+    for (const p of [PAYLOADS.script, PAYLOADS.img, PAYLOADS.svg, PAYLOADS.link, PAYLOADS.entity, "**bold**", "# Heading", "```js"]) {
+      expect(text).toContain(p);
+    }
+    expect(text).not.toContain("<b>not bold</b>"); // the entity is not decoded either
+  });
+
+  test("terminal escapes and bidi overrides become visible, inert stand-ins", () => {
+    const { container } = renderBoth();
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(RAW_CONTROL);
+    expect(text).toContain("␛[31mRED␛[0m");
+    expect(text).toContain("␛]8;;https://evil.example␇click");
+    expect(text).toContain("⟨U+009B⟩2J␀");
+    expect(text).toContain("invoice⟨U+202E⟩fdp.exe ⟨U+2066⟩isolate⟨U+2069⟩");
+  });
+
+  test("copy puts the inert text on the clipboard, never the raw escapes", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    renderBoth();
+    for (const button of screen.getAllByRole("button", { name: /^Copy step/ })) fireEvent.click(button);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(4));
+    const copied = writeText.mock.calls.map((call) => (call as unknown as [string])[0]);
+    for (const text of copied) expect(text).not.toMatch(RAW_CONTROL);
+    expect(copied[0]).toContain("␛[31mRED");
+    expect(copied[0]).toContain(PAYLOADS.script);
+  });
+});
+
+test("the verdict panel lists every verdict with its step, score and kind", () => {
+  render(<VerdictPanel trace={trace()} />);
+  expect(screen.getByText("2 of 3 passed")).toBeTruthy();
+  const items = within(screen.getByRole("list", { name: "Judge verdicts" })).getAllByRole("listitem");
+  expect(items).toHaveLength(3);
+  expect(within(items[0]).getByRole("link", { name: "Step 4" }).getAttribute("href")).toBe("#step-3");
+  expect(within(items[0]).getByText("Rule")).toBeTruthy();
+  expect(within(items[1]).getByText("LLM judge")).toBeTruthy();
+  expect(within(items[2]).getByText("Whole attempt")).toBeTruthy();
 });
 
 test("a verdict sits with the step it concerns; rule and LLM verdicts say which they are", () => {

@@ -5,7 +5,7 @@
 // Every hook animates transform and clip-path only, clears them when done (no will-change is
 // ever set), and cleans up through the gsap.matchMedia context in core.ts.
 import gsap from "gsap";
-import { type RefObject, useEffectEvent, useLayoutEffect } from "react";
+import { type RefObject, useEffectEvent, useLayoutEffect, useRef } from "react";
 import { DURATION, EASE, HIDDEN, SHOWN, whenMotionAllowed, whenVisible } from "./core";
 
 /** Rows past this many are off screen or not worth a tween each; they just appear. */
@@ -88,4 +88,22 @@ export function useCountUp<T extends Element>(ref: RefObject<T | null>, value: n
     });
   }, [ref]);
   return text;
+}
+
+/**
+ * One stepped flash when `key` changes after mount (a run board cell changing state): `ref`'s
+ * element, hidden by its own class, is shown and clipped away again in three hard steps. Never
+ * on mount, so a page that loads a finished board doesn't flash every cell at once; never under
+ * reduced motion. A change mid-flash restarts it.
+ */
+export function useFlash<T extends Element>(ref: RefObject<T | null>, key: string) {
+  const last = useRef(key);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || last.current === key) return;
+    last.current = key;
+    return whenMotionAllowed(el, () => {
+      gsap.fromTo(el, SHOWN, { ...HIDDEN, duration: DURATION.slow, ease: "steps(3)", clearProps: "clipPath" });
+    });
+  }, [ref, key]);
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { RunStatusBadge } from "@/components/run/labels";
-import { type Column, DataTable } from "@/components/ui/data-table";
+import { type Column, DataTable, type Sort } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/feedback";
 import { Badge } from "@/components/ui/status";
 import { ms, pct, usd } from "@/lib/format";
@@ -14,7 +14,20 @@ type Props = {
   baselines: ReadonlyMap<string, string[]>;
   caption: string;
   empty?: ReactNode;
+  /** Sorted by the API (the Runs page's pages): only the columns it can sort by stay sortable. */
+  sort?: Sort;
+  onSortChange?: (sort: Sort) => void;
 };
+
+/** The columns `GET /projects/{id}/runs?sort=` accepts, keyed by column. */
+export const SERVER_SORT = {
+  suite: "suite",
+  status: "status",
+  pass_rate: "pass_rate",
+  cost: "cost",
+  latency: "latency",
+  created_at: "created_at",
+} as const;
 
 const started = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 // Cost and latency are also on the trend charts and the run page; below desktop width the table
@@ -22,7 +35,7 @@ const started = new Intl.DateTimeFormat(undefined, { month: "short", day: "numer
 const WIDE_ONLY = "hidden desktop:table-cell";
 
 /** A project's runs, newest first: the overview's latest runs and the Runs page (E2). */
-export function RunsTable({ runs, projectId, baselines, caption, empty }: Props) {
+export function RunsTable({ runs, projectId, baselines, caption, empty, sort, onSortChange }: Props) {
   const columns: Column<RunRow>[] = [
     {
       key: "suite",
@@ -90,10 +103,13 @@ export function RunsTable({ runs, projectId, baselines, caption, empty }: Props)
     },
     { key: "created_at", header: "Started", value: (r) => r.created_at, render: (r) => started.format(new Date(r.created_at)) },
   ];
+  const shown = onSortChange ? columns.map((c) => (c.key in SERVER_SORT ? c : { ...c, value: undefined })) : columns;
   return (
     <DataTable
       caption={caption}
-      columns={columns}
+      columns={shown}
+      sort={sort}
+      onSortChange={onSortChange}
       rows={runs}
       rowKey={(r) => r.id}
       empty={empty ?? <EmptyState title="No runs yet" description="Start one from a suite, or push one from CI." />}

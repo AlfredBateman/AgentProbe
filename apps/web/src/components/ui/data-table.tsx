@@ -16,7 +16,7 @@ export type Column<T> = {
   className?: string;
 };
 
-type Sort = { key: string; direction: "ascending" | "descending" };
+export type Sort = { key: string; direction: "ascending" | "descending" };
 
 type Props<T> = {
   columns: Column<T>[];
@@ -24,6 +24,12 @@ type Props<T> = {
   rowKey: (row: T) => string;
   caption: string;
   initialSort?: Sort;
+  /**
+   * Controlled sort, for rows sorted elsewhere (a server's page): the header buttons report the
+   * next sort through `onSortChange`, and the rows are shown in the order given.
+   */
+  sort?: Sort;
+  onSortChange?: (sort: Sort) => void;
   empty?: ReactNode;
   /** Set a max height here to get a vertically scrolling body with a sticky header. */
   className?: string;
@@ -44,13 +50,26 @@ function compare(a: number | string | null, b: number | string | null): number {
  * and tabular, the hovered row outlined in lime. Cells are code type, so ids and agent output
  * are never case-changed; put `uppercase` in a column's `className` for the interface's own words.
  */
-export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empty, className, expand, expandLabel }: Props<T>) {
-  const [sort, setSort] = useState<Sort | undefined>(initialSort);
+export function DataTable<T>({
+  columns,
+  rows,
+  rowKey,
+  caption,
+  initialSort,
+  sort: controlled,
+  onSortChange,
+  empty,
+  className,
+  expand,
+  expandLabel,
+}: Props<T>) {
+  const [own, setOwn] = useState<Sort | undefined>(initialSort);
+  const sort = onSortChange ? controlled : own;
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const baseId = useId();
   const column = columns.find((c) => c.key === sort?.key);
   const sorted =
-    column?.value && sort
+    column?.value && sort && !onSortChange
       ? rows.toSorted((a, b) => {
           // Array.prototype.sort is stable, so ties keep their incoming order.
           const order = compare(column.value!(a), column.value!(b));
@@ -59,9 +78,9 @@ export function DataTable<T>({ columns, rows, rowKey, caption, initialSort, empt
       : rows;
 
   function toggle(key: string) {
-    setSort((s) =>
-      s?.key === key && s.direction === "ascending" ? { key, direction: "descending" } : { key, direction: "ascending" },
-    );
+    const next: Sort = sort?.key === key && sort.direction === "ascending" ? { key, direction: "descending" } : { key, direction: "ascending" };
+    if (onSortChange) onSortChange(next);
+    else setOwn(next);
   }
 
   function toggleRow(key: string) {

@@ -1,5 +1,6 @@
-import { JudgmentBadge } from "@/components/run/labels";
-import { jsonText, PlainText } from "@/components/ui/code";
+import { AttemptBadge, JudgmentBadge } from "@/components/run/labels";
+import { Panel } from "@/components/ui/panel";
+import { CopyButton, jsonText, PlainText, visibleText } from "@/components/ui/code";
 import type { components } from "@/lib/api/schema";
 import { cx } from "@/lib/cx";
 import { ms, score } from "@/lib/format";
@@ -21,16 +22,17 @@ export function differingSteps(a: Step[], b: Step[]): Set<number> {
   return new Set(a.flatMap((step, i) => (i < b.length && content(step) === content(b[i]) ? [] : [i])));
 }
 
-function title(step: Step): string {
+/** The step's kind (interface words) and its subject (data: a role or a tool name, verbatim). */
+function title(step: Step): { kind: string; subject: string | null } {
   switch (step.type) {
     case "message":
-      return `Message · ${step.role}`;
+      return { kind: "Message", subject: step.role };
     case "tool_call":
-      return `Tool call · ${step.tool}`;
+      return { kind: "Tool call", subject: step.tool };
     case "tool_result":
-      return `Tool result · ${step.tool}`;
+      return { kind: "Tool result", subject: step.tool };
     case "error":
-      return "Error";
+      return { kind: "Error", subject: null };
   }
 }
 
@@ -70,7 +72,7 @@ export function Timeline({ trace, compact, layout = "wide", differs, idPrefix = 
   return (
     <>
       {trace.steps.length === 0 ? (
-        <p className="bg-surface-1 p-15 text-body-sm text-ink-muted">No trace: the agent never answered.</p>
+        <p className="border border-hairline p-16 type-body-sm text-ink-muted">No trace: the agent never answered.</p>
       ) : (
         <ol aria-label="Trace steps" className="flex flex-col">
           {trace.steps.map((step, i) => {
@@ -78,20 +80,21 @@ export function Timeline({ trace, compact, layout = "wide", differs, idPrefix = 
             const different = differs?.has(i);
             const offset = start !== null && step.timestamp ? Date.parse(step.timestamp) - start : null;
             const { label, text } = body(step);
+            const { kind, subject } = title(step);
             return (
               // content-visibility: the browser skips layout and paint for steps off screen, while
               // every step stays in the DOM for find-in-page, tab order and screen readers (ADR 0031).
               <li
                 key={i}
                 id={`${idPrefix}-${i}`}
-                className="relative grid gap-x-15 pb-12 [contain-intrinsic-size:auto_88px] [content-visibility:auto] pl-44"
+                className="relative grid scroll-mt-72 pb-8 pl-40 [contain-intrinsic-size:auto_56px] [content-visibility:auto]"
               >
-                <span aria-hidden className="absolute top-40 bottom-0 left-15 w-1 bg-hairline" />
+                <span aria-hidden className="absolute top-32 bottom-0 left-12 w-px bg-hairline-strong" />
                 <span
                   aria-hidden
                   className={cx(
-                    "absolute top-8 left-0 flex size-32 items-center justify-center font-mono text-code",
-                    step.type === "error" ? "bg-surface-2 text-fail" : "bg-surface-2 text-ink",
+                    "absolute top-4 left-0 flex size-24 items-center justify-center border border-hairline-strong type-micro",
+                    step.type === "error" ? "border-fail bg-canvas text-fail" : "bg-canvas text-ink",
                   )}
                 >
                   {GLYPH[step.type]}
@@ -104,22 +107,29 @@ export function Timeline({ trace, compact, layout = "wide", differs, idPrefix = 
                 >
                   <details
                     open={!compact}
-                    className={cx("group min-w-0", different ? "bg-surface-2" : "bg-surface-1")}
+                    className={cx("group min-w-0 border", different ? "border-ink-muted bg-surface-2" : "border-hairline bg-canvas")}
                   >
-                    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-12 gap-y-4 px-15 py-10 outline-none focus-visible:shadow-focus [&::-webkit-details-marker]:hidden">
-                      <span className="text-data text-ink-muted tabular-nums">{i + 1}</span>
-                      <span className="font-medium text-body-sm text-ink">{title(step)}</span>
-                      {different && <span className="border border-ink-muted px-6 text-data-label text-ink">Differs</span>}
+                    <summary className="flex min-h-40 cursor-pointer list-none flex-wrap items-center gap-x-12 gap-y-4 px-12 py-8 -outline-offset-2 [&::-webkit-details-marker]:hidden">
+                      <span aria-hidden className="type-micro text-ink-muted tabular-nums">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="sr-only">Step {i + 1}:</span>
+                      <span className={cx("type-label", step.type === "error" ? "text-fail" : "text-ink")}>{kind}</span>
+                      {subject !== null && <span className="min-w-0 truncate type-code text-ink">{visibleText(subject)}</span>}
+                      {different && <span className="border border-ink-muted px-6 type-micro text-ink">Differs</span>}
                       {step.type === "error" && <JudgmentBadge status="error" />}
-                      <span className="ml-auto text-data text-ink-muted tabular-nums">
+                      <span className="ml-auto type-micro text-ink-muted tabular-nums">
                         {!!offset && `+${ms(offset)} · `}
                         {step.duration_ms != null ? ms(step.duration_ms) : "no timing"}
                       </span>
                       {/* One line of the content while collapsed, as plain text. */}
-                      <span className="w-full truncate font-mono text-code text-ink-muted group-open:hidden">{text}</span>
+                      <span className="w-full truncate type-code text-ink-muted group-open:hidden">{visibleText(text)}</span>
                     </summary>
-                    <div className="border-t border-hairline-soft px-15 py-12">
-                      <p className="mb-6 text-data-label text-ink-muted">{label}</p>
+                    <div className="border-t border-hairline px-12 pt-4 pb-12">
+                      <div className="mb-4 flex items-center justify-between gap-8">
+                        <p className="type-micro text-ink-muted">{label}</p>
+                        <CopyButton text={text} name={`step ${i + 1}`} />
+                      </div>
                       <PlainText text={text} />
                     </div>
                   </details>
@@ -131,8 +141,8 @@ export function Timeline({ trace, compact, layout = "wide", differs, idPrefix = 
         </ol>
       )}
       {whole.length > 0 && (
-        <section className="mt-8 pl-44" aria-label="Verdicts on the whole attempt">
-          <h3 className="mb-8 text-data-label text-ink-muted">Whole attempt</h3>
+        <section className="mt-8 pl-40" aria-label="Verdicts on the whole attempt">
+          <h3 className="mb-8 type-micro text-ink-muted">Whole attempt</h3>
           <Verdicts judgments={whole} label="Verdicts on the whole attempt" />
         </section>
       )}
@@ -153,14 +163,53 @@ function Verdicts({ judgments, label }: { judgments: Judgment[]; label: string }
           >
             <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
               <JudgmentBadge status={j.status} />
-              <span className="font-mono text-code text-ink">{j.judge}</span>
-              <span className="text-data-label text-ink-muted">{llm ? "LLM judge" : "Rule"}</span>
-              <span className="ml-auto text-data text-ink-muted tabular-nums">Score {score(j.score)}</span>
+              <span className="type-code text-ink">{j.judge}</span>
+              <span className="type-micro text-ink-muted">{llm ? "LLM judge" : "Rule"}</span>
+              <span className="ml-auto type-micro text-ink-muted tabular-nums">Score {score(j.score)}</span>
             </div>
             {j.reason && <PlainText text={j.reason} mono={false} limit={600} className="mt-6 text-ink-muted" />}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Every verdict on the attempt in one list: which judges passed, each one's score, the step it
+ * concerns (a link to it) and its reason. Reasons quote agent output: plain text only.
+ */
+export function VerdictPanel({ trace, idPrefix = "step" }: { trace: Trace; idPrefix?: string }) {
+  const passed = trace.judgments.filter((j) => j.status === "pass").length;
+  return (
+    <Panel aria-label="Judge verdicts" title="Judge verdicts" titleStyle="label" actions={<AttemptBadge status={trace.status} />}>
+      <p className="type-data text-ink tabular-nums">
+        {trace.judgments.length === 0 ? "No judges ran" : `${passed} of ${trace.judgments.length} passed`}
+      </p>
+      {trace.judgments.length > 0 && (
+        <ol aria-label="Judge verdicts" className="-mx-16 mt-12 -mb-16">
+          {trace.judgments.map((j, i) => (
+            <li key={i} className={cx("border-t px-16 py-10", j.status === "fail" ? "border-fail" : "border-hairline")}>
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+                <JudgmentBadge status={j.status} />
+                <span className="min-w-0 truncate type-code text-ink">{j.judge}</span>
+                <span className="type-micro text-ink-muted">{LLM_JUDGES.has(j.judge) ? "LLM judge" : "Rule"}</span>
+                <span className="ml-auto type-micro text-ink-muted tabular-nums">Score {score(j.score)}</span>
+              </div>
+              <p className="mt-4 type-micro">
+                {j.step === null ? (
+                  <span className="text-ink-muted">Whole attempt</span>
+                ) : (
+                  <a href={`#${idPrefix}-${j.step}`} className="text-accent underline-offset-4 hover:underline">
+                    Step {j.step + 1}
+                  </a>
+                )}
+              </p>
+              {j.reason && <PlainText text={j.reason} mono={false} limit={240} className="mt-4 text-ink-muted" />}
+            </li>
+          ))}
+        </ol>
+      )}
+    </Panel>
   );
 }

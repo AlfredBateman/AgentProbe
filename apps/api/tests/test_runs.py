@@ -6,7 +6,7 @@ crash recovery and idempotency.
 import asyncio
 import uuid
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -151,6 +151,47 @@ async def test_project_runs_filters_by_suite_and_scopes_to_the_project(
     r = await alice.get(f"/projects/{other_project['id']}/runs")
     assert r.status_code == 200
     assert r.json() == []  # that project's own runs list is empty, not alice's other project's
+
+
+async def test_project_runs_filter_sort_and_count(
+    sign_up: SignUp, app: FastAPI, db: AsyncSession, demo_url: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, f"{demo_url}/support/v1/chat", yaml=SMALL_YAML)
+    a, b, c = [await start_run(alice, ids["suite_id"]) for _ in range(3)]
+    for run in (a, b, c):
+        await wait_for_run(alice, app, run["id"])
+    # Fixed values to sort and filter on: b failed before it had a pass rate. created_at is
+    # now(), the same for every row inside the test's transaction.
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    for i, (run, values) in enumerate(
+        (
+            (a, {"pass_rate": 0.5, "branch": "feature/x"}),
+            (b, {"pass_rate": None, "status": "failed"}),
+            (c, {"pass_rate": 0.9}),
+        )
+    ):
+        values["created_at"] = t0 + timedelta(seconds=i)
+        await db.execute(update(Run).where(Run.id == uuid.UUID(run["id"])).values(**values))
+    await db.flush()
+    url = f"/projects/{ids['project_id']}/runs"
+
+    async def listed(query: str) -> tuple[list[str], str]:
+        r = await alice.get(f"{url}?{query}")
+        assert r.status_code == 200, r.text
+        return [row["id"] for row in r.json()], r.headers["x-total-count"]
+
+    assert await listed("") == ([c["id"], b["id"], a["id"]], "3")  # newest first
+    assert await listed("sort=pass_rate&order=asc") == ([a["id"], c["id"], b["id"]], "3")
+    # Unknown pass rates sort last in both directions.
+    assert await listed("sort=pass_rate&order=desc") == ([c["id"], a["id"], b["id"]], "3")
+    assert await listed("status=failed") == ([b["id"]], "1")
+    assert await listed("status=completed&branch=feature/x") == ([a["id"]], "1")
+    # The count is of every match, not of the page.
+    assert await listed("limit=1&offset=1") == ([b["id"]], "3")
+    assert await listed("status=queued") == ([], "0")
+    for bad in ("status=done", "sort=secret", "order=up"):
+        assert (await alice.get(f"{url}?{bad}")).status_code == 422
 
 
 async def test_the_snapshot_keeps_the_secret_out_and_the_run_still_sends_it(

@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
-import { CodeBlock, CopyButton, PlainText } from "./code";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { CodeBlock, CopyButton, PlainText, safeJson, visibleText } from "./code";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -91,4 +91,30 @@ test("a body replaces the read-only text inside the same frame, and the footer s
   expect(container.querySelector("figure")!.className).toContain("border-fail");
   expect(container.querySelector("figure")!.lastElementChild!.textContent).toBe("2 problems");
   expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+});
+
+describe("visibleText and safeJson", () => {
+  test("controls and bidi overrides become visible stand-ins; tabs, newlines and emoji stay", () => {
+    expect(visibleText("\u001b[31mred\u001b[0m")).toBe("␛[31mred␛[0m");
+    expect(visibleText("a\u0000b\u0007c\u007fd\u009be")).toBe("a␀b␇c␡d⟨U+009B⟩e");
+    expect(visibleText("pay‮txt.exe ⁦x⁩ ‏")).toBe("pay⟨U+202E⟩txt.exe ⟨U+2066⟩x⟨U+2069⟩ ⟨U+200F⟩");
+    expect(visibleText("line 1\n\tline 2 👩‍💻 é")).toBe("line 1\n\tline 2 👩‍💻 é");
+  });
+
+  test("safeJson is the same value, with nothing raw left that could steer a terminal or a reader", () => {
+    const value = { "a‮b": ["\u001b[2J", "\u009b31m", "ok\n"], n: 1, nil: null };
+    const text = safeJson(value);
+    expect(JSON.parse(text)).toEqual(value);
+    expect(text).not.toMatch(/[\u0000-\u0009\u000B-\u001F\u0080-\u009F‪-‮]/);
+    expect(safeJson(undefined)).toBe("null");
+  });
+
+  test("a code block shows the stand-ins and copies them", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>(() => Promise.resolve());
+    stubClipboard(writeText);
+    const { container } = render(<CodeBlock code={"echo \u001b]0;pwned\u0007"} label="Shell" />);
+    expect(container.querySelector("pre")?.textContent).toBe("echo ␛]0;pwned␇");
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("echo ␛]0;pwned␇"));
+  });
 });

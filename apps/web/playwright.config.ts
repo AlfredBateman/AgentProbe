@@ -6,6 +6,7 @@ import {
   INVALID_YAML_EMAIL,
   MAIN_FLOW_EMAIL,
   OVERVIEW_EMAIL,
+  RUN_BOARD_EMAIL,
   SHELL_1440_EMAIL,
   SHELL_390_EMAIL,
   SHELL_404_EMAIL,
@@ -50,6 +51,7 @@ const signupAllowedEmails = [
   SHELL_COLD_EMAIL,
   SHELL_SHOTS_EMAIL,
   TELEMETRY_EMAIL,
+  RUN_BOARD_EMAIL,
 ].join(",");
 
 // Fake, committed, test-only values (never used for anything real): Fernet needs a valid key

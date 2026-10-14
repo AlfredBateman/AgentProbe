@@ -1425,6 +1425,7 @@
           "runs"
         ],
         "summary": "List Project Runs",
+        "description": "Newest first by default. `X-Total-Count` carries the number of runs that match the\nfilters, so a client can page through them. Unknown values (no pass rate yet, no cost)\nsort last in either direction; ties keep newest first.",
         "operationId": "list_project_runs_projects__project_id__runs_get",
         "parameters": [
           {
@@ -1452,6 +1453,78 @@
                 }
               ],
               "title": "Suite Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "created_at",
+                "pass_rate",
+                "cost",
+                "latency",
+                "suite",
+                "status"
+              ],
+              "type": "string",
+              "default": "created_at",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "default": "desc",
+              "title": "Order"
             }
           },
           {
