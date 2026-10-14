@@ -1,130 +1,141 @@
 import Link from "next/link";
+import { Hero } from "@/components/landing/hero";
+import { Reveal, Stagger } from "@/components/landing/motion";
+import { Proof } from "@/components/landing/proof";
+import { INSTALL, LICENSE, OWNER, REPO, TAG } from "@/components/landing/site";
+import { StatusChip } from "@/components/landing/status-chip";
 import { buttonClasses } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code";
-import { GradientCard } from "@/components/ui/gradient-card";
-import { Badge } from "@/components/ui/status";
+import { MenuIcon } from "@/components/ui/icons";
+import { Panel } from "@/components/ui/panel";
 
-const STEPS = [
-  {
-    title: "Point it at your agent",
-    body: "HTTP, MCP, or a CLI-only Python adapter. No SDK to install inside the agent itself.",
-  },
-  {
-    title: "Run every case, many times",
-    body: "Multi-run execution catches the flakiness a single pass would miss, and labels every case pass / fail / flaky.",
-  },
-  {
-    title: "Gate the PR on a real regression",
-    body: "A one-sided Fisher exact test per case and a paired sign-flip test at suite level decide — not a raw score delta.",
-  },
+const NAV = [
+  ["Docs", `${REPO}#documentation`],
+  ["GitHub", REPO],
+  ["Sign in", "/login"],
 ];
 
-const CLI_EXAMPLE = `$ agentprobe run suites/regression.yaml \\
-    --push --branch "$GITHUB_HEAD_REF" --baseline-branch main
+const CARDS = [
+  { title: "Repeat every case", body: "Every case runs many times, not once.", href: "#proof" },
+  { title: "Judge traces and tool calls", body: "Judges read tool calls, not just text.", href: `${REPO}#how-it-works` },
+  { title: "Gate the pull request", body: "The check fails only on a real drop.", href: "#install" },
+];
 
-  refund-outside-window   0/5  FAIL    (p = 0.0040)
-  order-status-lookup     4/5  FLAKY
-  27 more cases            —   PASS
-
-  verdict: regression — blocking merge`;
+// A long title wraps inside its own width, so the corner arrow stays in the corner.
+const CARD = "hover:bg-surface-1 [&>header]:flex-nowrap [&>header]:items-start";
+const navLink = "inline-flex min-h-40 items-center text-ink-muted no-underline hover:text-ink pointer-coarse:min-h-44";
 
 export default function Home() {
   return (
-    <main className="flex flex-1 flex-col">
-      <header className="mx-auto flex h-56 w-full max-w-1440 shrink-0 items-center justify-between px-16 tablet:px-30">
-        <span className="font-display text-[20px] font-medium tracking-[-0.6px] text-ink">AgentProbe</span>
-        <div className="flex items-center gap-8">
-          <Link href="/login" className={buttonClasses("secondary")}>
-            Sign in
+    <div className="mx-auto flex w-full max-w-1440 flex-1 flex-col border-x border-hairline-strong">
+      <header className="border-b border-hairline-strong">
+        <div className="relative flex h-56 items-center gap-8 px-16 tablet:gap-24 tablet:px-32">
+          <Link href="/" className="tap type-headline text-ink no-underline">
+            AgentProbe
+            <span aria-hidden className="text-accent">
+              ®
+            </span>
           </Link>
-          <Link href="/register" className={buttonClasses("primary")}>
+          <nav aria-label="Site" className="ml-auto hidden items-center gap-24 type-label tablet:flex">
+            {NAV.map(([label, href]) => (
+              <a key={label} href={href} className={navLink}>
+                {label}
+              </a>
+            ))}
+          </nav>
+          {/* Below 810px the links are a native disclosure: no script, and the open list floats
+              over the page, so it moves nothing. */}
+          <details className="ml-auto tablet:hidden">
+            <summary aria-label="Menu" className={buttonClasses("icon", "list-none [&::-webkit-details-marker]:hidden")}>
+              <MenuIcon />
+            </summary>
+            <nav aria-label="Site menu" className="absolute inset-x-0 top-full z-(--z-nav) flex flex-col border-y border-hairline-strong bg-canvas px-16 py-8 type-label">
+              {NAV.map(([label, href]) => (
+                <a key={label} href={href} className={navLink}>
+                  {label}
+                </a>
+              ))}
+            </nav>
+          </details>
+          {/* Under 360px the bar has no room for it; the hero's own button is one scroll away. */}
+          <Link href="/register" className={buttonClasses("primary", "max-[359px]:hidden")}>
             Get started
           </Link>
+        </div>
+        <div className="flex min-h-40 flex-wrap items-center justify-between gap-x-16 gap-y-4 border-t border-hairline px-16 py-8 type-micro text-ink-muted tablet:px-32">
+          <p>
+            REV <span className="normal-case">{TAG}</span> <span aria-hidden>{"///"}</span> Unit D-01
+          </p>
+          <StatusChip />
         </div>
       </header>
 
-      <section className="mx-auto flex w-full max-w-1440 flex-col items-start gap-20 px-16 py-40 tablet:px-30 tablet:py-96">
-        <h1 className="font-display max-w-900 text-display-md tablet:text-display-lg desktop:text-display-xxl">
-          Statistically-corrected, flakiness-aware regression detection for LLM agents.
-        </h1>
-        <p className="max-w-640 text-body-lg text-ink-muted">
-          AgentProbe runs every case in your suite many times, judges traces and tool calls — not just final text —
-          and fails a pull request only when a drop is statistically meaningful. Not when a flaky case happened to
-          fail this time.
-        </p>
-        <div className="flex flex-wrap items-center gap-12">
-          <Link href="/register" className={buttonClasses("primary")}>
-            Get started
-          </Link>
-          <Link href="/login" className={buttonClasses("secondary")}>
-            Sign in
-          </Link>
-        </div>
-      </section>
+      <main className="flex flex-1 flex-col">
+        <Hero />
 
-      <section className="mx-auto w-full max-w-1440 px-16 py-40 tablet:px-30">
-        <h2 className="font-display text-display-md">How it works</h2>
-        <div className="mt-30 grid grid-cols-1 gap-15 tablet:grid-cols-3">
-          {STEPS.map((step, i) => (
-            <Card key={step.title}>
-              <span className="text-caption text-ink-muted">{String(i + 1).padStart(2, "0")}</span>
-              <h3 className="mt-8 font-display text-dash-heading">{step.title}</h3>
-              <p className="mt-8 text-body-sm text-ink-muted">{step.body}</p>
-            </Card>
+        <Stagger as="section" aria-label="How it works" className="grid gap-16 border-b border-hairline-strong px-16 py-32 tablet:grid-cols-3 tablet:px-32">
+          {CARDS.map((card, i) => (
+            <Panel key={card.title} title={card.title} href={card.href} className={CARD}>
+              {/* The numeral is the card's index, drawing only; the sentence beside it is the body. */}
+              <div className="flex items-end justify-between gap-16">
+                <p className="max-w-[20ch] type-body-sm text-ink-muted">{card.body}</p>
+                <span aria-hidden className="type-display-lg leading-none tabular-nums">{`0${i + 1}`}</span>
+              </div>
+            </Panel>
           ))}
-        </div>
-      </section>
+        </Stagger>
 
-      <section className="mx-auto w-full max-w-1440 px-16 py-40 tablet:px-30">
-        <div className="grid grid-cols-1 gap-20 tablet:grid-cols-2">
-          <div>
-            <h2 className="font-display text-display-md">Run it from the CLI</h2>
-            <p className="mt-12 text-body text-ink-muted">
-              Every run — local or CI — executes through the same engine, so the check that blocks your PR is the
-              one you can reproduce on your own machine.
-            </p>
-            <CodeBlock code={CLI_EXAMPLE} label="terminal" className="mt-20" />
-          </div>
-          <Card title="agentprobe / regression-check">
-            <p className="text-body-sm text-ink-muted">PR #482 · support-bot v2 vs. v1 baseline</p>
-            <ul className="mt-15 flex flex-col gap-8">
-              <li className="flex items-center justify-between gap-8">
-                <span className="text-body-sm">refund-outside-window</span>
-                <Badge status="fail">5/5 → 0/5</Badge>
-              </li>
-              <li className="flex items-center justify-between gap-8">
-                <span className="text-body-sm">order-status-lookup</span>
-                <Badge status="flaky">4/5</Badge>
-              </li>
-              <li className="flex items-center justify-between gap-8">
-                <span className="text-body-sm">unauthorized-delete</span>
-                <Badge status="pass" />
-              </li>
-              <li className="flex items-center justify-between gap-8">
-                <span className="text-body-sm">+26 more cases</span>
-                <Badge status="pass" />
-              </li>
-            </ul>
-            <p className="mt-15 text-body-sm text-fail">1 case regressed at p = 0.0040 — blocking merge.</p>
-          </Card>
-        </div>
-      </section>
+        <Proof />
 
-      <section className="mx-auto w-full max-w-1440 px-16 py-40 tablet:px-30">
-        <GradientCard>
-          <p className="font-display text-display-md">From PR to verdict, in one gate.</p>
-          <p className="mt-12 max-w-560 text-body-lg text-ink/90">
-            Most agent test tools threshold a raw score. AgentProbe blocks a merge only on a statistically
-            significant drop, corrected for testing many cases across many runs — so a flaky case never costs you a
-            green check.
+        <section id="install" aria-labelledby="install-title" className="px-16 py-48 tablet:px-32 tablet:py-96">
+          <h2 id="install-title" className="type-display-xl">
+            Install
+          </h2>
+          <Reveal as="div" className="mt-32">
+            <CodeBlock code={INSTALL} label="CLI /// Run /// GitHub Action" />
+          </Reveal>
+          <p className="mt-12 max-w-720 type-body-sm text-ink-muted">
+            Install from the git URL: the PyPI name agentprobe belongs to an unrelated project.{" "}
+            <a href={`${REPO}#quick-start`}>Quick start</a>
           </p>
-        </GradientCard>
-      </section>
+        </section>
+      </main>
 
-      <footer className="mx-auto w-full max-w-1440 px-16 py-40 text-caption text-ink-muted tablet:px-30">
-        AgentProbe — statistically-corrected, flakiness-aware regression detection for LLM agents.
+      <footer className="grid-lines border-t border-hairline-strong tablet:grid-cols-2 desktop:grid-cols-[2fr_1fr_1fr]">
+        <div className="relative overflow-hidden p-16 tablet:col-span-2 tablet:p-32 desktop:col-span-1">
+          <p className="type-display-lg">
+            AgentProbe
+            <span aria-hidden className="text-accent">
+              ®
+            </span>
+          </p>
+          <p className="mt-12 type-body-sm text-ink-muted">Regression detection for LLM agents.</p>
+          {/* The marks as drawing, not as legal text: the copyright line is in the last cell. */}
+          <p aria-hidden className="mt-24 flex gap-16 type-display-xl text-outline text-hairline-strong select-none">
+            <span>©</span>
+            <span>®</span>
+          </p>
+        </div>
+        <nav aria-label="Footer" className="flex flex-col p-16 type-label tablet:p-32">
+          {[...NAV, ["Metrics", `${REPO}/blob/main/docs/metrics.md`], ["Get started", "/register"]].map(([label, href]) => (
+            <a key={label} href={href} className={navLink}>
+              {label}
+            </a>
+          ))}
+        </nav>
+        <dl className="flex flex-col gap-12 p-16 type-label tablet:p-32">
+          {[
+            ["Copyright", `© ${new Date().getFullYear()} ${OWNER}`],
+            ["License", LICENSE],
+            ["Rev", TAG],
+          ].map(([name, value]) => (
+            <div key={name} className="flex items-baseline justify-between gap-12">
+              <dt className="text-ink-muted">{name}</dt>
+              <dd className="normal-case">{value}</dd>
+            </div>
+          ))}
+        </dl>
       </footer>
-    </main>
+    </div>
   );
 }

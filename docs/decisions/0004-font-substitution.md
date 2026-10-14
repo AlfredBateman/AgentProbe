@@ -1,6 +1,6 @@
 # 0004: Font substitution for GT Walsheim
 
-Status: accepted (2026-09-25)
+Status: superseded by [ADR 0042](0042-industrial-brutalist-design-system.md) (2026-10-13). Accepted 2026-09-25.
 
 ## Context
 DESIGN.md specifies GT Walsheim Medium for display type. It's a proprietary commercial font (Framer's), not available to ship in an open build. DESIGN.md's own "Note on Font Substitutes" section names Mona Sans, Geist, or Inter at 600–700 weight as candidates.

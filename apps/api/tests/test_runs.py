@@ -6,7 +6,7 @@ crash recovery and idempotency.
 import asyncio
 import uuid
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -151,6 +151,47 @@ async def test_project_runs_filters_by_suite_and_scopes_to_the_project(
     r = await alice.get(f"/projects/{other_project['id']}/runs")
     assert r.status_code == 200
     assert r.json() == []  # that project's own runs list is empty, not alice's other project's
+
+
+async def test_project_runs_filter_sort_and_count(
+    sign_up: SignUp, app: FastAPI, db: AsyncSession, demo_url: str
+) -> None:
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, f"{demo_url}/support/v1/chat", yaml=SMALL_YAML)
+    a, b, c = [await start_run(alice, ids["suite_id"]) for _ in range(3)]
+    for run in (a, b, c):
+        await wait_for_run(alice, app, run["id"])
+    # Fixed values to sort and filter on: b failed before it had a pass rate. created_at is
+    # now(), the same for every row inside the test's transaction.
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    for i, (run, values) in enumerate(
+        (
+            (a, {"pass_rate": 0.5, "branch": "feature/x"}),
+            (b, {"pass_rate": None, "status": "failed"}),
+            (c, {"pass_rate": 0.9}),
+        )
+    ):
+        values["created_at"] = t0 + timedelta(seconds=i)
+        await db.execute(update(Run).where(Run.id == uuid.UUID(run["id"])).values(**values))
+    await db.flush()
+    url = f"/projects/{ids['project_id']}/runs"
+
+    async def listed(query: str) -> tuple[list[str], str]:
+        r = await alice.get(f"{url}?{query}")
+        assert r.status_code == 200, r.text
+        return [row["id"] for row in r.json()], r.headers["x-total-count"]
+
+    assert await listed("") == ([c["id"], b["id"], a["id"]], "3")  # newest first
+    assert await listed("sort=pass_rate&order=asc") == ([a["id"], c["id"], b["id"]], "3")
+    # Unknown pass rates sort last in both directions.
+    assert await listed("sort=pass_rate&order=desc") == ([c["id"], a["id"], b["id"]], "3")
+    assert await listed("status=failed") == ([b["id"]], "1")
+    assert await listed("status=completed&branch=feature/x") == ([a["id"]], "1")
+    # The count is of every match, not of the page.
+    assert await listed("limit=1&offset=1") == ([b["id"]], "3")
+    assert await listed("status=queued") == ([], "0")
+    for bad in ("status=done", "sort=secret", "order=up"):
+        assert (await alice.get(f"{url}?{bad}")).status_code == 422
 
 
 async def test_the_snapshot_keeps_the_secret_out_and_the_run_still_sends_it(
@@ -377,6 +418,41 @@ async def test_a_crashed_run_resumes_without_redoing_saved_attempts(
     passes = {key: n for key, n in rows.tuples()}
     # attempts 0 and 1 kept their saved (failed) results; only attempt 2 ran
     assert passes == {"greeting": 1, "refund-outside-window": 3}
+
+
+async def test_concurrent_saves_count_exactly_and_a_stopped_run_keeps_nothing_late(
+    sign_up: SignUp, app: FastAPI, db: AsyncSession, demo_url: str
+) -> None:
+    """`save_attempt` inserts first and locks the run only for its counter update: concurrent
+    saves still count every attempt once, and a save that lands after the run stopped is
+    rolled back whole (no result, trace or judgment left behind).
+    """
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, f"{demo_url}/support/v1/chat")
+    app.state.queue = NullQueue()
+    run = await start_run(alice, ids["suite_id"], runs_per_case=4)
+    run_id = uuid.UUID(run["id"])
+    deps = deps_of(app)
+    assert await runstore.claim(deps.sessions, run_id)
+    plan = await runstore.load_plan(deps.sessions, run_id, deps.secret_box)
+    assert plan is not None
+    adapter = plan.adapter()
+    results = [await execute_attempt(plan.case("greeting"), adapter, attempt=n) for n in range(4)]
+    late = await execute_attempt(plan.case("refund-outside-window"), adapter, attempt=0)
+    await runstore.close_adapter(adapter)
+
+    saved = await asyncio.gather(*(runstore.save_attempt(deps.sessions, plan, r) for r in results))
+    assert sorted(s[0] for s in saved if s is not None) == [1, 2, 3, 4]
+
+    await db.execute(update(Run).where(Run.id == run_id).values(status="cancelled"))
+    await db.commit()
+    assert await runstore.save_attempt(deps.sessions, plan, late) is None
+    assert await count(db, RunResult, RunResult.run_id == run_id) == 4
+    mine = select(RunResult.id).where(RunResult.run_id == run_id)
+    assert await count(db, Trace, Trace.run_result_id.in_(mine)) == 4
+    assert await count(db, Judgment, Judgment.run_result_id.in_(mine)) == 4
+    row = await db.get(Run, run_id, populate_existing=True)
+    assert row is not None and row.attempts_done == 4
 
 
 async def test_an_unrecoverable_run_is_marked_failed(

@@ -88,3 +88,52 @@ async def test_xss_html_export_escapes_every_untrusted_field() -> None:
     # suite (title and h1), agent, branch, commit, and per attempt: output, judge, reason; the
     # error's message once; tool calls as escaped JSON.
     assert len(re.findall(escaped, page)) >= 2 + 3 + 2 * 3 + 1
+
+
+def _plain_attempt(case: str, n: int, status: str) -> AttemptResult:
+    """A non-hostile attempt, so the chart assertions read plainly."""
+    return AttemptResult.model_validate(
+        {
+            "case_id": case,
+            "attempt": n,
+            "input": "hi",
+            "status": status,
+            "response": AgentResponse(output="ok", steps=[], latency_ms=1.0),
+            "judgments": [JudgeResult(judge="contains", status="pass", score=1.0, reason="found")],
+            "score": 1.0 if status == "passed" else 0.0,
+            "latency_ms": 1.0,
+            "started_at": datetime.now(UTC),
+            "duration_ms": 1.0,
+        }
+    )
+
+
+async def test_export_is_self_contained_and_charts_state_real_values() -> None:
+    results = [_plain_attempt("hostile-case", n, "passed" if n < 3 else "failed") for n in range(4)]
+    summary = await finalize_run(results, suite=SUITE, agent="bot")
+    run = Run(id=uuid.uuid4(), status="completed", branch="main", git_sha=None, pr_number=None)
+
+    page = render_html(run, summary)
+
+    # No request of any kind: nothing to fetch, import, link or submit. The page's CSP is
+    # `default-src 'none'`, so even a data: URI would be blocked.
+    assert not re.search(r"https?://|url\(|@import|<link|<img|<svg|<form|src=|href=", page)
+    assert "<script" not in page
+
+    # Fig. 01: the whisker sits on the run's own pass rate (3 of 4 = 75%) and its interval.
+    assert summary.ci is not None and summary.pass_rate == 0.75
+    assert 'class="pt" style="left:75.00%"' in page
+    lower, upper = summary.ci.lower, summary.ci.upper
+    assert f'class="wh" style="left:{lower * 100:.2f}%;width:{(upper - lower) * 100:.2f}%"' in page
+
+    # One mark per attempt, with its own shape: three passes, one failure (a cross).
+    case_strip = re.findall(r'<span class="m (\w)">', page)
+    assert case_strip.count("p") == 6 and case_strip.count("f") == 2  # the table and the section
+
+    # Fig. 02: the single case is flaky (3 of 4), so only the flaky bar is full width.
+    assert re.search(r'<span class="bar k" style="width:100.00%">', page)
+    assert re.search(r'<span class="bar p" style="width:0.00%">', page)
+    # DESIGN.md: no gradient, no blur, no soft shadow, no radius, in the export too.
+    assert not re.search(r"gradient|box-shadow|blur|border-radius:(?!0;)", page)
+    # The numbers are text beside the charts, not only shapes.
+    assert "75.0%" in page and "3/4" in page and "95% CI" in page

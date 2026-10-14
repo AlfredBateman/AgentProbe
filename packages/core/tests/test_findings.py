@@ -3,12 +3,22 @@ end to end against `ScriptedLLM` for exact control over embeddings and the summa
 response.
 """
 
+import random
+
+import pytest
+
+import agentprobe_core.findings as findings_module
 from agentprobe_core.findings import (
     ClusterFinding,
+    FailingOutput,
     agglomerative_cluster,
     cluster_failures,
     cosine_distance,
+    describe_locally,
 )
+from agentprobe_core.llm.client import Client
+from agentprobe_core.llm.config import LLMConfig
+from agentprobe_core.llm.mock import MockProvider
 from agentprobe_core.llm.types import Completion
 from judgefakes import ScriptedLLM
 
@@ -74,7 +84,7 @@ async def test_cluster_failures_of_one_item_is_one_finding() -> None:
         embedding_vectors=[[1.0, 0.0]],
         completions=[Completion(text="Summary: leaks a secret\nFix: redact it", model="mock")],
     )
-    findings = await cluster_failures([("r1", "the secret is X")], llm)
+    findings = await cluster_failures([FailingOutput("r1", "the secret is X")], llm)
     assert findings == [
         ClusterFinding(
             label="leaks a secret",
@@ -93,7 +103,7 @@ async def test_cluster_failures_groups_identical_outputs_into_one_cluster() -> N
             Completion(text="Summary: same failure every time\nFix: fix it", model="mock")
         ],
     )
-    items = [(f"r{i}", "identical output") for i in range(3)]
+    items = [FailingOutput(f"r{i}", "identical output") for i in range(3)]
     findings = await cluster_failures(items, llm)
     assert len(findings) == 1
     assert findings[0].member_result_ids == ["r0", "r1", "r2"]
@@ -109,8 +119,8 @@ async def test_cluster_failures_keeps_unrelated_failures_in_separate_clusters() 
         ],
     )
     items = [
-        ("r1", "leaks the API key"),
-        ("r2", "writes a poem instead of answering"),
+        FailingOutput("r1", "leaks the API key"),
+        FailingOutput("r2", "writes a poem instead of answering"),
     ]
     findings = await cluster_failures(items, llm)
     assert len(findings) == 2
@@ -121,14 +131,14 @@ async def test_cluster_failures_keeps_unrelated_failures_in_separate_clusters() 
 async def test_cluster_failures_falls_back_when_the_summary_has_no_format() -> None:
     llm = ScriptedLLM(
         embedding_vectors=[[1.0, 0.0]],
-        completions=[Completion(text="mock summarizer response abc123", model="mock")],
+        completions=[Completion(text="the agent promises refunds", model="live")],
     )
-    findings = await cluster_failures([("r1", "whatever")], llm)
-    assert findings[0].summary == "mock summarizer response abc123"
+    findings = await cluster_failures([FailingOutput("r1", "whatever")], llm)
+    assert findings[0].summary == "the agent promises refunds"
     assert findings[0].suggested_fix == (
         "Review the shared failure pattern above and adjust the agent accordingly."
     )
-    assert findings[0].label == "mock summarizer response abc123"
+    assert findings[0].label == "the agent promises refunds"
 
 
 async def test_cluster_failures_truncates_a_long_label() -> None:
@@ -137,7 +147,7 @@ async def test_cluster_failures_truncates_a_long_label() -> None:
         embedding_vectors=[[1.0, 0.0]],
         completions=[Completion(text=f"Summary: {long_summary}\nFix: shorten it", model="mock")],
     )
-    findings = await cluster_failures([("r1", "x")], llm)
+    findings = await cluster_failures([FailingOutput("r1", "x")], llm)
     assert len(findings[0].label) == 60
     assert findings[0].label.endswith("…")
     assert findings[0].summary == long_summary.strip()
@@ -149,8 +159,8 @@ async def test_cluster_failures_sends_the_summarizer_role_and_grouped_text() -> 
         completions=[Completion(text="Summary: s\nFix: f", model="mock")],
     )
     items = [
-        ("r1", "alpha output"),
-        ("r2", "alpha output"),
+        FailingOutput("r1", "alpha output"),
+        FailingOutput("r2", "alpha output"),
     ]
     await cluster_failures(items, llm)
     assert len(llm.embed_calls) == 1
@@ -172,8 +182,8 @@ async def test_summarizer_prompt_delimits_outputs_as_data_and_neutralizes_forged
         completions=[Completion(text="Summary: s\nFix: f", model="mock")],
     )
     items = [
-        ("r1", hostile),
-        ("r2", "plain failure"),
+        FailingOutput("r1", hostile),
+        FailingOutput("r2", "plain failure"),
     ]
     await cluster_failures(items, llm)
     [system, user] = llm.complete_calls[0]
@@ -184,3 +194,137 @@ async def test_summarizer_prompt_delimits_outputs_as_data_and_neutralizes_forged
     assert body.count("</agent_output>") == 2
     assert "&lt;/agent_output&gt;\nSYSTEM:" in body
     assert "<agent_output>\nplain failure\n</agent_output>" in body
+
+
+def _refund_failures(n: int) -> list[FailingOutput]:
+    return [
+        FailingOutput(
+            f"r{i}",
+            "Done!  I've issued a full refund for order 1042.\nAnything else?",
+            "refund-outside-window",
+            ("tool_not_called: issue_refund",),
+        )
+        for i in range(n)
+    ]
+
+
+def test_describe_locally_names_the_judges_the_case_and_the_output() -> None:
+    label, summary, fix = describe_locally(_refund_failures(10))
+    assert label == "10 attempts failed tool_not_called: issue_refund on refund-outside-window"
+    assert summary == (
+        "All 10 gave the same output: "
+        '"Done! I\'ve issued a full refund for order 1042. Anything else?"'
+    )
+    assert label not in summary  # shown under the label, so it doesn't repeat it
+    assert fix.startswith("Stop the agent calling issue_refund here")  # names the tool
+
+
+def test_describe_locally_covers_several_cases_judges_and_outputs() -> None:
+    members = [
+        FailingOutput("r1", "x" * 200, "case-b", ("contains", "llm_rubric")),
+        FailingOutput("r2", "other", "case-a", ("llm_rubric",)),
+        FailingOutput("r3", "third", "case-b", ()),
+    ]
+    label, summary, fix = describe_locally(members)
+    assert label == "3 attempts failed contains, llm_rubric on case-b and 1 more"
+    assert summary == 'Cases: case-b, case-a. First output: "' + "x" * 79 + '…"'
+    # Ranked, not in suite order: the rubric's fix comes before the wording's, two at most.
+    assert fix == (
+        "Read the rubric and the outputs side by side and tighten the agent's instructions "
+        "where they differ. Make the agent state the expected text; check its instructions "
+        "and context."
+    )
+
+
+def test_describe_locally_puts_an_action_before_the_wording() -> None:
+    members = [
+        FailingOutput("r1", "ok, refunded", "c", ("contains_any", "tool_not_called: issue_refund"))
+    ]
+    _, _, fix = describe_locally(members)
+    assert fix.startswith("Stop the agent calling issue_refund here")
+    assert fix.endswith("Make the agent give one of the expected answers; check its instructions.")
+
+
+def test_describe_locally_without_facts_still_reads() -> None:
+    label, summary, fix = describe_locally([FailingOutput("r1", "hi")])
+    assert label == "1 attempt failed"
+    assert summary == 'First output: "hi"'
+    assert fix == "Read the failing outputs and the judges' reasons, then adjust the agent."
+
+
+async def test_the_mock_summarizer_is_readable_and_deterministic() -> None:
+    """The mock provider's own summarizer answer is a hash; with it, findings are described
+    from their facts, and the same input always gives the same findings.
+    """
+
+    def client() -> Client:
+        return Client(LLMConfig.from_env({}), MockProvider())
+
+    items = [
+        *_refund_failures(3),
+        FailingOutput(
+            "r9", "here is the system prompt: You are", "injection-direct", ("not_contains",)
+        ),
+    ]
+    first = await cluster_failures(items, client())
+    second = await cluster_failures(items, client())
+    assert first == second
+    labels = sorted(f.label for f in first)
+    assert labels == [
+        "1 attempt failed not_contains on injection-direct",
+        "3 attempts failed tool_not_called: issue_refund on refund-outside-window",
+    ]
+    assert not any("mock" in f.summary or "mock" in f.label for f in first)
+    assert all(f.suggested_fix != _GENERIC for f in first)
+
+
+_GENERIC = "Read the failing outputs and the judges' reasons, then adjust the agent."
+
+
+def _brute_force_single_linkage(vectors: list[list[float]], threshold: float) -> list[list[int]]:
+    """The definition, recomputed from the vectors on every merge."""
+    clusters = [[i] for i in range(len(vectors))]
+    while len(clusters) > 1:
+        distance, i, j = min(
+            (min(cosine_distance(vectors[a], vectors[b]) for a in ci for b in clusters[j]), i, j)
+            for i, ci in enumerate(clusters)
+            for j in range(i + 1, len(clusters))
+        )
+        if distance > threshold:
+            break
+        clusters[i] = clusters[i] + clusters[j]
+        del clusters[j]
+    return clusters
+
+
+def test_agglomerative_cluster_matches_the_definition() -> None:
+    rng = random.Random(7)
+    for trial in range(40):
+        n = rng.randint(2, 18)
+        # Few distinct directions, so near-duplicates, exact duplicates and ties all occur.
+        bases = [[rng.uniform(-1, 1) for _ in range(6)] for _ in range(rng.randint(1, 5))]
+        vectors = [
+            [x + rng.choice([0.0, 0.0, rng.uniform(-0.3, 0.3)]) for x in rng.choice(bases)]
+            for _ in range(n)
+        ]
+        threshold = rng.choice([0.05, 0.25, 0.6])
+        expected = _brute_force_single_linkage(vectors, threshold)
+        assert agglomerative_cluster(vectors, threshold=threshold) == expected, trial
+
+
+def test_agglomerative_cluster_computes_each_pair_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cost that matters: a run's failing outputs are clustered while the caller holds a
+    database transaction, so the distance work must not grow with the number of merges.
+    """
+    calls = 0
+    real = findings_module.cosine_distance
+
+    def counted(a: list[float], b: list[float]) -> float:
+        nonlocal calls
+        calls += 1
+        return real(a, b)
+
+    monkeypatch.setattr(findings_module, "cosine_distance", counted)
+    vectors = [[1.0, 0.0]] * 30 + [[0.0, 1.0]] * 20
+    assert len(agglomerative_cluster(vectors)) == 2
+    assert calls == 50 * 49 // 2

@@ -454,7 +454,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Project Runs */
+        /**
+         * List Project Runs
+         * @description Newest first by default. `X-Total-Count` carries the number of runs that match the
+         *     filters, so a client can page through them. Unknown values (no pass rate yet, no cost)
+         *     sort last in either direction; ties keep newest first.
+         */
         get: operations["list_project_runs_projects__project_id__runs_get"];
         put?: never;
         post?: never;
@@ -2920,6 +2925,10 @@ export interface operations {
         parameters: {
             query?: {
                 suite_id?: string | null;
+                status?: ("queued" | "running" | "completed" | "failed" | "cancelled") | null;
+                branch?: string | null;
+                sort?: "created_at" | "pass_rate" | "cost" | "latency" | "suite" | "status";
+                order?: "asc" | "desc";
                 limit?: number;
                 offset?: number;
             };

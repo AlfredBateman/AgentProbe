@@ -3,14 +3,8 @@
 
 /* Dark only; there is no light theme. Tokens live in theme.css, generated from DESIGN.md. */
 @theme {
-  --font-sans: var(--font-inter);
-  --font-display: var(--font-geist);
-  --font-mono: var(--font-geist-mono);
-
-  /* DESIGN.md "Elevation & Depth": level 2 (floating cards, dialogs, toasts). */
-  --shadow-float: inset 0 0.5px 0 rgba(255, 255, 255, 0.1), 0 10px 30px rgba(0, 0, 0, 0.25);
-  /* Level 3 plus a solid 1px ring: the 0.15 halo alone is too faint for WCAG 1.4.11 (ADR 0028). */
-  --shadow-focus: 0 0 0 1px var(--color-accent-blue), 0 0 0 4px rgba(0, 153, 255, 0.15);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 @layer base {
@@ -25,14 +19,307 @@
     font-size: var(--text-body);
     line-height: var(--text-body--line-height);
     letter-spacing: var(--text-body--letter-spacing);
-    font-feature-settings: "cv01", "cv05", "cv09", "cv11", "ss03", "ss07";
   }
 
   ::selection {
-    background: rgba(0, 153, 255, 0.35);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
   }
 
   a {
-    color: var(--color-accent-blue);
+    color: var(--color-accent);
+  }
+
+  /* A link inside a sentence is underlined as well as lime, so colour is not the only thing
+     telling it from the words around it (WCAG 1.4.1). Styled links set their own classes. */
+  :where(p, li, dd) a:not([class]) {
+    text-decoration-line: underline;
+    text-underline-offset: 4px;
+  }
+
+  /* The focus ring: 2px lime, 2px off the element, on everything interactive. The offset is what
+     lets it show on a lime fill. Primitives rely on this rule and set no focus style of their own. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* DESIGN.md hard rule: no radius, on anything. Unlayered and !important, so it also beats
+   utilities, arbitrary values and inline styles from libraries. */
+*,
+::before,
+::after,
+::backdrop {
+  border-radius: 0 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* lib/motion: a server-rendered element marked data-motion="hidden" starts clipped, so it never
+   shows its end state before its hook takes over (the hook removes the attribute). Only where
+   scripts run and motion is allowed; otherwise it is simply there. */
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  [data-motion="hidden"] {
+    clip-path: inset(0 0 100% 0);
+  }
+
+  /* A headline is the page's largest paint: it waits at most 600ms for its script, then shows
+     as it is, and useSplitHeading skips a reveal that arrives later (it would flash). */
+  h1[data-motion="hidden"] {
+    animation: motion-guard-expired 0s 600ms forwards;
+  }
+}
+
+@keyframes motion-guard-expired {
+  to {
+    clip-path: none;
+  }
+}
+
+/* The patterns below (hatch, scanlines, noise) are SVG tiles and masks, not CSS colour ramps:
+   the system has no colour fade, so a source search for one finds nothing. */
+
+/* A group of panels: the 1px lines are the gap showing the hairline background. */
+@utility grid-lines {
+  display: grid;
+  gap: 1px;
+  background: var(--color-hairline);
+
+  :where(& > *) {
+    background: var(--color-canvas);
+  }
+}
+
+/* A touch target: on a coarse pointer, at least 44px each way (DESIGN.md Accessibility). For a
+   text link or a small control that is otherwise sized by its text. */
+@utility tap {
+  @media (pointer: coarse) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Display-size only: stroke, no fill, so what is behind the word shows through. */
+@utility text-outline {
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: max(1.5px, 0.014em) currentColor;
+}
+
+/* "+" marks on the top-left and bottom-right corners of a frame. Decorative: the empty alt text
+   keeps them out of the accessibility tree. */
+@utility crosshair {
+  position: relative;
+
+  &::before,
+  &::after {
+    content: "+" / "";
+    position: absolute;
+    z-index: var(--z-raised);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1;
+    color: var(--color-ink-muted);
+    pointer-events: none;
+  }
+
+  &::before {
+    top: 0;
+    left: 0;
+    translate: -50% -50%;
+  }
+
+  &::after {
+    right: 0;
+    bottom: 0;
+    translate: 50% 50%;
+  }
+}
+
+/* `[ WORD ]` around an element's text: the active item or a section mark. Generated content
+   with empty alt text, so assistive technology reads the word alone. */
+@utility bracketed {
+  &::before {
+    content: "[ " / "";
+  }
+
+  &::after {
+    content: " ]" / "";
+  }
+}
+
+/* Diagonal hard-stop lines in the current color: the flaky mark. A mask over a currentColor
+   fill, so the colour follows `text-*`. */
+@utility hatch {
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpath d='M-1 1l2-2M0 4l4-4M3 5l2-2' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpath d='M-1 1l2-2M0 4l4-4M3 5l2-2' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+/* Status marks (DESIGN.md "Status encoding"): shapes drawn in the current color, so a status
+   is never told by hue alone. Size the element yourself: 10px in a chip, a grid cell in the
+   attempt matrix. */
+
+/* Fail: a filled square with a cross knocked out of it, in on-fail. */
+@utility mark-fail {
+  position: relative;
+  overflow: hidden;
+  background-color: currentColor;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    top: 45%;
+    left: -20.7%;
+    width: 141.4%;
+    height: 10%;
+    background: var(--color-on-fail);
+  }
+
+  &::before {
+    rotate: 45deg;
+  }
+
+  &::after {
+    rotate: -45deg;
+  }
+}
+
+/* Error: a hollow square with a "!" in it: a 2px stem, a 1px gap and a 2px dot on the 10px
+   mark. On a cell too small for that the stem and dot run together, still a bar in a hollow
+   square. */
+@utility mark-error {
+  position: relative;
+  border: 1px solid currentColor;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    width: 2px;
+    translate: -50% 0;
+    background: currentColor;
+  }
+
+  &::before {
+    top: 1px;
+    height: 3px;
+  }
+
+  &::after {
+    bottom: 1px;
+    height: 2px;
+  }
+}
+
+/* Running: a hollow square with its left half filled. Static: nothing here loops. */
+@utility mark-running {
+  border: 1px solid currentColor;
+  border-left-width: 5px;
+}
+
+/* Queued: two stacked bars, a "wait". */
+@utility mark-queued {
+  height: 5px;
+  border-block: 2px solid currentColor;
+}
+
+/* Quarantined: a hollow square struck through. */
+@utility mark-quarantined {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid currentColor;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: -20.7%;
+    width: 141.4%;
+    height: 1px;
+    rotate: -45deg;
+    background: currentColor;
+  }
+}
+
+/* The one global grain layer. Mounted once, in the root layout, aria-hidden. */
+/* Behind the content (--z-noise is -1): it paints over the page canvas and under every panel and
+   every glyph, so it can never lower a text pair's contrast. */
+@utility noise {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-noise);
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Static scanlines: a 1px line every 3px. `scanlines` covers one hero panel; the data attribute
+   below covers the page. Never animated. */
+@utility scanlines {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='3'%3E%3Crect width='1' height='1' fill='%23000' fill-opacity='.22'/%3E%3C/svg%3E");
+  }
+}
+
+/* Optional page-wide scanlines. Off unless the root element carries `data-scanlines`. Behind
+   the content, like the noise: a line over text would darken it below AA. */
+html[data-scanlines]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-noise);
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='3'%3E%3Crect width='1' height='1' fill='%23000' fill-opacity='.18'/%3E%3C/svg%3E");
+}
+
+/* Charts (components/ui/telemetry): drawn in once, left to right, in six hard steps. Only the
+   clip moves, and it is gone when the animation ends. Under reduced motion (the OS setting or
+   the /dev/components switch) the finished chart is simply there. */
+@keyframes draw-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@utility draw-in {
+  @media (prefers-reduced-motion: no-preference) {
+    :root:not([data-reduce-motion]) & {
+      animation: draw-in 400ms steps(6, end) backwards;
+    }
+  }
+}
+
+/* Skeleton: four hard steps between two greys, slow enough to be nowhere near a flicker. */
+@keyframes skeleton-step {
+  from {
+    background-color: var(--color-surface-2);
+  }
+
+  to {
+    background-color: var(--color-hairline);
   }
 }

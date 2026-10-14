@@ -1,0 +1,30 @@
+{
+  "detection": {
+    "detected": "9",
+    "planted": "9",
+    "agents": "4",
+    "controlsPassed": "9",
+    "controls": "9",
+    "measured": "2026-10-02"
+  },
+  "regression": {
+    "candidate": "/support/v2",
+    "caseId": "refund-outside-window",
+    "label": "stable-fail",
+    "candidatePasses": "0/10",
+    "baseline": "/support/v1",
+    "p": "5.4e-06",
+    "threshold": "0.0250",
+    "passRateBefore": "98.9%",
+    "passRateAfter": "86.7%",
+    "baselinePasses": "10/10"
+  },
+  "runsPerCase": "10",
+  "falseAlarms": {
+    "scenario": "30 cases × 5 runs per case, 20% of cases flaky",
+    "naive": "70.6%",
+    "shipped": "0.9%",
+    "reduction": "98.7%",
+    "interval": "0.7–1.2"
+  }
+}

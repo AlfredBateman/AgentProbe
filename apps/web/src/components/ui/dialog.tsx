@@ -29,18 +29,18 @@ export function Dialog({ open, onClose, title, children, actions }: Props) {
       ref={ref}
       aria-labelledby={titleId}
       onClose={onClose}
-      className="m-auto w-[calc(100%-32px)] max-w-480 rounded-xl bg-surface-1 p-24 text-ink shadow-float backdrop:bg-black/70"
+      className="m-auto w-[calc(100%-32px)] max-w-480 border border-hairline-strong bg-surface-2 p-0 text-ink backdrop:bg-canvas/80"
     >
-      <div className="mb-15 flex items-start justify-between gap-12">
-        <h2 id={titleId} className="font-display text-dash-heading">
+      <header className="flex items-center justify-between gap-12 border-b border-hairline p-8 pl-16">
+        <h2 id={titleId} className="type-headline">
           {title}
         </h2>
-        <Button variant="icon" aria-label="Close" className="-mt-8 -mr-8 bg-transparent" onClick={() => ref.current?.close()}>
+        <Button variant="icon" aria-label="Close" onClick={() => ref.current?.close()}>
           <CloseIcon />
         </Button>
-      </div>
-      <div className="text-body text-ink-muted">{children}</div>
-      {actions && <div className="mt-24 flex flex-wrap justify-end gap-8">{actions}</div>}
+      </header>
+      <div className="p-16 type-body text-ink-muted">{children}</div>
+      {actions && <div className="flex flex-wrap justify-end gap-8 border-t border-hairline p-16">{actions}</div>}
     </dialog>
   );
 }

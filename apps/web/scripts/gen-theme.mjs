@@ -13,43 +13,67 @@ export function readTokens(path = DESIGN) {
   return parse(match[1]);
 }
 
+const textVars = (name, t) => [
+  `  --text-${name}: ${t.fontSize};`,
+  `  --text-${name}--line-height: ${t.lineHeight};`,
+  `  --text-${name}--letter-spacing: ${t.letterSpacing};`,
+  `  --text-${name}--font-weight: ${t.fontWeight};`,
+];
+
 export function generate(tokens = readTokens()) {
-  const lines = [];
-  for (const [name, value] of Object.entries(tokens.colors)) lines.push(`  --color-${name}: ${value};`);
-  // Result aliases (ADR 0028): components say what a color means, not which hue it is.
-  for (const [alias, token] of [
-    ["pass", "semantic-success"],
-    ["fail", "semantic-danger"],
-    ["flaky", "semantic-warning"],
-    ["neutral", "semantic-neutral"],
-  ]) {
-    if (!(token in tokens.colors)) throw new Error(`DESIGN.md has no colors.${token}`);
-    lines.push(`  --color-${alias}: var(--color-${token});`);
-  }
+  const { colors, typography, fonts } = tokens;
+  const theme = [];
+  for (const [name, value] of Object.entries(colors)) theme.push(`  --color-${name}: ${value};`);
 
-  lines.push("");
-  for (const [name, value] of Object.entries(tokens.rounded)) lines.push(`  --radius-${name}: ${value};`);
+  theme.push("");
+  for (const [name, value] of Object.entries(tokens.rounded)) theme.push(`  --radius-${name}: ${value};`);
 
-  // Spacing is a px scale (ADR 0028): p-15 is 15px. Tailwind resolves max-w-md from
+  // Spacing is a px scale (ADR 0042): p-15 is 15px. Tailwind resolves max-w-md from
   // --spacing-md before --container-md, so DESIGN.md's names can't be emitted as-is.
   for (const [name, value] of Object.entries(tokens.spacing)) {
     if (!/^\d+px$/.test(String(value))) throw new Error(`spacing.${name} = ${value} is not a whole px value`);
   }
-  lines.push("", "  --spacing: 1px;");
+  theme.push("", "  --spacing: 1px;");
 
-  lines.push("");
-  for (const [name, t] of Object.entries(tokens.typography)) {
-    lines.push(
-      `  --text-${name}: ${t.fontSize};`,
-      `  --text-${name}--line-height: ${t.lineHeight};`,
-      `  --text-${name}--letter-spacing: ${t.letterSpacing};`,
-      `  --text-${name}--font-weight: ${t.fontWeight};`,
-    );
-  }
+  theme.push("");
+  for (const [name, t] of Object.entries(typography)) theme.push(...textVars(name, t));
+
+  theme.push("");
+  for (const [name, value] of Object.entries(tokens.motion.easing)) theme.push(`  --ease-${name}: ${value};`);
 
   // DESIGN.md "Responsive Behavior": tablet at 810px, desktop at 1199px.
-  lines.push("", "  --breakpoint-tablet: 810px;", "  --breakpoint-desktop: 1199px;");
-  return `/* Generated from DESIGN.md by scripts/gen-theme.mjs. Do not edit. */\n@theme {\n${lines.join("\n")}\n}\n`;
+  theme.push("", "  --breakpoint-tablet: 810px;", "  --breakpoint-desktop: 1199px;");
+
+  // Tailwind has no theme namespace for these, so they are plain custom properties.
+  const root = [
+    ...Object.entries(tokens.borders).map(([name, value]) => `  --border-${name}: ${value};`),
+    ...Object.entries(tokens.zIndex).map(([name, value]) => `  --z-${name}: ${value};`),
+    ...Object.entries(tokens.motion.duration).map(([name, value]) => `  --duration-${name}: ${value};`),
+  ];
+
+  // One class per type tier: a tier is a family, a case and a width as much as a size.
+  const utilities = Object.entries(typography).map(([name, t]) => {
+    const font = Object.keys(fonts).find((key) => fonts[key] === t.fontFamily);
+    if (!font) throw new Error(`typography.${name}: DESIGN.md's fonts has no ${t.fontFamily}`);
+    const rules = [
+      `font-family: var(--font-${font})`,
+      `font-size: ${t.fontSize}`,
+      `font-weight: ${t.fontWeight}`,
+      `line-height: ${t.lineHeight}`,
+      `letter-spacing: ${t.letterSpacing}`,
+      `text-transform: ${t.textTransform ?? "none"}`,
+      ...(t.wordSpacing ? [`word-spacing: ${t.wordSpacing}`] : []),
+      ...(t.fontStretch ? [`font-stretch: ${t.fontStretch}`] : []),
+    ];
+    return `@utility type-${name} {\n${rules.map((r) => `  ${r};`).join("\n")}\n}\n`;
+  });
+
+  return [
+    "/* Generated from DESIGN.md by scripts/gen-theme.mjs. Do not edit. */",
+    `@theme {\n${theme.join("\n")}\n}\n`,
+    `:root {\n${root.join("\n")}\n}\n`,
+    ...utilities,
+  ].join("\n");
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

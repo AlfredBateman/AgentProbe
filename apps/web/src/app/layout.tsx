@@ -1,19 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import localFont from "next/font/local";
 import { WakingNotice } from "@/components/shell/waking-notice";
 import { ToastProvider } from "@/components/ui/toast";
+import { archivo, jetbrainsMono } from "./fonts";
 import "./globals.css";
-
-// Self-hosted: Google's Inter drops the cv01/05/09/11 and ss03/07 features DESIGN.md depends on
-// (ADR 0004). This is rsms' own variable build, Latin subset.
-const inter = localFont({
-  src: "../../node_modules/inter-ui/variable-latin/InterVariable-subset.woff2",
-  variable: "--font-inter",
-  weight: "100 900",
-});
-const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 // Every page renders per request: the CSP nonce (src/proxy.ts) is new each time, and a page
 // prerendered at build time would carry no nonce, so its scripts would be blocked.
@@ -28,11 +17,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geist.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${archivo.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <ToastProvider>{children}</ToastProvider>
         <WakingNotice />
+        {/* The one grain layer, for every page (DESIGN.md Details). */}
+        <div aria-hidden className="noise" />
       </body>
     </html>
   );

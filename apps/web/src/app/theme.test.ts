@@ -1,31 +1,56 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { GRADIENT_STOPS } from "@/components/ui/gradient-card";
 import { contrast } from "@/lib/contrast";
 import { generate, OUTPUT, readTokens } from "../../scripts/gen-theme.mjs";
 
-const { colors } = readTokens() as { colors: Record<string, string> };
+const tokens = readTokens() as {
+  colors: Record<string, string>;
+  typography: Record<string, { letterSpacing: string; wordSpacing?: string }>;
+};
+const { colors, typography } = tokens;
+const hex = (name: string) => colors[name];
 const surfaces = ["canvas", "surface-1", "surface-2"];
+const onSurfaces = (names: string[]) => names.flatMap((n) => surfaces.map((s) => [n, s]));
 
 test("theme.css is up to date with DESIGN.md (run `pnpm --filter web gen:theme`)", () => {
   expect(readFileSync(OUTPUT, "utf8").replace(/\r\n/g, "\n")).toBe(generate());
 });
 
-// WCAG AA body text on every surface (ADR 0028 records the measured ratios).
-const text = ["ink", "ink-muted", "accent-blue", "semantic-success", "semantic-danger", "semantic-warning", "semantic-neutral"];
-test.each(text.flatMap((t) => surfaces.map((s) => [t, s])))("%s on %s is at least 4.5:1", (fg, bg) => {
-  expect(contrast(colors[fg], colors[bg])).toBeGreaterThanOrEqual(4.5);
+// WCAG AA body text on every surface (ADR 0042 records the measured ratios).
+test.each(onSurfaces(["ink", "ink-muted", "accent", "fail"]))("%s on %s is at least 4.5:1", (fg, bg) => {
+  expect(contrast(hex(fg), hex(bg))).toBeGreaterThanOrEqual(4.5);
 });
 
-// Non-text marks: WCAG 1.4.11 asks 3:1 against the surface they sit on.
-test.each(["chart-1", "chart-2", "chart-3", "chart-4"].flatMap((c) => surfaces.map((s) => [c, s])))(
-  "%s on %s is at least 3:1",
-  (fg, bg) => {
-    expect(contrast(colors[fg], colors[bg])).toBeGreaterThanOrEqual(3);
-  },
-);
+test.each([
+  ["on-accent", "accent"],
+  ["on-fail", "fail"],
+])("%s on a %s fill is at least 4.5:1", (fg, bg) => {
+  expect(contrast(hex(fg), hex(bg))).toBeGreaterThanOrEqual(4.5);
+});
 
-test.each(GRADIENT_STOPS)("white text on gradient stop %s is at least 4.5:1", (stop) => {
-  expect(contrast(colors.ink, stop)).toBeGreaterThanOrEqual(4.5);
+// Non-text marks and control borders: WCAG 1.4.11 asks 3:1 against the surface they sit on.
+test.each(onSurfaces(["hairline-strong"]))("%s on %s is at least 3:1", (fg, bg) => {
+  expect(contrast(hex(fg), hex(bg))).toBeGreaterThanOrEqual(3);
+});
+
+test("DESIGN.md has no alias names: every colour and type tier is one token", () => {
+  expect(tokens).not.toHaveProperty("aliases");
+  expect(readFileSync(OUTPUT, "utf8")).not.toMatch(/--color-(chart-\d|primary|pass|flaky|neutral|accent-blue|hairline-soft)/);
+});
+
+// Over text, the grain's lightest pixels (measured on its tile) take `fail` on `surface-2` from
+// 4.65:1 to 4.16:1, so the noise and the page-wide scanlines sit behind the content instead.
+test("the noise and page-wide scanline layers sit behind the content, never over text", () => {
+  expect((readTokens() as { zIndex: { noise: number } }).zIndex.noise).toBeLessThan(0);
+  const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
+  const layers = [/@utility noise \{[^}]*\}/, /html\[data-scanlines\]::after \{[^}]*\}/].map((re) => css.match(re)?.[0] ?? "");
+  for (const layer of layers) expect(layer).toContain("z-index: var(--z-noise)");
+});
+
+// Tracking applies to the space glyph too, and Archivo kerns against it, so a tier tracked
+// below zero closes its word gaps ("AT YOUR" reads "ATYOUR") unless it adds word-spacing back.
+// 0.16em brings the narrowest kerned space to about 0.28em; the boards measure it.
+test.each(Object.entries(typography).filter(([, t]) => parseFloat(t.letterSpacing) < 0))("%s sets a word-spacing that wins its tracking back", (_name, t) => {
+  expect(parseFloat(t.wordSpacing ?? "0")).toBeGreaterThanOrEqual(0.16);
 });

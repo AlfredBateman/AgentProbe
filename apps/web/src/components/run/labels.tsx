@@ -1,9 +1,9 @@
 import { Badge, type Status } from "@/components/ui/status";
 
-// Run, case-label and verdict vocabularies as badges. Every badge carries its text (ADR 0028).
+// Run, case-label and verdict vocabularies as badges. Every badge carries its text and its mark (DESIGN.md Status encoding).
 const RUN: Record<string, [Status, string]> = {
-  queued: ["stable", "Queued"],
-  running: ["stable", "Running"],
+  queued: ["queued", "Queued"],
+  running: ["running", "Running"],
   completed: ["pass", "Completed"],
   failed: ["fail", "Failed"],
   cancelled: ["error", "Cancelled"],

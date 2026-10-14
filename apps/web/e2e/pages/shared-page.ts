@@ -9,7 +9,7 @@ export class SharedPage {
   }
 
   async expectReadOnlyView(suiteName: string) {
-    await expect(this.page.getByText("Shared run · read-only")).toBeVisible();
+    await expect(this.page.getByText("Read-only snapshot")).toBeVisible();
     await expect(this.page.getByRole("heading", { name: suiteName })).toBeVisible();
   }
 

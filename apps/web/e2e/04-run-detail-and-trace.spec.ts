@@ -94,7 +94,7 @@ test("a live /support/v1 run streams to completion and shows a flaky case; a /vu
       await expect.poll(agent.held).toBeGreaterThan(0);
       agent.releaseOne();
       await expect(page.getByRole("cell", { name: "greeting", exact: true })).toBeVisible();
-      await expect(live).toHaveAttribute("value", "1");
+      await expect(live).toHaveAttribute("aria-valuenow", "1");
 
       agent.open();
       await expect(page.getByText("Completed", { exact: true })).toBeVisible({ timeout: 150_000 });

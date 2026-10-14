@@ -69,7 +69,7 @@ export function RunSuiteDialog({
       {suites.length === 0 ? (
         <p>
           There are no suites in this project yet.{" "}
-          <Link href={`/projects/${projectId}/suites`} className="rounded-xs text-accent-blue outline-none hover:underline focus-visible:shadow-focus">
+          <Link href={`/projects/${projectId}/suites`} className="text-accent underline underline-offset-4">
             Create one
           </Link>{" "}
           first.
@@ -101,12 +101,12 @@ export function RunSuiteDialog({
             {runsInvalid ? (
               <FieldError id="run-runs-hint">A whole number from 1 to 20.</FieldError>
             ) : (
-              <p id="run-runs-hint" className="text-data-label text-ink-muted">
+              <p id="run-runs-hint" className="type-body-sm text-ink-muted">
                 Leave empty for the suite&apos;s own setting. A regression needs 5 or more to be flagged.
               </p>
             )}
           </div>
-          <label className="flex items-start gap-8 text-body-sm text-ink">
+          <label className="flex items-start gap-8 type-body-sm text-ink">
             <input type="checkbox" className="mt-4" checked={live} onChange={(e) => setLive(e.target.checked)} />
             Judge with the server&apos;s live LLM (spends quota; off uses the offline mock judge)
           </label>

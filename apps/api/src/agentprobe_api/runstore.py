@@ -315,13 +315,11 @@ async def save_attempt(
     if nothing was saved.
     """
     async with sessions() as session:
-        # The row lock orders this against cancel/fail and the other attempts' counter.
-        status = await session.scalar(
-            select(Run.status).where(Run.id == plan.run_id).with_for_update()
-        )
-        if status != "running":
-            await session.commit()
-            return None
+        # The inserts go first and take no lock on the run, so concurrent attempts write in
+        # parallel. Only the final UPDATE locks the run row, held for that statement and the
+        # commit (2 round trips, not 6: on a slow database the per-run lock was the
+        # bottleneck). It re-checks the status under the lock, so a cancel or failure that
+        # committed first makes it match nothing, and the whole attempt is rolled back.
         result_id = await session.scalar(
             insert(RunResult)
             .values(**_attempt_values(plan.run_id, plan.case_ids[result.case_id], result))
@@ -329,7 +327,7 @@ async def save_attempt(
             .returning(RunResult.id)
         )
         if result_id is None:  # a redelivered job: already saved
-            await session.commit()
+            await session.rollback()
             return None
         if result.response is not None:
             session.add(
@@ -342,12 +340,15 @@ async def save_attempt(
         await session.flush()
         done = await session.scalar(
             update(Run)
-            .where(Run.id == plan.run_id)
+            .where(Run.id == plan.run_id, Run.status == "running")
             .values(attempts_done=Run.attempts_done + 1, heartbeat_at=func.now())
             .returning(Run.attempts_done)
         )
+        if done is None:  # cancelled, failed or finished meanwhile: keep nothing
+            await session.rollback()
+            return None
         await session.commit()
-    return None if done is None else (done, result_id)
+    return done, result_id
 
 
 async def insert_results(

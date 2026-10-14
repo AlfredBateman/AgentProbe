@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
-import { BareHeader } from "@/components/shell/bare-header";
+import { AuthFrame } from "@/components/shell/auth-frame";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { FieldError, Input, Label } from "@/components/ui/field";
+import { FieldError, FormError, Input, Label } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/feedback";
 import { api } from "@/lib/api/client";
 import { apiErrorMessage, apiFieldErrors } from "@/lib/api/errors";
@@ -72,18 +71,17 @@ function LoginForm() {
 
   if (checkingSession) {
     return (
-      <Card className="w-full max-w-400">
-        <Skeleton className="h-24 w-120" />
-        <Skeleton className="mt-20 h-44" />
-        <Skeleton className="mt-12 h-44" />
-      </Card>
+      <div aria-hidden>
+        <Skeleton className="h-40" />
+        <Skeleton className="mt-16 h-40" />
+        <Skeleton className="mt-16 h-40" />
+      </div>
     );
   }
 
   return (
-    <Card className="w-full max-w-400">
-      <h1 className="font-display text-dash-heading">Sign in</h1>
-      <form className="mt-20 flex flex-col gap-15" onSubmit={onSubmit} noValidate>
+    <>
+      <form className="flex flex-col gap-16" onSubmit={onSubmit} noValidate>
         <div className="flex flex-col gap-6">
           <Label htmlFor="email">Email</Label>
           <Input
@@ -110,28 +108,36 @@ function LoginForm() {
           />
           <FieldError id="password-error">{errors.password}</FieldError>
         </div>
-        <FieldError id="form-error">{errors.form}</FieldError>
+        <FormError id="form-error">{errors.form}</FormError>
         <Button type="submit" disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in"}
         </Button>
       </form>
-      <p className="mt-20 text-body-sm text-ink-muted">
+      <p className="mt-24 border-t border-hairline pt-16 type-body-sm text-ink-muted">
         No account?{" "}
-        <Link href={next === "/projects" ? "/register" : `/register?next=${encodeURIComponent(next)}`}>Register</Link>
+        <Link href={next === "/projects" ? "/register" : `/register?next=${encodeURIComponent(next)}`} className="tap underline underline-offset-4">
+          Register
+        </Link>
       </p>
-    </Card>
+    </>
   );
 }
 
 export default function LoginPage() {
   return (
-    <main className="flex flex-1 flex-col">
-      <BareHeader />
-      <div className="flex flex-1 items-center justify-center px-16 py-40">
-        <Suspense fallback={<Skeleton className="h-260 w-full max-w-400" />}>
-          <LoginForm />
-        </Suspense>
-      </div>
-    </main>
+    <AuthFrame
+      eyebrow="[ Access ]"
+      headline={
+        <>
+          Sign <span className="text-outline">in</span>
+        </>
+      }
+      lede="Use the account you registered with. It opens your projects, suites and runs."
+      panelTitle="Credentials"
+    >
+      <Suspense fallback={<Skeleton className="h-160" />}>
+        <LoginForm />
+      </Suspense>
+    </AuthFrame>
   );
 }

@@ -201,15 +201,28 @@ async def start_run(
     return out
 
 
+RunStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
+RunSort = Literal["created_at", "pass_rate", "cost", "latency", "suite", "status"]
+
+
 @router.get("/projects/{project_id}/runs")
 async def list_project_runs(
     project_id: uuid.UUID,
     principal: CurrentPrincipal,
     db: Db,
+    response: Response,
     suite_id: uuid.UUID | None = None,
+    status: RunStatus | None = None,
+    branch: str | None = Query(default=None, max_length=255),
+    sort: RunSort = "created_at",
+    order: Literal["asc", "desc"] = "desc",
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[RunListOut]:
+    """Newest first by default. `X-Total-Count` carries the number of runs that match the
+    filters, so a client can page through them. Unknown values (no pass rate yet, no cost)
+    sort last in either direction; ties keep newest first.
+    """
     project = await owned_project(db, principal, project_id)
     latency = (
         select(
@@ -228,7 +241,27 @@ async def list_project_runs(
     )
     if suite_id is not None:
         stmt = stmt.where(Run.suite_id == suite_id)
-    stmt = stmt.order_by(Run.created_at.desc()).limit(limit).offset(offset)
+    if status is not None:
+        stmt = stmt.where(Run.status == status)
+    if branch is not None:
+        stmt = stmt.where(Run.branch == branch)
+    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
+    response.headers["X-Total-Count"] = str(total or 0)
+
+    key = {
+        "created_at": Run.created_at,
+        "pass_rate": Run.pass_rate,
+        "cost": Run.total_cost,
+        "latency": latency,
+        "suite": Suite.name,
+        "status": Run.status,
+    }[sort]
+    direction = key.asc() if order == "asc" else key.desc()
+    stmt = (
+        stmt.order_by(direction.nulls_last(), Run.created_at.desc(), Run.id)
+        .limit(limit)
+        .offset(offset)
+    )
     rows = await db.execute(stmt)
     return [
         RunListOut(

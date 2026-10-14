@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { AttemptBadge } from "@/components/run/labels";
-import { differingSteps, type Trace, Timeline } from "@/components/trace/timeline";
-import { PlainText } from "@/components/ui/code";
+import { PageHeader } from "@/components/shell/page-header";
+import { differingSteps, type Trace, Timeline, VerdictPanel } from "@/components/trace/timeline";
+import { CodeBlock, CopyButton, PlainText, safeJson } from "@/components/ui/code";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Label, Select } from "@/components/ui/field";
 import { api } from "@/lib/api/client";
@@ -55,65 +56,80 @@ function TraceView() {
 
   return (
     <>
-      <p className="text-data-label text-ink-muted">
-        <Link href={`/projects/${projectId}/runs/${runId}`} className="rounded-xs outline-none hover:text-ink focus-visible:shadow-focus">
-          Run <span className="font-mono">{runId.slice(0, 8)}</span>
-        </Link>{" "}
-        / attempt {trace.attempt + 1}
-      </p>
-      <h1 className="mt-4 font-display text-dash-title-sm break-words tablet:text-dash-title">{trace.case}</h1>
-      <AttemptMeta trace={trace} className="mt-8" />
-
-      <section aria-labelledby="input-title" className="mt-20 rounded-xl bg-surface-1 p-20">
-        <h2 id="input-title" className="mb-8 text-data-label text-ink-muted">
-          Input
-        </h2>
-        <PlainText text={trace.input} />
-        {trace.error && (
+      <PageHeader
+        eyebrow={
           <>
-            <h2 className="mt-15 mb-8 text-data-label text-fail">Error</h2>
-            <PlainText text={trace.error} />
+            [{" "}
+            <Link href={`/projects/${projectId}/runs/${runId}`} className="hover:text-ink">
+              Run <span className="type-code">{runId.slice(0, 8)}</span>
+            </Link>{" "}
+            ] <span aria-hidden>{"///"}</span> Attempt {trace.attempt + 1}
           </>
-        )}
-      </section>
+        }
+        title={trace.case}
+        verbatim
+        actions={
+          <span className="inline-flex items-center gap-8 border border-hairline-strong py-2 pr-2 pl-12 type-label text-ink-muted">
+            Trace JSON
+            <CopyButton text={safeJson(trace)} name="the trace as JSON" />
+          </span>
+        }
+      >
+        <AttemptMeta trace={trace} />
+      </PageHeader>
 
-      <div className="mt-20 flex flex-wrap items-end justify-between gap-12">
-        <div role="group" aria-label="Step density" className="inline-flex gap-4 rounded-pill bg-canvas p-4">
-          {[
-            { value: false, label: "Expanded" },
-            { value: true, label: "Compact" },
-          ].map((o) => (
-            <button
-              key={o.label}
-              type="button"
-              aria-pressed={compact === o.value}
-              onClick={() => setCompact(o.value)}
-              className={cx(
-                "min-h-40 cursor-pointer rounded-pill px-14 py-8 text-button outline-none transition-colors focus-visible:shadow-focus",
-                compact === o.value ? "bg-surface-2 text-ink" : "text-ink-muted hover:text-ink",
-              )}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-        <ComparePicker projectId={projectId} runId={runId} resultId={resultId} trace={trace} value={compareId} onChange={setCompare} />
-      </div>
+      <div className={cx("mt-24 grid gap-24", compareId === null && "desktop:grid-cols-[minmax(0,1fr)_minmax(0,380px)]")}>
+        <div className="flex min-w-0 flex-col gap-24">
+          <CodeBlock as="kbd" label="Input" code={trace.input} />
+          {trace.error && (
+            <div role="alert" className="border border-fail p-16">
+              <p className="mb-6 type-label text-fail">Error</p>
+              <PlainText text={trace.error} />
+            </div>
+          )}
 
-      <div className="mt-20">
-        {compareId === null ? (
-          <Timeline trace={trace} compact={compact} />
-        ) : comparing === null ? (
-          other === "error" ? (
-            <EmptyState title="Couldn't load the attempt to compare with" />
-          ) : (
-            <Skeleton className="h-320" />
-          )
-        ) : (
-          <div className="grid gap-20 tablet:grid-cols-2">
-            <CompareColumn name="A" trace={trace} compact={compact} against={comparing} />
-            <CompareColumn name="B" trace={comparing} compact={compact} against={trace} />
+          <div className="flex flex-wrap items-end justify-between gap-12">
+            <div role="group" aria-label="Step density" className="inline-flex border border-hairline-strong">
+              {[
+                { value: false, label: "Expanded" },
+                { value: true, label: "Compact" },
+              ].map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  aria-pressed={compact === o.value}
+                  onClick={() => setCompact(o.value)}
+                  className={cx(
+                    "min-h-40 cursor-pointer px-16 type-button -outline-offset-2 transition-[background-color,color] duration-120 pointer-coarse:min-h-44",
+                    compact === o.value ? "bracketed bg-surface-2 text-accent" : "text-ink-muted hover:text-ink",
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <ComparePicker projectId={projectId} runId={runId} resultId={resultId} trace={trace} value={compareId} onChange={setCompare} />
           </div>
+
+          {compareId === null ? (
+            <Timeline trace={trace} compact={compact} layout="narrow" />
+          ) : comparing === null ? (
+            other === "error" ? (
+              <EmptyState title="Couldn't load the attempt to compare with" />
+            ) : (
+              <Skeleton className="h-320" />
+            )
+          ) : (
+            <div className="grid gap-24 tablet:grid-cols-2">
+              <CompareColumn name="A" trace={trace} compact={compact} against={comparing} />
+              <CompareColumn name="B" trace={comparing} compact={compact} against={trace} />
+            </div>
+          )}
+        </div>
+        {compareId === null && (
+          <aside aria-label="Verdicts" className="min-w-0 desktop:sticky desktop:top-80 desktop:self-start">
+            <VerdictPanel trace={trace} />
+          </aside>
         )}
       </div>
     </>
@@ -122,22 +138,25 @@ function TraceView() {
 
 function AttemptMeta({ trace, className }: { trace: Trace; className?: string }) {
   return (
-    <dl className={cx("flex flex-wrap items-center gap-x-20 gap-y-6 text-data tabular-nums", className)}>
+    <div className={cx("flex flex-wrap items-center gap-x-20 gap-y-6 tabular-nums", className)}>
       <AttemptBadge status={trace.status} />
-      <MetaItem term="Latency">{ms(trace.latency_ms)}</MetaItem>
-      <MetaItem term="Tokens">{count(trace.tokens)}</MetaItem>
-      <MetaItem term="Cost">{usd(trace.cost_usd)}</MetaItem>
-      <MetaItem term="Judging">{usd(trace.judge_cost_usd)}</MetaItem>
-      <MetaItem term="Retries">{trace.retries}</MetaItem>
-    </dl>
+      {/* Only term/value groups inside the list: the badge is its own element beside it. */}
+      <dl className="flex flex-wrap items-center gap-x-20 gap-y-6">
+        <MetaItem term="Latency">{ms(trace.latency_ms)}</MetaItem>
+        <MetaItem term="Tokens">{count(trace.tokens)}</MetaItem>
+        <MetaItem term="Cost">{usd(trace.cost_usd)}</MetaItem>
+        <MetaItem term="Judging">{usd(trace.judge_cost_usd)}</MetaItem>
+        <MetaItem term="Retries">{trace.retries}</MetaItem>
+      </dl>
+    </div>
   );
 }
 
 function MetaItem({ term, children }: { term: string; children: ReactNode }) {
   return (
-    <div className="flex gap-6">
-      <dt className="text-ink-muted">{term}</dt>
-      <dd className="text-ink">{children}</dd>
+    <div className="flex items-baseline gap-6">
+      <dt className="type-micro text-ink-muted">{term}</dt>
+      <dd className="type-data text-ink">{children}</dd>
     </div>
   );
 }
@@ -146,12 +165,12 @@ function CompareColumn({ name, trace, compact, against }: { name: string; trace:
   const differs = differingSteps(trace.steps, against.steps);
   return (
     <section aria-label={`Attempt ${name}`} className="min-w-0">
-      <header className="mb-12 rounded-lg bg-surface-1 p-15">
-        <h2 className="font-display text-dash-heading">
-          {name} · run <span className="font-mono">{trace.run_id.slice(0, 8)}</span>, attempt {trace.attempt + 1}
+      <header className="mb-12 border border-hairline-strong p-16">
+        <h2 className="type-headline">
+          {name} · run <span className="type-code">{trace.run_id.slice(0, 8)}</span>, attempt {trace.attempt + 1}
         </h2>
-        <AttemptMeta trace={trace} className="mt-6" />
-        <p className="mt-6 text-data text-ink-muted">
+        <AttemptMeta trace={trace} className="mt-8" />
+        <p className="mt-8 type-micro text-ink-muted">
           {differs.size === 0 ? "Every step matches." : `${differs.size} of ${trace.steps.length} steps differ.`}
         </p>
       </header>

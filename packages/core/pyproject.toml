@@ -3,6 +3,7 @@ name = "agentprobe-core"
 version = "0.1.0"
 description = "AgentProbe engine: suite schema, adapters, judges, attacks, statistics, LLM layer."
 requires-python = ">=3.12"
+license = "MIT"
 dependencies = [
     "anyio==4.15.1",
     "httpcore==1.0.9",

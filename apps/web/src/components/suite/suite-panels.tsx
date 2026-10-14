@@ -33,8 +33,8 @@ export function CaseBrowser({ suiteId, versions, current }: { suiteId: string; v
   }, [suiteId, version]);
 
   const columns: Column<Case>[] = [
-    { key: "id", header: "Case", value: (c) => c.id, render: (c) => <span className="font-mono text-code">{c.id}</span> },
-    { key: "attack", header: "Attack", value: (c) => c.attack ?? "", render: (c) => (c.attack ? <span className="font-mono text-code">{c.attack}</span> : "—") },
+    { key: "id", header: "Case", value: (c) => c.id, render: (c) => <span>{c.id}</span> },
+    { key: "attack", header: "Attack", value: (c) => c.attack ?? "", render: (c) => (c.attack ? <span>{c.attack}</span> : "—") },
     {
       key: "input",
       header: "Input",
@@ -99,7 +99,7 @@ export function CaseBrowser({ suiteId, versions, current }: { suiteId: string; v
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-4">
-      <span className="text-data-label text-ink-muted">{label}</span>
+      <span className="type-label text-ink-muted">{label}</span>
       {children}
     </div>
   );
@@ -149,7 +149,7 @@ function VersionDetail({ suiteId, version, previous }: { suiteId: string; versio
   if (!yaml) return <Skeleton className="h-80" />;
   if (yaml.now === null)
     return (
-      <p className="text-body-sm text-ink-muted">
+      <p className="type-body-sm text-ink-muted">
         Saved before AgentProbe kept each version&apos;s YAML. Its {version.case_count} cases are in the Cases tab.
       </p>
     );
@@ -157,14 +157,14 @@ function VersionDetail({ suiteId, version, previous }: { suiteId: string; versio
     <div className="flex flex-col gap-12">
       {previous && yaml.before !== null ? (
         <section aria-label={`Changes from version ${previous.version}`}>
-          <h3 className="mb-6 text-data-label text-ink-muted">Changes from v{previous.version}</h3>
+          <h3 className="mb-8 type-label text-ink-muted">Changes from v{previous.version}</h3>
           <YamlDiff before={yaml.before} after={yaml.now} />
         </section>
       ) : (
-        <p className="text-body-sm text-ink-muted">{previous ? `v${previous.version} has no saved YAML to compare with.` : "The first version."}</p>
+        <p className="type-body-sm text-ink-muted">{previous ? `v${previous.version} has no saved YAML to compare with.` : "The first version."}</p>
       )}
       <details>
-        <summary className="cursor-pointer text-data-label text-ink-muted">Full YAML of v{version.version}</summary>
+        <summary className="flex min-h-40 cursor-pointer items-center type-label text-ink-muted pointer-coarse:min-h-44">Full YAML of v{version.version}</summary>
         <CodeBlock code={yaml.now} label={`v${version.version}`} className="mt-8" />
       </details>
     </div>
@@ -176,8 +176,8 @@ const CONTEXT = 3; // unchanged lines kept around each change
 /** A folded line diff as plain text: +/− marks (and screen-reader words), never color alone. */
 function YamlDiff({ before, after }: { before: string; after: string }) {
   const diff = lineDiff(before, after);
-  if (diff === null) return <p className="text-body-sm text-ink-muted">Too large to compare here.</p>;
-  if (diff.every((l) => l.kind === "same")) return <p className="text-body-sm text-ink-muted">No changes.</p>;
+  if (diff === null) return <p className="type-body-sm text-ink-muted">Too large to compare here.</p>;
+  if (diff.every((l) => l.kind === "same")) return <p className="type-body-sm text-ink-muted">No changes.</p>;
   const near = new Set<number>();
   diff.forEach((l, i) => {
     if (l.kind !== "same") for (let k = i - CONTEXT; k <= i + CONTEXT; k++) near.add(k);
@@ -189,7 +189,7 @@ function YamlDiff({ before, after }: { before: string; after: string }) {
     else rows.push(1);
   });
   return (
-    <pre data-testid="yaml-diff" className="overflow-x-auto rounded-lg bg-canvas py-8 font-mono text-code">
+    <pre data-testid="yaml-diff" className="overflow-x-auto bg-canvas py-8 type-code">
       {rows.map((row, i) =>
         typeof row === "number" ? (
           <div key={i} className="px-12 text-ink-muted">

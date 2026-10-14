@@ -1,6 +1,7 @@
 {
   "name": "agentprobe",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@11.2.2",
   "engines": {
     "node": ">=22"

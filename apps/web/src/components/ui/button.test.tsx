@@ -2,26 +2,49 @@ import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { Button, buttonClasses } from "./button";
 
-test("primary is the white pill with the press shrink", () => {
+test("primary is the one lime fill, a 40px rectangle that moves down 1px when pressed", () => {
   render(<Button>Run suite</Button>);
   const button = screen.getByRole("button", { name: "Run suite" });
   expect(button.getAttribute("type")).toBe("button"); // never submits a form by accident
-  expect(button.className).toContain("bg-primary");
-  expect(button.className).toContain("text-on-primary");
-  expect(button.className).toContain("rounded-pill");
-  expect(button.className).toContain("active:scale-[0.97]");
-  expect(button.className).toContain("min-h-44");
+  expect(button.className).toContain("bg-accent");
+  expect(button.className).toContain("text-on-accent");
+  expect(button.className).toContain("active:translate-y-1");
+  expect(button.className).toContain("min-h-40");
+  expect(button.className).toContain("pointer-coarse:min-h-44");
 });
 
 test.each([
-  ["secondary", "bg-surface-1", "rounded-pill"],
-  ["translucent", "bg-surface-2", "rounded-xxl"],
-  ["icon", "bg-surface-1", "rounded-full"],
-] as const)("%s variant", (variant, surface, radius) => {
+  ["secondary", "border-hairline-strong", "bg-canvas"],
+  ["danger", "border-fail", "text-fail"],
+  ["ghost", "border-transparent", "bg-transparent"],
+  ["icon", "border-hairline-strong", "size-40"],
+] as const)("%s variant", (variant, ...expected) => {
   const classes = buttonClasses(variant);
-  expect(classes).toContain(surface);
-  expect(classes).toContain(radius);
-  expect(classes).not.toMatch(/accent-blue/); // blue is a signal, never a fill
+  for (const c of expected) expect(classes).toContain(c);
+  expect(classes).not.toContain("bg-accent"); // a lime fill is the primary action only
+  expect(classes).not.toMatch(/rounded|shadow|gradient/);
+});
+
+test("red is only ever the danger variant", () => {
+  for (const variant of ["primary", "secondary", "ghost", "icon"] as const) {
+    expect(buttonClasses(variant)).not.toContain("fail");
+  }
+});
+
+test("a button is a native, focusable control and a disabled one leaves the tab order", () => {
+  render(
+    <>
+      <Button>Start</Button>
+      <Button disabled>Wait</Button>
+    </>,
+  );
+  const [start, wait] = screen.getAllByRole("button");
+  start.focus();
+  expect(document.activeElement).toBe(start);
+  expect(start.tabIndex).toBe(0);
+  wait.focus();
+  expect(document.activeElement).not.toBe(wait);
+  expect((wait as HTMLButtonElement).disabled).toBe(true);
 });
 
 test("icon buttons are named and submit when asked", () => {
@@ -34,5 +57,5 @@ test("icon buttons are named and submit when asked", () => {
 });
 
 test("buttonClasses lets a link look like a button", () => {
-  expect(buttonClasses("secondary", "w-full")).toMatch(/bg-surface-1.*w-full$/);
+  expect(buttonClasses("secondary", "w-full")).toMatch(/bg-canvas.*w-full$/);
 });

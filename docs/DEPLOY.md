@@ -124,6 +124,7 @@ Every response carries `X-AgentProbe-Demo: Deliberately vulnerable demo with pla
 | `API_INTERNAL_URL` | The API's Render URL, e.g. `https://agentprobe-api.onrender.com` | At runtime, by `src/proxy.ts` for every `/api/*` request |
 | `NEXT_PUBLIC_API_URL` | The same URL | At build time: where the browser opens a run's live progress stream (ADR 0031) |
 | `PROXY_SECRET` | The API's `PROXY_SECRET` (mark it Sensitive) | At runtime, by `src/proxy.ts` |
+| `NEXT_PUBLIC_DEMO_URL` | Optional. A share link to a seeded run, as a path (`/shared/<token>`): seed a project with `scripts/seed_demo.py --web <WEB_ORIGIN> --agents-url <DEMO_URL>`, open the regression run and share it with no expiry | At build time: the landing page's "Try the demo" button. Unset, or anything but a same-origin path or an `https://` URL, and the button is not rendered |
 
 Project settings:
 - **Root Directory:** `apps/web`, with "Include files outside the root directory" on (the default). The pnpm lockfile is at the repo root.

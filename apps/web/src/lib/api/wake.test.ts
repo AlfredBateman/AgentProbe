@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { awakeFetch, resetWake, wakeNotice } from "./wake";
+import { awakeFetch, resetWake, wakeNotice, wakeStatus } from "./wake";
 
 const BASE = "http://localhost:3000";
 
@@ -141,4 +141,31 @@ test("without nudge URLs nothing is sent outside /api", async () => {
   await vi.advanceTimersByTimeAsync(10_000);
   expect((await pending).status).toBe(200);
   expect(calls.every((c) => c.includes(" /api/"))).toBe(true);
+});
+
+test("the status reads the app's own requests and sends nothing itself", async () => {
+  const calls = fakeApi({ health: [502, 502, 200] });
+  const seen: string[] = [];
+  const unsubscribe = wakeStatus.subscribe(() => seen.push(wakeStatus.get()));
+  expect(wakeStatus.get()).toBe("checking");
+  expect(calls).toEqual([]); // reading it is free
+  const pending = awakeFetch(get("/api/projects"), []);
+  await vi.advanceTimersByTimeAsync(2_000); // past the notice delay, still asleep
+  expect(wakeStatus.get()).toBe("waking");
+  await vi.advanceTimersByTimeAsync(10_000);
+  await pending;
+  expect(wakeStatus.get()).toBe("awake");
+  expect([...new Set(seen)]).toEqual(["waking", "awake"]);
+  unsubscribe();
+});
+
+test("an API that never wakes reads as down, and answers again when it recovers", async () => {
+  fakeApi({ health: [502], api: [502] });
+  const pending = awakeFetch(post("/api/auth/login"), []); // a GET would wait out a second budget
+  await vi.advanceTimersByTimeAsync(156_000);
+  expect((await pending).status).toBe(502);
+  expect(wakeStatus.get()).toBe("down");
+  fakeApi(); // it came up
+  await awakeFetch(get("/api/projects"), []);
+  expect(wakeStatus.get()).toBe("awake");
 });

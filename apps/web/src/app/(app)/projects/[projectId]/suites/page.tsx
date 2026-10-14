@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { type ChangeEvent, type FormEvent, useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { RunButton } from "@/components/run/run-button";
 import { RunSuiteDialog } from "@/components/run/run-suite-dialog";
+import { PageHeader } from "@/components/shell/page-header";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -14,6 +15,7 @@ import { api } from "@/lib/api/client";
 import { apiErrorMessage } from "@/lib/api/errors";
 import type { components } from "@/lib/api/schema";
 import { date } from "@/lib/format";
+import { useStagger } from "@/lib/motion/hooks";
 
 type Suite = components["schemas"]["SuiteOut"];
 type SuiteIssue = components["schemas"]["SuiteIssue"];
@@ -44,7 +46,7 @@ export default function SuitesPage() {
       render: (s) => (
         <Link
           href={`/projects/${projectId}/suites/${s.id}`}
-          className="rounded-xs font-mono text-code text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+          className="tap text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent"
         >
           {s.name}
         </Link>
@@ -58,40 +60,38 @@ export default function SuitesPage() {
       header: "",
       align: "right",
       render: (s) => (
-        <Button data-testid={`run-suite-${s.name}`} variant="translucent" onClick={() => setRunning(s.id)}>
-          Run
-        </Button>
+        <RunButton data-testid={`run-suite-${s.name}`} variant="secondary" note={false} onClick={() => setRunning(s.id)} />
       ),
     },
   ];
 
   return (
     <>
-      <header className="flex flex-wrap items-center justify-between gap-12">
-        <h1 className="font-display text-dash-title-sm tablet:text-dash-title">Suites</h1>
-        <Button
-          data-testid="new-suite"
-          onClick={() => {
-            setDialogKey((k) => k + 1);
-            setCreateOpen(true);
-          }}
-        >
-          New suite
-        </Button>
-      </header>
-      <Card className="mt-20">
+      <PageHeader
+        eyebrow={
+          <>
+            [ Project ] <span aria-hidden>{"///"}</span>{" "}
+            {Array.isArray(suites) ? `${suites.length} ${suites.length === 1 ? "suite" : "suites"}` : "Loading"}
+          </>
+        }
+        title="Suites"
+        actions={
+          <Button
+            data-testid="new-suite"
+            onClick={() => {
+              setDialogKey((k) => k + 1);
+              setCreateOpen(true);
+            }}
+          >
+            New suite
+          </Button>
+        }
+      />
+      <div className="mt-24 border border-hairline-strong">
         {suites === "loading" && <Skeleton className="h-120" />}
         {suites === "error" && <EmptyState title="Couldn't load suites" description="Check your connection and reload the page." />}
-        {Array.isArray(suites) && (
-          <DataTable
-            caption="Suites"
-            columns={columns}
-            rows={suites}
-            rowKey={(s) => s.id}
-            empty={<EmptyState title="No suites yet" description="Create one from a YAML file to start running cases." />}
-          />
-        )}
-      </Card>
+        {Array.isArray(suites) && <SuitesTable columns={columns} suites={suites} />}
+      </div>
       {createOpen && (
         <SuiteDialog
           key={dialogKey}
@@ -107,6 +107,22 @@ export default function SuitesPage() {
         <RunSuiteDialog projectId={projectId} suites={suites} suiteId={running} onClose={() => setRunning(null)} />
       )}
     </>
+  );
+}
+
+function SuitesTable({ columns, suites }: { columns: Column<Suite>[]; suites: Suite[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useStagger(ref, "tbody tr");
+  return (
+    <div ref={ref}>
+      <DataTable
+        caption="Suites"
+        columns={columns}
+        rows={suites}
+        rowKey={(s) => s.id}
+        empty={<EmptyState title="No suites yet" description="Create one from a YAML file to start running cases." />}
+      />
+    </div>
   );
 }
 
@@ -184,7 +200,7 @@ function SuiteDialog({
             type="file"
             accept=".yaml,.yml"
             onChange={(e) => void onFile(e)}
-            className="text-body-sm text-ink-muted"
+            className="type-body-sm text-ink-muted"
           />
         </div>
         <div className="flex flex-col gap-6">
@@ -192,14 +208,14 @@ function SuiteDialog({
           <Textarea
             id="suite-yaml"
             data-testid="suite-yaml"
-            className="min-h-240 font-mono text-code"
+            className="min-h-240"
             value={yaml}
             onChange={(e) => setYaml(e.target.value)}
             spellCheck={false}
           />
         </div>
         {issues.length > 0 && (
-          <ul data-testid="suite-yaml-issues" className="flex flex-col gap-4 rounded-lg bg-surface-2 p-12 text-body-sm text-fail">
+          <ul data-testid="suite-yaml-issues" className="flex flex-col gap-4 border border-fail p-12 type-body-sm text-fail">
             {issues.map((issue, i) => (
               <li key={i}>
                 {issue.line != null ? `Line ${issue.line}: ` : issue.path ? `${issue.path}: ` : ""}

@@ -1,19 +1,20 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { PageHeader } from "@/components/shell/page-header";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
 import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/field";
-import { Badge, StatusDot } from "@/components/ui/status";
+import { StatusDot } from "@/components/ui/status";
 import { useToast } from "@/components/ui/toast";
 import { type AdapterType, configFrom, type Draft, draftFrom, type FieldErrors } from "@/lib/agent-form";
 import { api } from "@/lib/api/client";
 import { apiErrorMessage, apiFieldErrors } from "@/lib/api/errors";
 import type { components } from "@/lib/api/schema";
+import { useStagger } from "@/lib/motion/hooks";
 
 type Agent = components["schemas"]["AgentOut"];
 // configFrom builds a plain JSON object; the API validates its shape (the generated union is stricter).
@@ -25,6 +26,22 @@ type AuthMode = "keep" | "set" | "clear";
 
 const urlOf = (agent: Agent) => String((agent.config as { url?: unknown }).url ?? "");
 const ADAPTERS: Record<AdapterType, string> = { http: "HTTP", mcp: "MCP (HTTP transport)" };
+// What the server can run: only http agents (a run of any other type is refused). An MCP agent
+// can be saved and tested here, and its suites run with the CLI.
+const CLI_ONLY: ReadonlySet<string> = new Set(["mcp"]);
+
+/** The adapter type as a chip. A type the server can't run says "CLI only" beside it. */
+function AdapterChip({ type, count }: { type: string; count?: number }) {
+  return (
+    <span className="inline-flex items-center gap-8">
+      <span className="inline-flex items-center gap-6 border border-hairline-strong bg-canvas px-8 py-3 type-label whitespace-nowrap text-ink">
+        {type === "http" ? "HTTP" : type === "mcp" ? "MCP" : type}
+        {count !== undefined && <span className="tabular-nums text-ink-muted">{count}</span>}
+      </span>
+      {CLI_ONLY.has(type) && <span className="type-micro whitespace-nowrap text-ink-muted">CLI only</span>}
+    </span>
+  );
+}
 
 /** Agents (E3): add and edit HTTP and MCP agents with their full config and an
  * optional write-only auth header, test a draft or a saved agent, delete with a warning. */
@@ -55,15 +72,15 @@ export default function AgentsPage() {
   }
 
   const columns: Column<Agent>[] = [
-    // Adapter under the name and a capped URL, so the table fits its card at 810px (ADR 0028 §8).
+    // Adapter under the name and a capped URL, so the table fits its panel at 810px.
     {
       key: "name",
       header: "Name",
       value: (a) => a.name,
       render: (a) => (
-        <span className="flex flex-col items-start gap-4">
-          <span className="font-mono text-code">{a.name}</span>
-          <Badge status="stable">{a.adapter_type}</Badge>
+        <span className="flex flex-col items-start gap-6">
+          <span>{a.name}</span>
+          <AdapterChip type={a.adapter_type} />
         </span>
       ),
     },
@@ -84,13 +101,13 @@ export default function AgentsPage() {
       align: "right",
       render: (a) => (
         <div className="flex justify-end gap-8">
-          <Button variant="translucent" data-testid={`test-agent-${a.name}`} onClick={() => void testSaved(a)} disabled={testing === a.id}>
+          <Button variant="secondary" data-testid={`test-agent-${a.name}`} onClick={() => void testSaved(a)} disabled={testing === a.id}>
             {testing === a.id ? "Testing…" : "Test"}
           </Button>
-          <Button variant="translucent" onClick={() => setDialog({ mode: "edit", agent: a })}>
+          <Button variant="secondary" onClick={() => setDialog({ mode: "edit", agent: a })}>
             Edit
           </Button>
-          <Button variant="translucent" onClick={() => setDeleting(a)}>
+          <Button variant="danger" onClick={() => setDeleting(a)}>
             Delete
           </Button>
         </div>
@@ -98,27 +115,38 @@ export default function AgentsPage() {
     },
   ];
 
+  const list = Array.isArray(agents) ? agents : [];
+  const types = [...new Set(list.map((a) => a.adapter_type))].sort();
   return (
     <>
-      <header className="flex flex-wrap items-center justify-between gap-12">
-        <h1 className="font-display text-dash-title-sm tablet:text-dash-title">Agents</h1>
-        <Button data-testid="new-agent" onClick={() => setDialog({ mode: "create" })}>
-          New agent
-        </Button>
-      </header>
-      <Card className="mt-20">
+      <PageHeader
+        eyebrow={
+          <>
+            [ Project ] <span aria-hidden>{"///"}</span>{" "}
+            {Array.isArray(agents) ? `${agents.length} ${agents.length === 1 ? "agent" : "agents"}` : "Loading"}
+          </>
+        }
+        title="Agents"
+        actions={
+          <Button data-testid="new-agent" onClick={() => setDialog({ mode: "create" })}>
+            New agent
+          </Button>
+        }
+      />
+      {types.length > 0 && (
+        <ul aria-label="Adapter types in this project" className="mt-16 flex flex-wrap items-center gap-x-16 gap-y-8">
+          {types.map((t) => (
+            <li key={t}>
+              <AdapterChip type={t} count={list.filter((a) => a.adapter_type === t).length} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-16 border border-hairline-strong">
         {agents === "loading" && <Skeleton className="h-120" />}
         {agents === "error" && <EmptyState title="Couldn't load agents" description="Check your connection and reload the page." />}
-        {Array.isArray(agents) && (
-          <DataTable
-            caption="Agents"
-            columns={columns}
-            rows={agents}
-            rowKey={(a) => a.id}
-            empty={<EmptyState title="No agents yet" description="Add one to point a suite at your agent's HTTP or MCP endpoint." />}
-          />
-        )}
-      </Card>
+        {Array.isArray(agents) && <AgentsTable columns={columns} agents={agents} />}
+      </div>
       {dialog && (
         <AgentDialog
           key={dialog.mode === "edit" ? dialog.agent.id : "create"}
@@ -145,6 +173,22 @@ export default function AgentsPage() {
         />
       )}
     </>
+  );
+}
+
+function AgentsTable({ columns, agents }: { columns: Column<Agent>[]; agents: Agent[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useStagger(ref, "tbody tr");
+  return (
+    <div ref={ref}>
+      <DataTable
+        caption="Agents"
+        columns={columns}
+        rows={agents}
+        rowKey={(a) => a.id}
+        empty={<EmptyState title="No agents yet" description="Add one to point a suite at your agent's HTTP or MCP endpoint." />}
+      />
+    </div>
   );
 }
 
@@ -181,7 +225,7 @@ function DeleteAgentDialog({ projectId, agent, onClose, onDeleted }: { projectId
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button data-testid="confirm-delete-agent" onClick={() => void remove()} disabled={busy}>
+          <Button variant="danger" data-testid="confirm-delete-agent" onClick={() => void remove()} disabled={busy}>
             {busy ? "Deleting…" : "Delete agent"}
           </Button>
         </>
@@ -189,7 +233,7 @@ function DeleteAgentDialog({ projectId, agent, onClose, onDeleted }: { projectId
     >
       <p>
         This also deletes {runText}, with their results, traces and any baselines set from them, and the agent&apos;s stored auth
-        header. It can&apos;t be undone. Suites that name <span className="font-mono text-code text-ink">{agent.name}</span> can&apos;t run
+        header. It can&apos;t be undone. Suites that name <span className="type-code text-ink">{agent.name}</span> can&apos;t run
         until you add an agent with that name again.
       </p>
       <FieldError id="delete-agent-error">{error}</FieldError>
@@ -271,7 +315,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant="translucent" data-testid="test-connection" onClick={() => void testConnection()} disabled={test === "testing" || !draft.url}>
+          <Button type="button" variant="secondary" data-testid="test-connection" onClick={() => void testConnection()} disabled={test === "testing" || !draft.url}>
             {test === "testing" ? "Testing…" : "Test connection"}
           </Button>
           <Button type="submit" form="agent-form" disabled={busy}>
@@ -293,7 +337,8 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
             ))}
           </Select>
           {!http && (
-            <p className="text-data-label text-ink-muted">
+            <p className="flex flex-wrap items-center gap-x-8 gap-y-4 type-body-sm text-ink-muted">
+              <AdapterChip type="mcp" />
               MCP agents can be saved and tested here. Server runs use HTTP agents for now; run MCP suites with the CLI.
             </p>
           )}
@@ -309,30 +354,30 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
             aria-describedby={errors.url ? "agent-url-error" : undefined}
           />
         </Field>
-        <label className="flex items-center gap-8 text-body-sm text-ink">
+        <label className="flex items-center gap-8 type-body-sm text-ink">
           <input type="checkbox" checked={draft.allowPrivate} onChange={(e) => setDraft({ allowPrivate: e.target.checked })} />
           Allow private targets (localhost, RFC 1918) — needed for the bundled demo agents
         </label>
 
-        <fieldset className="flex flex-col gap-8 rounded-lg border border-hairline p-12">
-          <legend className="px-4 text-data-label text-ink-muted">Auth header (stored encrypted, never shown again)</legend>
+        <fieldset className="flex flex-col gap-8 border border-hairline p-12">
+          <legend className="px-4 type-label text-ink-muted">Auth header (stored encrypted, never shown again)</legend>
           {stored?.has_secret && auth.mode !== "set" ? (
             <div className="flex flex-wrap items-center justify-between gap-8">
-              <p data-testid="auth-state" className="text-body-sm text-ink">
+              <p data-testid="auth-state" className="type-body-sm text-ink">
                 {auth.mode === "keep" ? "An auth header is stored." : "The stored auth header will be removed on save."}
               </p>
               <div className="flex gap-8">
                 {auth.mode === "keep" ? (
                   <>
-                    <Button variant="translucent" onClick={() => setAuth({ ...auth, mode: "set" })}>
+                    <Button variant="secondary" onClick={() => setAuth({ ...auth, mode: "set" })}>
                       Replace
                     </Button>
-                    <Button variant="translucent" data-testid="remove-auth" onClick={() => setAuth({ ...auth, mode: "clear" })}>
+                    <Button variant="secondary" data-testid="remove-auth" onClick={() => setAuth({ ...auth, mode: "clear" })}>
                       Remove
                     </Button>
                   </>
                 ) : (
-                  <Button variant="translucent" onClick={() => setAuth({ ...auth, mode: "keep" })}>
+                  <Button variant="secondary" onClick={() => setAuth({ ...auth, mode: "keep" })}>
                     Keep it
                   </Button>
                 )}
@@ -349,7 +394,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
                 <Input id="auth-value" data-testid="auth-value" type="password" autoComplete="off" value={auth.value} onChange={(e) => setAuth({ ...auth, value: e.target.value })} />
               </div>
               {stored?.has_secret && (
-                <Button variant="translucent" className="justify-self-start" onClick={() => setAuth({ ...auth, mode: "keep", value: "" })}>
+                <Button variant="secondary" className="justify-self-start" onClick={() => setAuth({ ...auth, mode: "keep", value: "" })}>
                   Keep the stored one
                 </Button>
               )}
@@ -359,7 +404,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
         </fieldset>
 
         <details>
-          <summary className="cursor-pointer text-data-label text-ink-muted">Request and limits</summary>
+          <summary className="flex min-h-40 cursor-pointer items-center type-label text-ink-muted pointer-coarse:min-h-44">Request and limits</summary>
           <div className="mt-10 flex flex-col gap-10">
             {http && (
               <>
@@ -371,12 +416,12 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
                   </Select>
                 </Field>
                 <Field id="agent-template" label="Request body template (JSON; {{input}} and {{documents}} are filled in)" error={errors.template}>
-                  <Textarea id="agent-template" data-testid="agent-template" className="min-h-120 font-mono text-code" spellCheck={false} value={draft.template} onChange={(e) => setDraft({ template: e.target.value })} aria-invalid={!!errors.template} aria-describedby={errors.template ? "agent-template-error" : undefined} />
+                  <Textarea id="agent-template" data-testid="agent-template" className="min-h-120 type-code" spellCheck={false} value={draft.template} onChange={(e) => setDraft({ template: e.target.value })} aria-invalid={!!errors.template} aria-describedby={errors.template ? "agent-template-error" : undefined} />
                 </Field>
               </>
             )}
             <Field id="agent-headers" label="Plain headers (one Name: value per line; put secrets in the auth header)" error={errors.headers}>
-              <Textarea id="agent-headers" data-testid="agent-headers" className="min-h-72 font-mono text-code" spellCheck={false} value={draft.headers} onChange={(e) => setDraft({ headers: e.target.value })} aria-invalid={!!errors.headers} aria-describedby={errors.headers ? "agent-headers-error" : undefined} />
+              <Textarea id="agent-headers" data-testid="agent-headers" className="min-h-72 type-code" spellCheck={false} value={draft.headers} onChange={(e) => setDraft({ headers: e.target.value })} aria-invalid={!!errors.headers} aria-describedby={errors.headers ? "agent-headers-error" : undefined} />
             </Field>
             <div className="grid grid-cols-2 gap-10">
               <Field id="agent-timeout" label="Timeout (ms)" error={errors.timeoutMs}>
@@ -387,7 +432,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
               </Field>
             </div>
             {http && (
-              <label className="flex items-center gap-8 text-body-sm text-ink">
+              <label className="flex items-center gap-8 type-body-sm text-ink">
                 <input type="checkbox" checked={draft.followRedirects} onChange={(e) => setDraft({ followRedirects: e.target.checked })} />
                 Follow redirects (at most 5, each re-checked)
               </label>
@@ -397,7 +442,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
 
         {http && (
           <details>
-            <summary className="cursor-pointer text-data-label text-ink-muted">Response mapping (JSONPath)</summary>
+            <summary className="flex min-h-40 cursor-pointer items-center type-label text-ink-muted pointer-coarse:min-h-44">Response mapping (JSONPath)</summary>
             <div className="mt-10 grid grid-cols-1 gap-10 tablet:grid-cols-2">
               {(
                 [
@@ -411,7 +456,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
                 ] as const
               ).map(([key, label]) => (
                 <Field key={key} id={`agent-${key}`} label={label}>
-                  <Input id={`agent-${key}`} className="font-mono text-code" value={draft[key]} onChange={(e) => setDraft({ [key]: e.target.value })} />
+                  <Input id={`agent-${key}`} className="type-code" value={draft[key]} onChange={(e) => setDraft({ [key]: e.target.value })} />
                 </Field>
               ))}
             </div>
@@ -419,12 +464,12 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
         )}
 
         {test && test !== "testing" && (
-          <p data-testid="test-connection-result" className="flex items-start gap-8 text-body-sm">
+          <p data-testid="test-connection-result" className="flex items-start gap-8 type-body-sm">
             <StatusDot status={test.success ? "pass" : "fail"} decorative className="mt-4" />
-            <span className={test.success ? "text-pass" : "text-fail"}>{test.message}</span>
+            <span className={test.success ? "text-ink" : "text-fail"}>{test.message}</span>
           </p>
         )}
-        {untestedSecret && <p className="text-data-label text-ink-muted">Edited settings are tested without the stored auth header. Save first to test with it.</p>}
+        {untestedSecret && <p className="type-label text-ink-muted">Edited settings are tested without the stored auth header. Save first to test with it.</p>}
         <FieldError id="agent-form-error">{errors.form}</FieldError>
       </form>
     </Dialog>

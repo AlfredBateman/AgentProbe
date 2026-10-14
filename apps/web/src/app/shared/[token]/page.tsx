@@ -2,21 +2,29 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AttemptBadge, JudgmentBadge, LabelBadge, RunStatusBadge } from "@/components/run/labels";
+import { AttemptList } from "@/components/run/attempts";
+import { LabelBadge, RunStatusBadge } from "@/components/run/labels";
 import { BareHeader } from "@/components/shell/bare-header";
+import { PageHeader } from "@/components/shell/page-header";
+import { AsciiFrame } from "@/components/ui/ascii";
 import { buttonClasses } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { PlainText } from "@/components/ui/code";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
+import { Panel } from "@/components/ui/panel";
+import { Stat, StatGrid } from "@/components/ui/stat";
+import { AttemptStrip, Bars, ChartFigure, ChartTable, RateWhiskers } from "@/components/ui/telemetry";
 import type { components } from "@/lib/api/schema";
 import { awakeFetch } from "@/lib/api/wake";
-import { date, pct, score } from "@/lib/format";
+import { count, date, pct } from "@/lib/format";
 
 type Shared = components["schemas"]["SharedRunOut"];
 type SharedCase = Shared["cases"][number];
 
-/** A run's public, read-only view: no account, no agent config, no raw trace (ADR 0018). */
+/**
+ * A run's public, read-only snapshot: no account, no agent config, no raw trace (ADR 0018).
+ * Everything on it came from an agent, a judge or a suite author, so it is all text children:
+ * never HTML, never a link built from the data.
+ */
 export default function SharedRunPage() {
   const { token } = useParams<{ token: string }>();
   const [run, setRun] = useState<Shared | "loading" | "missing">("loading");
@@ -32,88 +40,176 @@ export default function SharedRunPage() {
   return (
     <div className="flex min-h-dvh flex-col">
       <BareHeader
+        chipFromTablet
         right={
           <a href="/register" className={buttonClasses("secondary")}>
             Try AgentProbe
           </a>
         }
       />
-      <main className="mx-auto w-full max-w-1440 flex-1 px-16 py-30 tablet:px-30">
+      {typeof run === "object" && <SnapshotStrip run={run} />}
+      <main className="mx-auto w-full max-w-1440 flex-1 px-16 py-32 tablet:px-32">
         {run === "loading" && <Skeleton className="h-320" />}
-        {run === "missing" && (
-          <EmptyState title="This link doesn't work" description="It may have expired, or its owner revoked it." />
-        )}
+        {run === "missing" && <EmptyState title="This link doesn't work" description="It may have expired, or its owner revoked it." />}
         {typeof run === "object" && <SharedRun run={run} />}
       </main>
+      <footer className="border-t border-hairline-strong px-16 py-16 tablet:px-32">
+        <p className="mx-auto max-w-1440 type-micro text-ink-muted">
+          AgentProbe<span aria-hidden>®</span> <span aria-hidden>{"///"}</span> A frozen copy of one run. Nothing on this page can be changed.
+        </p>
+      </footer>
+    </div>
+  );
+}
+
+/** What this page is, before anything else on it: a copy, read only, with its date and its limits. */
+function SnapshotStrip({ run }: { run: Shared }) {
+  return (
+    <div className="border-b border-hairline-strong bg-surface-1">
+      <div className="mx-auto flex max-w-1440 flex-wrap items-center gap-x-16 gap-y-4 px-16 py-8 tablet:px-32">
+        <AsciiFrame className="text-accent">Read-only snapshot</AsciiFrame>
+        <span aria-hidden className="type-micro text-ink-muted">
+          {"///"}
+        </span>
+        <span className="type-micro text-ink-muted">Captured {date(run.finished_at ?? run.created_at)}</span>
+        <span className="type-micro text-ink-muted tablet:ml-auto">No account needed. Agent config, credentials and raw traces are not included.</span>
+      </div>
     </div>
   );
 }
 
 function SharedRun({ run }: { run: Shared }) {
+  const attempts = (c: SharedCase) => run.results.filter((r) => r.case === c.case);
+  const errorsOf = (c: SharedCase) => attempts(c).filter((r) => r.status === "error").length;
+  const outcome = (status: string) => run.results.filter((r) => r.status === status).length;
+  const total = run.cases.reduce((n, c) => n + c.attempts, 0);
+  const label = (l: string) => run.cases.filter((c) => c.label === l).length;
+  const pass = label("stable-pass");
+  const flaky = label("flaky");
+  const fail = label("stable-fail");
+  const share = (n: number) => pct(run.cases.length ? n / run.cases.length : null, 0);
+  const failed = outcome("failed");
+  const hasInterval = run.ci_lower != null && run.ci_upper != null;
+  const interval = hasInterval ? `${pct(run.ci_lower)}–${pct(run.ci_upper)}` : "No interval";
+
   const columns: Column<SharedCase>[] = [
-    { key: "case", header: "Case", value: (c) => c.case, render: (c) => <span className="font-mono text-code">{c.case}</span> },
+    { key: "case", header: "Case", value: (c) => c.case, render: (c) => <span className="type-code">{c.case}</span> },
     { key: "label", header: "Stability", value: (c) => c.label, render: (c) => <LabelBadge label={c.label} /> },
-    { key: "passes", header: "Passes", value: (c) => c.pass_rate, align: "right", render: (c) => `${c.passes}/${c.attempts}` },
+    {
+      key: "passes",
+      header: "Passes",
+      value: (c) => c.pass_rate,
+      align: "right",
+      render: (c) => (
+        <span className="inline-flex items-center gap-8">
+          <span className="hidden max-w-132 desktop:inline-flex">
+            <AttemptStrip passes={c.passes} attempts={c.attempts} errors={errorsOf(c)} tone="candidate" />
+          </span>
+          {c.passes}/{c.attempts}
+        </span>
+      ),
+    },
   ];
 
   return (
     <>
-      <p className="text-data-label text-ink-muted">Shared run · read-only</p>
-      <h1 className="mt-4 font-display text-dash-title-sm break-words tablet:text-dash-title">{run.suite}</h1>
-      <div className="mt-8 flex flex-wrap items-center gap-x-20 gap-y-8 text-data">
-        <RunStatusBadge status={run.status} />
-        <span className="text-ink-muted">
-          Agent <span className="text-ink">{run.agent}</span>
-        </span>
-        <span className="text-ink-muted">
-          Finished <span className="text-ink">{date(run.finished_at)}</span>
-        </span>
+      <PageHeader
+        eyebrow={
+          <>
+            Shared run <span aria-hidden>{"///"}</span> {run.runs_per_case} attempts per case
+          </>
+        }
+        title={run.suite}
+        verbatim
+      >
+        <div className="flex flex-wrap items-center gap-x-20 gap-y-8 type-data">
+          <RunStatusBadge status={run.status} />
+          <span className="text-ink-muted">
+            Agent <span className="type-code text-ink">{run.agent}</span>
+          </span>
+          <span className="text-ink-muted">
+            Finished <span className="text-ink">{date(run.finished_at)}</span>
+          </span>
+        </div>
+      </PageHeader>
+
+      <StatGrid className="mt-24">
+        <Stat label="Pass rate" value={pct(run.pass_rate)} note={hasInterval ? `95% CI ${interval}` : "No interval"} />
+        <Stat label="Cases" value={count(run.cases.length)} note={`${pass} stable · ${flaky} flaky · ${fail} failing`} />
+        <Stat label="Attempts" value={count(total)} note={`${count(outcome("passed"))} passed`} />
+        <Stat
+          label="Failed attempts"
+          value={count(failed)}
+          tone={failed > 0 ? "fail" : undefined}
+          note={outcome("error") > 0 ? `and ${outcome("error")} errored` : "None errored"}
+        />
+      </StatGrid>
+
+      <div className="mt-24 grid gap-16 desktop:grid-cols-2">
+        <ChartFigure
+          title="Pass rate, 95% interval"
+          note="Scale 0 to 100%"
+          table={<ChartTable caption="Pass rate of this run and its 95% interval" head={["Run", "Pass rate", "95% interval"]} rows={[["This run", pct(run.pass_rate), interval]]} />}
+        >
+          <RateWhiskers rows={[{ label: "This run", tone: "candidate", value: run.pass_rate, lower: run.ci_lower, upper: run.ci_upper }]} />
+        </ChartFigure>
+        <ChartFigure
+          title="Cases by stability"
+          note={`${run.cases.length} ${run.cases.length === 1 ? "case" : "cases"}`}
+          table={
+            <ChartTable
+              caption="Number of cases in each stability class"
+              head={["Stability", "Cases", "Share"]}
+              rows={[
+                ["Stable pass", pass, share(pass)],
+                ["Flaky", flaky, share(flaky)],
+                ["Stable fail", fail, share(fail)],
+              ]}
+            />
+          }
+        >
+          <Bars
+            max={Math.max(1, run.cases.length)}
+            rows={[
+              { key: "pass", label: <span className="uppercase">Stable pass</span>, value: pass, tone: "candidate", note: share(pass) },
+              { key: "flaky", label: <span className="uppercase">Flaky</span>, value: flaky, tone: "flaky", note: share(flaky) },
+              { key: "fail", label: <span className="uppercase">Stable fail</span>, value: fail, tone: "fail", note: share(fail) },
+            ]}
+          />
+        </ChartFigure>
       </div>
 
-      <section aria-label="Pass rate" className="mt-20 rounded-xl bg-surface-1 p-20">
-        <h2 className="mb-8 text-data-label text-ink-muted">Pass rate</h2>
-        <p className="font-display text-dash-title">{pct(run.pass_rate)}</p>
-        <p className="mt-4 text-data text-ink-muted tabular-nums">
-          {run.ci_lower != null && run.ci_upper != null ? `95% CI ${pct(run.ci_lower)}–${pct(run.ci_upper)} · ` : ""}
-          {run.runs_per_case} attempts per case
-        </p>
-      </section>
-
-      <Card title="Cases" className="mt-20">
-        <DataTable
-          caption="Cases"
-          columns={columns}
-          rows={run.cases}
-          rowKey={(c) => c.case}
-          expandLabel={(c) => `attempts of ${c.case}`}
-          expand={(c) => (
-            <ol className="flex flex-col gap-12 whitespace-normal">
-              {run.results
-                .filter((r) => r.case === c.case)
-                .map((r) => (
-                  <li key={r.attempt} className="rounded-lg bg-canvas p-12">
-                    <div className="flex flex-wrap items-center gap-x-12 gap-y-6 text-data">
-                      <span className="font-medium text-ink">Attempt {r.attempt + 1}</span>
-                      <AttemptBadge status={r.status} />
-                      <span className="text-ink-muted">Score {score(r.score)}</span>
-                    </div>
-                    {r.output && <PlainText text={r.output} limit={600} className="mt-8" />}
-                    <ul className="mt-8 flex flex-col gap-6">
-                      {r.judgments.map((j, i) => (
-                        <li key={i} className="flex flex-wrap items-baseline gap-x-8 gap-y-4 text-body-sm">
-                          <JudgmentBadge status={j.status} />
-                          <span className="font-mono text-code text-ink">{j.judge}</span>
-                          <span className="min-w-0 break-words text-ink-muted">{j.reason}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-            </ol>
-          )}
-          empty={<EmptyState title="No cases were summarized" />}
-        />
-      </Card>
+      <Panel
+        title="Cases"
+        titleStyle="label"
+        className="mt-24"
+        actions={<span className="type-micro text-ink-muted tabular-nums">{run.cases.length}</span>}
+      >
+        <div className="-mx-16 -mt-16">
+          <DataTable
+            caption="Cases"
+            columns={columns}
+            rows={run.cases}
+            rowKey={(c) => c.case}
+            expandLabel={(c) => `attempts of ${c.case}`}
+            expand={(c) => (
+              <AttemptList
+                label={`Attempts of ${c.case}`}
+                items={attempts(c).map((r) => ({
+                  key: `${r.case}:${r.attempt}`,
+                  attempt: r.attempt,
+                  status: r.status,
+                  score: r.score,
+                  errorKind: r.error_kind,
+                  output: r.output,
+                  judgments: r.judgments,
+                }))}
+              />
+            )}
+            empty={<EmptyState title="No cases were summarized" />}
+          />
+        </div>
+      </Panel>
     </>
   );
 }

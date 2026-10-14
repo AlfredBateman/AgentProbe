@@ -68,18 +68,25 @@ test("the overview shows trends, the baseline and latest runs; the Runs page lis
   const second = await post(page.request, baseURL!, `/suites/${suites[0].id}/runs`, { branch: "feature/x" });
   await waitForRun(page.request, second.id);
 
-  await test.step("the overview: tiles, three trend charts, the baseline and the latest runs", async () => {
+  await test.step("the overview: tiles, the trend charts, the baseline and the latest runs", async () => {
     await page.goto(`/projects/${project.id}`);
     await expect(page.getByTestId("overview-suite")).toHaveValue(suites[0].id);
     await expect(page.getByText("2 completed runs")).toBeVisible();
     await expect(page.getByTestId("overview-baseline")).toContainText("main baseline");
-    for (const title of ["Pass rate", "Cost per run", "Mean latency"]) {
+    for (const title of ["Pass rate", "Mean latency"]) {
       await expect(page.getByRole("figure", { name: new RegExp(`^${title}`) })).toBeVisible();
     }
-    // Two plotted charts (pass rate, latency); the mock run has no cost to plot, and says so.
+    // Two plotted charts (pass rate, latency); the mock run has no cost to plot, so cost is one
+    // line saying so, not an empty chart frame.
     await expect(page.locator(".recharts-surface")).toHaveCount(2);
-    await expect(page.getByText(/^Baseline \(main\)/)).toBeVisible();
+    await expect(page.getByRole("figure", { name: /^Cost per run/ })).toHaveCount(0);
     await expect(page.getByText(/^No cost recorded/)).toBeVisible();
+    await expect(page.getByText(/^Baseline \(main\)/)).toBeVisible();
+    // Two runs are too few for a line: each point has its square marker, and there is no CI band.
+    const passRate = page.getByRole("figure", { name: /^Pass rate/ });
+    await expect(passRate.locator(".recharts-line-dots rect")).toHaveCount(2);
+    await expect(passRate.locator(".recharts-area")).toHaveCount(0);
+    await expect(passRate.getByText("95% CI")).toHaveCount(0);
     const latest = page.getByRole("table", { name: "Latest runs, all suites" });
     await expect(latest.locator("tbody tr")).toHaveCount(2);
     await expect(latest.getByText("Baseline · main")).toHaveCount(1);

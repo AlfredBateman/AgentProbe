@@ -10,6 +10,7 @@ run completes (`queue.cluster_findings`, ADR 0017) and from `/ci/report`'s own t
 """
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -52,9 +53,32 @@ async def list_findings(run_id: uuid.UUID, principal: CurrentPrincipal, db: Db) 
     return [_out(f) for f in ordered]
 
 
+def _failed_judges(detail: dict[str, Any], expectations: dict[str, Any]) -> tuple[str, ...]:
+    """The attempt's failing judges as `judge` or `judge: tool`. Attempt verdicts follow the
+    case's judges in suite order, consistency judges left out (they judge the case, not an
+    attempt), so the two line up by position.
+    """
+    specs = [s for s in expectations.get("judges", []) if s.get("judge") != "consistency"]
+    names: list[str] = []
+    for i, verdict in enumerate(detail.get("judgments", [])):
+        if verdict.get("status") != "fail":
+            continue
+        name = str(verdict.get("judge", ""))
+        spec = specs[i] if i < len(specs) else {}
+        tool = spec.get("tool") if spec.get("judge") == name else None
+        names.append(f"{name}: {tool}" if tool else name)
+    return tuple(names)
+
+
 async def _read_failed_outputs(db: AsyncSession, run_id: uuid.UUID) -> list[FailingOutput]:
     rows = await db.execute(
-        select(RunResult.id, RunResult.output)
+        select(
+            RunResult.id,
+            RunResult.output,
+            RunResult.detail,
+            TestCase.case_key,
+            TestCase.expectations,
+        )
         .join(TestCase, TestCase.id == RunResult.case_id)
         .where(
             RunResult.run_id == run_id,
@@ -63,7 +87,11 @@ async def _read_failed_outputs(db: AsyncSession, run_id: uuid.UUID) -> list[Fail
         )
         .order_by(TestCase.case_key, RunResult.attempt)
     )
-    return [(str(result_id), output) for result_id, output in rows.tuples() if output is not None]
+    return [
+        FailingOutput(str(result_id), output, case_key, _failed_judges(detail, expectations))
+        for result_id, output, detail, case_key, expectations in rows.tuples()
+        if output is not None
+    ]
 
 
 async def cluster_run(db: AsyncSession, run_id: uuid.UUID, llm: LLMClient) -> list[Finding]:

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { type Column, DataTable } from "./data-table";
 
 type Row = { id: string; name: string; rate: number | null };
@@ -83,4 +83,24 @@ test("an expandable row toggles its detail, which survives a re-sort", () => {
 
   fireEvent.click(screen.getByRole("button", { name: "Hide attempts of case-2" }));
   expect(screen.queryByText(/detail of/)).toBeNull();
+});
+
+test("a controlled sort reports the next sort and shows the rows in the order given", () => {
+  const onSortChange = vi.fn();
+  const { rerender } = render(
+    <DataTable caption="Cases" columns={columns} rows={rows} rowKey={(r) => r.id} sort={{ key: "rate", direction: "descending" }} onSortChange={onSortChange} />,
+  );
+  // Not re-sorted here: the server already did.
+  expect(order()).toEqual(["case-10", "case-2", "case-1", "case-3"]);
+  expect(screen.getByRole("columnheader", { name: "Pass rate" }).getAttribute("aria-sort")).toBe("descending");
+  fireEvent.click(screen.getByRole("button", { name: "Pass rate" }));
+  expect(onSortChange).toHaveBeenLastCalledWith({ key: "rate", direction: "ascending" });
+  fireEvent.click(screen.getByRole("button", { name: "Case" }));
+  expect(onSortChange).toHaveBeenLastCalledWith({ key: "name", direction: "ascending" });
+  // Nothing changes until the parent passes the new sort.
+  expect(screen.getByRole("columnheader", { name: "Case" }).getAttribute("aria-sort")).toBe("none");
+  rerender(
+    <DataTable caption="Cases" columns={columns} rows={rows} rowKey={(r) => r.id} sort={{ key: "name", direction: "ascending" }} onSortChange={onSortChange} />,
+  );
+  expect(screen.getByRole("columnheader", { name: "Case" }).getAttribute("aria-sort")).toBe("ascending");
 });

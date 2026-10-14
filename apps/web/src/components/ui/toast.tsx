@@ -30,17 +30,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {/* Always mounted, so screen readers announce what gets added. */}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed right-16 bottom-16 left-16 z-50 flex flex-col items-end gap-8 tablet:left-auto"
+        className="pointer-events-none fixed right-16 bottom-16 left-16 z-(--z-toast) flex flex-col items-end gap-8 tablet:left-auto"
       >
         {toasts.map((t) => (
           <div
             key={t.id}
             role="status"
-            className="pointer-events-auto flex w-full max-w-360 items-center gap-10 rounded-lg bg-surface-2 py-6 pr-6 pl-15 text-body-sm shadow-float"
+            className="pointer-events-auto flex w-full max-w-360 items-center gap-12 border border-hairline-strong bg-surface-2 p-8 pl-16 type-body-sm"
           >
             {t.tone && <StatusDot status={t.tone} decorative />}
             <span className="flex-1">{t.title}</span>
-            <Button variant="icon" aria-label="Dismiss" className="bg-transparent" onClick={() => dismiss(t.id)}>
+            <Button variant="icon" aria-label="Dismiss" onClick={() => dismiss(t.id)}>
               <CloseIcon />
             </Button>
           </div>
