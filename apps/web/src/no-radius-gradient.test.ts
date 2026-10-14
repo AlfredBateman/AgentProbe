@@ -31,8 +31,6 @@ test("the one border-radius declaration is the global reset to 0", () => {
 });
 
 test("no gradient anywhere in the source (hard-stop patterns are SVG tiles and masks)", () => {
-  // The legacy component name is the only mention: `GradientCard` is a flat panel (ADR 0042 §5).
-  const legacy = /GradientCard|gradient-card/g;
-  expect(files.filter(({ text }) => /gradient/i.test(text.replace(legacy, ""))).map(({ file }) => file)).toEqual([]);
+  expect(offenders(/gradient/i)).toEqual([]);
   expect(offenders(/(?<![\w-])bg-(?:linear|radial|conic)-/)).toEqual([]);
 });

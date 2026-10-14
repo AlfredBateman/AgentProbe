@@ -3,6 +3,7 @@
 import { Fragment, type ReactNode, useId, useState } from "react";
 import { cx } from "@/lib/cx";
 import { MinusIcon, PlusIcon, SortIcon } from "./icons";
+import { ScrollRegion } from "./scroll-region";
 
 export type Column<T> = {
   key: string;
@@ -94,7 +95,7 @@ export function DataTable<T>({
   const th = "sticky top-0 z-(--z-raised) border-b border-hairline-strong bg-surface-1 px-12 py-8 type-micro whitespace-nowrap text-ink-muted";
   return (
     // A size container, so an expanded row's detail can be exactly as wide as what's visible.
-    <div className={cx("@container min-w-0 overflow-auto", className)}>
+    <ScrollRegion label={caption} className={cx("@container overflow-auto", className)}>
       <table className="w-full border-collapse type-code tabular-nums">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -119,7 +120,7 @@ export function DataTable<T>({
                       onClick={() => toggle(c.key)}
                       // The ring sits inside the header: its scroll container would clip an outer one.
                       className={cx(
-                        "inline-flex cursor-pointer items-center gap-4 type-micro -outline-offset-2 hover:text-ink",
+                        "tap inline-flex cursor-pointer items-center gap-4 type-micro -outline-offset-2 hover:text-ink",
                         direction && "text-ink",
                         c.align === "right" && "flex-row-reverse",
                       )}
@@ -184,6 +185,6 @@ export function DataTable<T>({
         </tbody>
       </table>
       {rows.length === 0 && empty}
-    </div>
+    </ScrollRegion>
   );
 }

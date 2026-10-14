@@ -84,8 +84,9 @@ td.n, th.n { text-align:right; white-space:nowrap; font-family:var(--mono); }
 .bar { display:block; height:12px; min-width:2px; }
 .bar.p { background:var(--lime); }
 .bar.f { background:var(--red); }
-/* Flaky: hard-stop diagonal lines, as in the app. Not a colour fade. */
-.bar.k { background:repeating-linear-gradient(135deg,var(--ink) 0 2px,transparent 2px 5px); }
+/* Flaky: a dashed ink outline, the flaky chip's edge. The app hatches it with an SVG mask,
+   which this file's CSP (no images) would block; a colour ramp would break DESIGN.md. */
+.bar.k { border:1px dashed var(--ink); }
 .pass { color:var(--ink); }
 .fail { color:var(--red); }
 .error { color:var(--muted); font-style:italic; }

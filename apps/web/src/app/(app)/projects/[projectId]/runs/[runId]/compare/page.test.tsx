@@ -129,7 +129,8 @@ const tile = (label: string) => [...document.querySelectorAll("dt")].find((dt) =
 test("the verdict is one bordered sentence of the report's own values; the case id stays text", async () => {
   const { container } = renderPage();
 
-  const verdict = await screen.findByRole("heading", { name: "Verdict" });
+  // A text query, not a role query: a role query walks the whole tree on every poll, too slow under load.
+  const verdict = await screen.findByText("Verdict", { selector: "h2" });
   const panel = verdict.closest("section")!;
   const sentence = within(panel).getByText("Regression").closest("p")!;
   expect(sentence.classList.contains("border-fail")).toBe(true);
@@ -144,7 +145,7 @@ test("the verdict is one bordered sentence of the report's own values; the case 
 
 test("the figures: tiles from the shared cases, whiskers and trend from the runs, each with a table", async () => {
   renderPage();
-  await screen.findByRole("heading", { name: "Verdict" });
+  await screen.findByText("Verdict", { selector: "h2" });
 
   const passRate = tile("Pass rate");
   expect(passRate.textContent).toContain("50.0%");
@@ -165,4 +166,11 @@ test("the figures: tiles from the shared cases, whiskers and trend from the runs
   expect(row.querySelectorAll(".bg-current.text-ink")).toHaveLength(5); // baseline passes
   expect(row.querySelectorAll("[aria-hidden] > .mark-fail")).toHaveLength(5); // candidate failures (the badge has its own mark)
   expect(row.textContent).toContain("0.0125"); // the corrected threshold it had to meet
+
+  // Lime means "candidate" here, not "pass": a one-line key says so.
+  expect(screen.getByText("Key, on this page:").parentElement!.textContent).toContain("Lime is the candidate run");
+  // The one transition with cases takes the whole row; the empty ones aren't rendered.
+  const newly = screen.getByText("Newly failing (1)").closest("section")!;
+  expect(newly.className).toContain("tablet:col-span-2");
+  expect(screen.queryByText(/^Newly passing/)).toBeNull();
 });

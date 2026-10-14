@@ -31,7 +31,7 @@ export const SERVER_SORT = {
 
 const started = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 // Cost and latency are also on the trend charts and the run page; below desktop width the table
-// drops them so it fits its card at 810px (ADR 0028 §8 allows a table to scroll only below that).
+// drops them so it fits its panel at 810px (DESIGN.md lets a table scroll only below that).
 const WIDE_ONLY = "hidden desktop:table-cell";
 
 /** A project's runs, newest first: the overview's latest runs and the Runs page (E2). */
@@ -45,7 +45,7 @@ export function RunsTable({ runs, projectId, baselines, caption, empty, sort, on
         <span className="flex flex-col">
           <Link
             href={`/projects/${projectId}/runs/${r.id}`}
-            className="self-start text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent"
+            className="tap self-start text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent"
           >
             {r.suite_name}
           </Link>

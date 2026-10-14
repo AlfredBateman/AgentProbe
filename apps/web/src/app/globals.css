@@ -5,13 +5,6 @@
 @theme {
   --font-sans: var(--font-archivo);
   --font-mono: var(--font-jetbrains-mono);
-  /* Legacy name, for pages not rebuilt yet (ADR 0042). */
-  --font-display: var(--font-archivo);
-
-  /* Legacy names for pages not rebuilt yet. Both are hard edges, never a blur: a ring 2px off
-     the element, and a 1px outline for a floating surface. */
-  --shadow-focus: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-accent);
-  --shadow-float: 0 0 0 1px var(--color-hairline-strong);
 }
 
 @layer base {
@@ -35,6 +28,13 @@
 
   a {
     color: var(--color-accent);
+  }
+
+  /* A link inside a sentence is underlined as well as lime, so colour is not the only thing
+     telling it from the words around it (WCAG 1.4.1). Styled links set their own classes. */
+  :where(p, li, dd) a:not([class]) {
+    text-decoration-line: underline;
+    text-underline-offset: 4px;
   }
 
   /* The focus ring: 2px lime, 2px off the element, on everything interactive. The offset is what
@@ -97,6 +97,17 @@
 
   :where(& > *) {
     background: var(--color-canvas);
+  }
+}
+
+/* A touch target: on a coarse pointer, at least 44px each way (DESIGN.md Accessibility). For a
+   text link or a small control that is otherwise sized by its text. */
+@utility tap {
+  @media (pointer: coarse) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 
@@ -245,6 +256,8 @@
 }
 
 /* The one global grain layer. Mounted once, in the root layout, aria-hidden. */
+/* Behind the content (--z-noise is -1): it paints over the page canvas and under every panel and
+   every glyph, so it can never lower a text pair's contrast. */
 @utility noise {
   position: fixed;
   inset: 0;
@@ -268,7 +281,8 @@
   }
 }
 
-/* Optional page-wide scanlines. Off unless the root element carries `data-scanlines`. */
+/* Optional page-wide scanlines. Off unless the root element carries `data-scanlines`. Behind
+   the content, like the noise: a line over text would darken it below AA. */
 html[data-scanlines]::after {
   content: "";
   position: fixed;

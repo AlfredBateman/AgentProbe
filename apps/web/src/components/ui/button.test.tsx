@@ -17,7 +17,6 @@ test.each([
   ["secondary", "border-hairline-strong", "bg-canvas"],
   ["danger", "border-fail", "text-fail"],
   ["ghost", "border-transparent", "bg-transparent"],
-  ["translucent", "border-hairline-strong", "bg-canvas"], // the legacy name is the secondary outline
   ["icon", "border-hairline-strong", "size-40"],
 ] as const)("%s variant", (variant, ...expected) => {
   const classes = buttonClasses(variant);
@@ -27,7 +26,7 @@ test.each([
 });
 
 test("red is only ever the danger variant", () => {
-  for (const variant of ["primary", "secondary", "ghost", "translucent", "icon"] as const) {
+  for (const variant of ["primary", "secondary", "ghost", "icon"] as const) {
     expect(buttonClasses(variant)).not.toContain("fail");
   }
 });

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AttemptList } from "@/components/run/attempts";
+import { type AttemptItem, AttemptList } from "@/components/run/attempts";
 import { PageHeader } from "@/components/shell/page-header";
 import { PlainText } from "@/components/ui/code";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -151,31 +151,18 @@ function FindingPanel({
           </div>
         )}
         <details className="group">
-          <summary className="cursor-pointer list-none type-label text-accent hover:underline [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex min-h-44 cursor-pointer list-none items-center type-label text-accent hover:underline [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">Show {members.length} members</span>
             <span className="hidden group-open:inline">Hide members</span>
           </summary>
           <div className="mt-12 flex flex-col gap-12">
-            <AttemptList
-              label={`Members of ${finding.cluster_label}`}
-              items={known.map((r) => ({
-                key: r.id,
-                title: r.case,
-                attempt: r.attempt,
-                status: r.status,
-                score: r.score,
-                output: r.output,
-                errorKind: r.error_kind,
-                judgments: r.judgments,
-                traceHref: traceHref(r.id),
-              }))}
-            />
+            <MemberGroups label={`Members of ${finding.cluster_label}`} members={known} traceHref={traceHref} />
             {unknown.length > 0 && (
               <ul aria-label="Members without a recorded result" className="flex flex-col gap-4">
                 {unknown.map((id) => (
                   <li key={id} className="type-micro text-ink-muted">
                     <span className="type-code text-ink">{id.slice(0, 8)}</span>{" "}
-                    <Link href={traceHref(id)} className="text-accent hover:underline">
+                    <Link href={traceHref(id)} className="inline-flex min-h-44 items-center text-accent hover:underline">
                       View trace
                     </Link>
                   </li>
@@ -186,5 +173,65 @@ function FindingPanel({
         </details>
       </div>
     </article>
+  );
+}
+
+const item = (r: Result, traceHref: (id: string) => string): AttemptItem => ({
+  key: r.id,
+  title: r.case,
+  attempt: r.attempt,
+  status: r.status,
+  score: r.score,
+  output: r.output,
+  errorKind: r.error_kind,
+  judgments: r.judgments,
+  traceHref: traceHref(r.id),
+});
+
+/** A finding's members, with attempts that gave the very same output folded into one row
+ * ("10 attempts, identical output") that opens to the attempts themselves. Output is an
+ * agent's words: text only. */
+function MemberGroups({ label, members, traceHref }: { label: string; members: Result[]; traceHref: (id: string) => string }) {
+  const groups = new Map<string, Result[]>();
+  for (const r of members) {
+    const key = r.output ?? "";
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+  return (
+    <ul aria-label={label} className="flex flex-col gap-12">
+      {[...groups.values()].map((group) =>
+        group.length === 1 ? (
+          <li key={group[0].id}>
+            <AttemptList label={`Attempt ${group[0].attempt + 1} of ${group[0].case}`} items={[item(group[0], traceHref)]} />
+          </li>
+        ) : (
+          <li key={group[0].id} className="border border-l-2 border-hairline border-l-fail bg-canvas">
+            <div className="flex flex-wrap items-baseline gap-x-12 gap-y-4 border-b border-hairline px-12 py-8">
+              <span className="type-label text-ink">{group.length} attempts, identical output</span>
+              <span className="type-code break-words text-ink-muted">{[...new Set(group.map((r) => r.case))].join(", ")}</span>
+            </div>
+            <div className="flex flex-col gap-8 px-12 py-12">
+              {group[0].output ? (
+                <div>
+                  <p className="mb-4 type-micro text-ink-muted">Output</p>
+                  <PlainText text={group[0].output} limit={600} />
+                </div>
+              ) : (
+                <p className="type-body-sm text-ink-muted">No output recorded.</p>
+              )}
+              <details className="group/attempts">
+                <summary className="inline-flex min-h-44 cursor-pointer list-none items-center type-label text-accent hover:underline [&::-webkit-details-marker]:hidden">
+                  <span className="group-open/attempts:hidden">Show the {group.length} attempts</span>
+                  <span className="hidden group-open/attempts:inline">Hide the {group.length} attempts</span>
+                </summary>
+                <div className="mt-8">
+                  <AttemptList label={`${group.length} attempts with identical output`} items={group.map((r) => item(r, traceHref))} />
+                </div>
+              </details>
+            </div>
+          </li>
+        ),
+      )}
+    </ul>
   );
 }

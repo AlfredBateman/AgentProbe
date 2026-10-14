@@ -1,8 +1,7 @@
 import type { ComponentProps } from "react";
 import { cx } from "@/lib/cx";
 
-// `translucent` is the name pages used before ADR 0042; it is the secondary outline now.
-export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "translucent" | "icon";
+export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "icon";
 
 // DESIGN.md buttons: 40px rectangles (44px on coarse pointers), mono caps, no radius. Hover
 // inverts or brightens the border; press moves the button down 1px. The focus ring is global.
@@ -22,7 +21,6 @@ const variants: Record<ButtonVariant, string> = {
   // Red means destructive; it fills only on hover, when it is about to be pressed.
   danger: `${text} border-fail bg-canvas text-fail hover:bg-fail hover:text-on-fail`,
   ghost: `${text} border-transparent bg-transparent text-ink-muted hover:bg-surface-1 hover:text-ink`,
-  translucent: `${text} ${outline}`,
   icon: `size-40 pointer-coarse:size-44 ${outline}`,
 };
 

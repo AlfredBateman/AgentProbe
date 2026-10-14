@@ -1,6 +1,7 @@
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 import {
+  A11Y_EMAIL,
   AGENTS_SUITES_EMAIL,
   COMPARE_EMAIL,
   E2E_EMAIL,
@@ -54,6 +55,7 @@ const signupAllowedEmails = [
   TELEMETRY_EMAIL,
   RUN_BOARD_EMAIL,
   COMPARE_EMAIL,
+  A11Y_EMAIL,
 ].join(",");
 
 // Fake, committed, test-only values (never used for anything real): Fernet needs a valid key

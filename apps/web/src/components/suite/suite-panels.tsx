@@ -164,7 +164,7 @@ function VersionDetail({ suiteId, version, previous }: { suiteId: string; versio
         <p className="type-body-sm text-ink-muted">{previous ? `v${previous.version} has no saved YAML to compare with.` : "The first version."}</p>
       )}
       <details>
-        <summary className="cursor-pointer type-label text-ink-muted">Full YAML of v{version.version}</summary>
+        <summary className="flex min-h-40 cursor-pointer items-center type-label text-ink-muted pointer-coarse:min-h-44">Full YAML of v{version.version}</summary>
         <CodeBlock code={yaml.now} label={`v${version.version}`} className="mt-8" />
       </details>
     </div>

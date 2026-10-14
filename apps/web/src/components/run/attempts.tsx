@@ -43,7 +43,7 @@ export function AttemptList({ items, label }: { items: AttemptItem[]; label: str
               {a.errorKind && <Readout term="Error">{a.errorKind}</Readout>}
             </dl>
             {a.traceHref && (
-              <Link href={a.traceHref} className="ml-auto type-label text-accent underline-offset-4 hover:underline">
+              <Link href={a.traceHref} className="tap ml-auto type-label text-accent underline-offset-4 hover:underline">
                 View trace
               </Link>
             )}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Skeleton } from "@/components/ui/feedback";
 import { Panel } from "@/components/ui/panel";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Badge } from "@/components/ui/status";
 import type { components } from "@/lib/api/schema";
 import { cx } from "@/lib/cx";
@@ -113,7 +114,7 @@ function Comparison({
         <Row term="Baseline">
           {fraction(sum("baseline", "passes"), sum("baseline", "attempts"))} passed
           {suite && <span className="text-ink-muted"> · {pct(suite.baseline_pass_rate)}</span>}{" "}
-          <Link href={baselineHref} className="type-micro text-accent underline-offset-4 hover:underline">
+          <Link href={baselineHref} className="tap type-micro text-accent underline-offset-4 hover:underline">
             <span className="type-code">{branch}</span> baseline
           </Link>
         </Row>
@@ -164,7 +165,8 @@ export function CaseTests({ report, compareHref }: { report: RegressionReportDum
         </p>
       }
     >
-      <div className="-mx-16 -mt-16 overflow-x-auto border-b border-hairline">
+      <div className="-mx-16 -mt-16 border-b border-hairline">
+        <ScrollRegion label="Per-case tests">
         <table className="w-full border-collapse type-code tabular-nums">
           <caption className="sr-only">Per-case tests, most significant first</caption>
           <thead>
@@ -206,6 +208,7 @@ export function CaseTests({ report, compareHref }: { report: RegressionReportDum
             })}
           </tbody>
         </table>
+        </ScrollRegion>
       </div>
       <p className="mt-12 max-w-560 type-body-sm text-ink-muted">
         Each case is a one-sided Fisher exact test. The Tarone–Holm step-down over α_cases = {report.alpha_cases} gives every p a

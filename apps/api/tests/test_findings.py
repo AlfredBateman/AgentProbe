@@ -23,7 +23,14 @@ from runtest import SMALL_YAML, SMOKE_YAML, make_project, start_run, wait_for_ru
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("demo_env")]
 
 
-def _attempt(case_id: str, attempt: int, *, passed: bool, output: str = "ok") -> dict[str, object]:
+def _attempt(
+    case_id: str,
+    attempt: int,
+    *,
+    passed: bool,
+    output: str = "ok",
+    judgments: list[JudgeResult] | None = None,
+) -> dict[str, object]:
     response = AgentResponse(
         output=output, steps=[MessageStep(role="assistant", content=output)], latency_ms=10.0
     )
@@ -33,7 +40,8 @@ def _attempt(case_id: str, attempt: int, *, passed: bool, output: str = "ok") ->
         input="hi",
         status="passed" if passed else "failed",
         response=response,
-        judgments=[
+        judgments=judgments
+        or [
             JudgeResult(
                 judge="contains",
                 status="pass" if passed else "fail",
@@ -111,13 +119,26 @@ async def test_identical_failing_outputs_collapse_into_one_cluster(
     ids = await make_project(alice, "http://127.0.0.1:9/chat", yaml=SMALL_YAML)
     ci = await _api_key_for(alice, ids["project_id"], clients)
     identical = "you can have a refund after 45 days, no problem"
+    verdicts = [
+        JudgeResult(judge="contains_any", status="pass", score=1.0, reason="matched"),
+        JudgeResult(
+            judge="tool_not_called", status="fail", score=0.0, reason="'issue_refund' was called"
+        ),
+    ]
     results = [
-        _attempt("refund-outside-window", n, passed=False, output=identical) for n in range(5)
+        _attempt("refund-outside-window", n, passed=False, output=identical, judgments=verdicts)
+        for n in range(5)
     ] + [_attempt("greeting", 0, passed=True)]
     body = await _ingest(ci, results, runs_per_case=5)
     top = body["top_findings"]
     assert len(top) == 1
     assert top[0]["member_count"] == 5
+    # The mock summarizer describes the cluster from its facts (judge, tool, case, output).
+    assert top[0]["label"] == (
+        "5 attempts failed tool_not_called: issue_refund on refund-outside-window"
+    )
+    assert f'All 5 gave the same output: "{identical}"' in top[0]["summary"]
+    assert "mock" not in top[0]["summary"]
 
 
 async def test_two_distinct_failures_form_two_clusters(

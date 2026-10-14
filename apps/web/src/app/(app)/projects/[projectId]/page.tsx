@@ -8,7 +8,7 @@ import { RunButton } from "@/components/run/run-button";
 import { RunSuiteDialog } from "@/components/run/run-suite-dialog";
 import { RunsTable } from "@/components/run/runs-table";
 import { VerdictBadge } from "@/components/run/labels";
-import { CostChart, LatencyChart, PassRateChart } from "@/components/run/trend-charts";
+import { CostChart, hasCost, LatencyChart, NoCostNote, PassRateChart } from "@/components/run/trend-charts";
 import { PageHeader } from "@/components/shell/page-header";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -102,7 +102,6 @@ export default function ProjectOverview() {
           data-testid="run-a-suite"
           onClick={() => setDialog(true)}
           blocked={!loaded ? "Loading the project." : loaded.suites.length === 0 ? "Add a suite to run first." : null}
-          note={false}
         />
       }
     />
@@ -195,7 +194,7 @@ export default function ProjectOverview() {
             note={
               baseline ? (
                 <>
-                  <Link href={`/projects/${projectId}/runs/${baseline.run_id}`} className="text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent">
+                  <Link href={`/projects/${projectId}/runs/${baseline.run_id}`} className="tap text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent">
                     {baseline.branch} baseline
                   </Link>
                   {latest?.pass != null && baselineRate != null && latest.id !== baseline.run_id && <> {"///"} latest {signed(latest.pass - baselineRate)}</>}
@@ -244,7 +243,7 @@ export default function ProjectOverview() {
             <ul className="flex flex-col divide-y divide-hairline">
               {flaky.map((c) => (
                 <li key={c.case} className="flex items-center justify-between gap-12 py-8 first:pt-0 last:pb-0">
-                  <Link href={`/projects/${projectId}/runs/${mine.runId}`} className="min-w-0 truncate type-code text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent">
+                  <Link href={`/projects/${projectId}/runs/${mine.runId}`} title={c.case} className="min-w-0 truncate type-code pointer-coarse:leading-[44px] text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent">
                     {c.case}
                   </Link>
                   <span className="flex shrink-0 items-center gap-8">
@@ -272,7 +271,7 @@ export default function ProjectOverview() {
             <div className="flex flex-col items-start gap-12">
               <VerdictBadge verdict={report.verdict} />
               <p className="type-body-sm text-ink-muted">{verdictSummary(report)}</p>
-              <Link href={`/projects/${projectId}/runs/${mine.runId}/compare`} className="type-label text-accent underline-offset-4 hover:underline">
+              <Link href={`/projects/${projectId}/runs/${mine.runId}/compare`} className="tap type-label text-accent underline-offset-4 hover:underline">
                 Open the comparison
               </Link>
             </div>
@@ -288,7 +287,6 @@ export default function ProjectOverview() {
               label="Run a suite"
               onClick={() => setDialog(true)}
               blocked={data.suites.length === 0 ? "Add a suite to run first." : null}
-              note={false}
               block
             />
             <Link href={`/projects/${projectId}/agents`} className={buttonClasses("secondary")}>
@@ -308,8 +306,21 @@ export default function ProjectOverview() {
         <div className="desktop:col-span-2">
           <PassRateChart points={points} baseline={baseline && baselineRate != null ? { rate: baselineRate, branch: baseline.branch } : null} />
         </div>
-        <CostChart points={points} />
-        <LatencyChart points={points} />
+        {hasCost(points) ? (
+          <>
+            <CostChart points={points} />
+            <LatencyChart points={points} />
+          </>
+        ) : (
+          <>
+            <div className="desktop:col-span-2">
+              <LatencyChart points={points} />
+            </div>
+            <div className="desktop:col-span-2">
+              <NoCostNote />
+            </div>
+          </>
+        )}
       </div>
 
       <LatestRuns projectId={projectId} runs={data.runs.slice(0, LATEST)} baselines={branches} />
@@ -326,7 +337,7 @@ function LatestRuns({ projectId, runs, baselines }: { projectId: string; runs: R
       title="Latest runs"
       className="mt-16"
       actions={
-        <Link href={`/projects/${projectId}/runs`} className="type-label text-accent underline-offset-4 hover:underline">
+        <Link href={`/projects/${projectId}/runs`} className="tap type-label text-accent underline-offset-4 hover:underline">
           All runs
         </Link>
       }

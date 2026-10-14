@@ -90,7 +90,9 @@ function RegisterForm() {
       </form>
       <p className="mt-24 border-t border-hairline pt-16 type-body-sm text-ink-muted">
         Already have an account?{" "}
-        <Link href={next === "/projects" ? "/login" : `/login?next=${encodeURIComponent(next)}`}>Sign in</Link>
+        <Link href={next === "/projects" ? "/login" : `/login?next=${encodeURIComponent(next)}`} className="tap underline underline-offset-4">
+          Sign in
+        </Link>
       </p>
     </>
   );

@@ -133,5 +133,7 @@ async def test_export_is_self_contained_and_charts_state_real_values() -> None:
     # Fig. 02: the single case is flaky (3 of 4), so only the flaky bar is full width.
     assert re.search(r'<span class="bar k" style="width:100.00%">', page)
     assert re.search(r'<span class="bar p" style="width:0.00%">', page)
+    # DESIGN.md: no gradient, no blur, no soft shadow, no radius, in the export too.
+    assert not re.search(r"gradient|box-shadow|blur|border-radius:(?!0;)", page)
     # The numbers are text beside the charts, not only shapes.
     assert "75.0%" in page and "3/4" in page and "95% CI" in page

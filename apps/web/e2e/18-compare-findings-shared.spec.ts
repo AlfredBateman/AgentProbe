@@ -178,11 +178,16 @@ test("findings: totals, a bar per finding with a table, and each finding's membe
   await chart.getByText("Table view").click();
   await expect(chart.getByRole("table")).toContainText("F-01");
 
+  // Members start collapsed; identical outputs fold into one row that opens to its attempts.
   const first = page.getByRole("article").first();
+  await expect(first.getByRole("list", { name: /^Members of / })).toBeHidden();
   await first.getByText(/^Show \d+ members$/).click();
   const members = first.getByRole("list", { name: /^Members of / });
+  // The v2 agent answers the refund case the same way every time: its failures fold.
+  await expect(members.getByText(/^\d+ attempts, identical output$/).first()).toBeVisible();
+  await members.getByText(/^Show the \d+ attempts$/).first().click();
   await expect(members.getByRole("listitem").first()).toContainText(/Attempt \d+/);
-  await members.getByRole("link", { name: "View trace" }).first().click();
+  await members.getByRole("link", { name: "View trace" }).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/\/results\/[0-9a-f-]+$/);
   expect(problems, problems.join("\n")).toEqual([]);
 });

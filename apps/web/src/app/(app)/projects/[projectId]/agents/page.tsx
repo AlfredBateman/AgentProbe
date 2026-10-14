@@ -404,7 +404,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
         </fieldset>
 
         <details>
-          <summary className="cursor-pointer type-label text-ink-muted">Request and limits</summary>
+          <summary className="flex min-h-40 cursor-pointer items-center type-label text-ink-muted pointer-coarse:min-h-44">Request and limits</summary>
           <div className="mt-10 flex flex-col gap-10">
             {http && (
               <>
@@ -442,7 +442,7 @@ function AgentDialog({ projectId, dialog, onClose, onSaved }: { projectId: strin
 
         {http && (
           <details>
-            <summary className="cursor-pointer type-label text-ink-muted">Response mapping (JSONPath)</summary>
+            <summary className="flex min-h-40 cursor-pointer items-center type-label text-ink-muted pointer-coarse:min-h-44">Response mapping (JSONPath)</summary>
             <div className="mt-10 grid grid-cols-1 gap-10 tablet:grid-cols-2">
               {(
                 [

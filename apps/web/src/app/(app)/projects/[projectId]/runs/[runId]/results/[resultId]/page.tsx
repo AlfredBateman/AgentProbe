@@ -100,7 +100,7 @@ function TraceView() {
                   aria-pressed={compact === o.value}
                   onClick={() => setCompact(o.value)}
                   className={cx(
-                    "min-h-40 cursor-pointer px-16 type-button -outline-offset-2 transition-colors duration-120 pointer-coarse:min-h-44",
+                    "min-h-40 cursor-pointer px-16 type-button -outline-offset-2 transition-[background-color,color] duration-120 pointer-coarse:min-h-44",
                     compact === o.value ? "bracketed bg-surface-2 text-accent" : "text-ink-muted hover:text-ink",
                   )}
                 >
@@ -138,14 +138,17 @@ function TraceView() {
 
 function AttemptMeta({ trace, className }: { trace: Trace; className?: string }) {
   return (
-    <dl className={cx("flex flex-wrap items-center gap-x-20 gap-y-6 tabular-nums", className)}>
+    <div className={cx("flex flex-wrap items-center gap-x-20 gap-y-6 tabular-nums", className)}>
       <AttemptBadge status={trace.status} />
-      <MetaItem term="Latency">{ms(trace.latency_ms)}</MetaItem>
-      <MetaItem term="Tokens">{count(trace.tokens)}</MetaItem>
-      <MetaItem term="Cost">{usd(trace.cost_usd)}</MetaItem>
-      <MetaItem term="Judging">{usd(trace.judge_cost_usd)}</MetaItem>
-      <MetaItem term="Retries">{trace.retries}</MetaItem>
-    </dl>
+      {/* Only term/value groups inside the list: the badge is its own element beside it. */}
+      <dl className="flex flex-wrap items-center gap-x-20 gap-y-6">
+        <MetaItem term="Latency">{ms(trace.latency_ms)}</MetaItem>
+        <MetaItem term="Tokens">{count(trace.tokens)}</MetaItem>
+        <MetaItem term="Cost">{usd(trace.cost_usd)}</MetaItem>
+        <MetaItem term="Judging">{usd(trace.judge_cost_usd)}</MetaItem>
+        <MetaItem term="Retries">{trace.retries}</MetaItem>
+      </dl>
+    </div>
   );
 }
 

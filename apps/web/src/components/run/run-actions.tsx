@@ -100,7 +100,7 @@ function CancelDialog({ run, open, onClose, onDone }: DialogProps) {
       title="Cancel this run?"
       actions={
         <>
-          <Button variant="translucent" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Keep running
           </Button>
           <Button onClick={cancel} disabled={busy}>
@@ -147,7 +147,7 @@ function BaselineDialog({ run, projectId, open, onClose, onDone }: DialogProps &
       title="Set as baseline"
       actions={
         <>
-          <Button variant="translucent" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form={`${id}-form`}>
@@ -224,7 +224,7 @@ function ShareDialog({ run, open, onClose, onDone }: DialogProps) {
       actions={
         <>
           {(run.shared || link) && (
-            <Button variant="translucent" onClick={revoke} disabled={busy}>
+            <Button variant="secondary" onClick={revoke} disabled={busy}>
               Revoke link
             </Button>
           )}

@@ -23,14 +23,14 @@ const CARDS = [
 
 // A long title wraps inside its own width, so the corner arrow stays in the corner.
 const CARD = "hover:bg-surface-1 [&>header]:flex-nowrap [&>header]:items-start";
-const navLink = "inline-flex min-h-40 items-center text-ink-muted no-underline hover:text-ink";
+const navLink = "inline-flex min-h-40 items-center text-ink-muted no-underline hover:text-ink pointer-coarse:min-h-44";
 
 export default function Home() {
   return (
     <div className="mx-auto flex w-full max-w-1440 flex-1 flex-col border-x border-hairline-strong">
       <header className="border-b border-hairline-strong">
         <div className="relative flex h-56 items-center gap-8 px-16 tablet:gap-24 tablet:px-32">
-          <Link href="/" className="type-headline text-ink no-underline">
+          <Link href="/" className="tap type-headline text-ink no-underline">
             AgentProbe
             <span aria-hidden className="text-accent">
               ®

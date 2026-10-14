@@ -13,17 +13,21 @@ imports; persistence is the caller's job, in `apps/api`):
   O(n^3) scan costs nothing measurable (ponytail: swap in a real clustering library if that
   stops being true).
 - `cluster_failures` embeds the failing outputs, clusters them, and asks the summarizer role
-  to describe each group.
+  to describe each group. With the mock provider, whose summarizer answer is a hash, each
+  group is described from its own facts instead (`describe_locally`): the failing judges,
+  the case and an excerpt of the output.
 
 See ADR 0024 for why this shape and threshold.
 """
 
 import math
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
 
 from agentprobe_core.judges.llm_rubric import neutralize
+from agentprobe_core.llm.mock import MockProvider
 from agentprobe_core.llm.types import AGENT_OUTPUT_TAG, LLMClient, Message
 
 # Cosine distance below which two clusters merge (cosine similarity >= 0.75). Chosen against
@@ -96,9 +100,16 @@ def agglomerative_cluster(
     return clusters
 
 
-# One failing attempt: (result_id, output text). `result_id` is opaque to core -- the caller's
-# own id (a database row id, in `apps/api`).
-FailingOutput = tuple[str, str]
+class FailingOutput(NamedTuple):
+    """One failing attempt. `result_id` is opaque to core -- the caller's own id (a database
+    row id, in `apps/api`). `failed_judges` names the judges that failed it, in suite order,
+    as `judge` or `judge: subject` (`tool_not_called: issue_refund`).
+    """
+
+    result_id: str
+    text: str
+    case_key: str = ""
+    failed_judges: tuple[str, ...] = ()
 
 
 class ClusterFinding(BaseModel):
@@ -136,6 +147,76 @@ def _parse(text: str) -> tuple[str, str]:
     return summary, fix
 
 
+# What to try when a judge of this type fails, most telling first: an action the agent took
+# outranks the wording of its reply. Keyed by the judge's type, the part of a `failed_judges`
+# entry before any ":"; `{subject}` is the part after it (a tool's name) or "the tool".
+_FIX_BY_JUDGE = {
+    "tool_not_called": "Stop the agent calling {subject} here: require a policy check or a "
+    "confirmation before it, or remove it for this request.",
+    "tool_called": "Make the agent call {subject} for this request; check its description "
+    "and the agent's instructions.",
+    "tool_args_match": "Check the arguments the agent passes to {subject} against the "
+    "expected ones in the trace.",
+    "not_contains": "Stop the agent repeating the forbidden text: filter its output, or "
+    "tell it not to reveal it.",
+    "json_schema": "Make the agent return JSON that matches the schema, or relax the schema.",
+    "llm_rubric": "Read the rubric and the outputs side by side and tighten the agent's "
+    "instructions where they differ.",
+    "contains": "Make the agent state the expected text; check its instructions and context.",
+    "contains_any": "Make the agent give one of the expected answers; check its instructions.",
+    "regex": "Compare the output with the pattern; fix the agent's format or the pattern.",
+    "max_length": "Shorten the agent's answers, or raise the limit if longer ones are right.",
+    "latency_under": "Find the slow step in the trace, or raise the latency budget.",
+}
+_RANK = {kind: i for i, kind in enumerate(_FIX_BY_JUDGE)}
+_MAX_FIXES = 2
+_GENERIC_FIX = "Read the failing outputs and the judges' reasons, then adjust the agent."
+_EXCERPT_CHARS = 80
+
+
+def _excerpt(text: str) -> str:
+    flat = " ".join(text.split())
+    return flat if len(flat) <= _EXCERPT_CHARS else flat[: _EXCERPT_CHARS - 1].rstrip() + "…"
+
+
+def _in_order(values: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys(v for v in values if v))
+
+
+def describe_locally(members: Sequence[FailingOutput]) -> tuple[str, str, str]:
+    """`(label, summary, suggested_fix)` for one cluster, from its members' own facts and no
+    LLM: the mock summarizer. Deterministic, and specific enough to read: "10 attempts failed
+    tool_not_called: issue_refund on refund-outside-window".
+    """
+    n = len(members)
+    judges = _in_order([j for m in members for j in m.failed_judges])
+    cases = _in_order([m.case_key for m in members])
+    attempts = f"{n} attempt{'s' if n != 1 else ''}"
+    what = f"failed {', '.join(judges)}" if judges else "failed"
+    where = ""
+    if cases:
+        where = f" on {cases[0]}" + (f" and {len(cases) - 1} more" if len(cases) > 1 else "")
+    label = f"{attempts} {what}{where}"
+
+    # The summary adds what the label doesn't say (it is shown under it): the output itself.
+    texts = {m.text for m in members}
+    if n > 1 and len(texts) == 1:
+        output = f'All {n} gave the same output: "{_excerpt(members[0].text)}"'
+    else:
+        output = f'First output: "{_excerpt(members[0].text)}"'
+    summary = f"Cases: {', '.join(cases)}. {output}" if len(cases) > 1 else output
+
+    # The two most telling failures' fixes, each once (two tool judges on one tool, say).
+    parsed = [
+        (kind.strip(), subject.strip() or "the tool")
+        for kind, _, subject in (j.partition(":") for j in judges)
+    ]
+    known = sorted((p for p in parsed if p[0] in _FIX_BY_JUDGE), key=lambda p: _RANK[p[0]])
+    fixes = _in_order([_FIX_BY_JUDGE[kind].format(subject=subject) for kind, subject in known])
+    fix = " ".join(fixes[:_MAX_FIXES]) or _GENERIC_FIX
+    return label, summary, fix
+
+
 def _centroid(vectors: Sequence[Sequence[float]]) -> list[float]:
     dim = len(vectors[0])
     return [sum(v[i] for v in vectors) / len(vectors) for i in range(dim)]
@@ -167,17 +248,22 @@ async def cluster_failures(
     """
     if not items:
         return []
-    vectors = (await llm.embed([text for _, text in items])).vectors
+    # The mock provider's summarizer answer is a hash of the prompt: describe from the facts.
+    local = isinstance(getattr(llm, "provider", None), MockProvider)
+    vectors = (await llm.embed([item.text for item in items])).vectors
     findings: list[ClusterFinding] = []
     for member_idx in agglomerative_cluster(vectors, threshold=distance_threshold):
         members = [items[i] for i in member_idx]
-        label, summary, fix = await _summarize(llm, [text for _, text in members])
+        if local:
+            label, summary, fix = describe_locally(members)
+        else:
+            label, summary, fix = await _summarize(llm, [m.text for m in members])
         findings.append(
             ClusterFinding(
                 label=label,
                 summary=summary,
                 suggested_fix=fix,
-                member_result_ids=[result_id for result_id, _ in members],
+                member_result_ids=[m.result_id for m in members],
                 embedding=_centroid([vectors[i] for i in member_idx]),
             )
         )

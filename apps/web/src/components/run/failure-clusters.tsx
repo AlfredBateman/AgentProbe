@@ -74,7 +74,7 @@ export function FailureClusters({
                   ))}
                   <Link
                     href={`/projects/${projectId}/runs/${runId}/results/${f.member_result_ids[0]}`}
-                    className="ml-auto type-label text-accent underline-offset-4 hover:underline"
+                    className="tap ml-auto type-label text-accent underline-offset-4 hover:underline"
                   >
                     First trace
                   </Link>
@@ -86,7 +86,7 @@ export function FailureClusters({
       )}
       {Array.isArray(findings) && findings.length > 0 && (
         <p className="-mx-16 border-t border-hairline px-16 pt-12 type-label">
-          <Link href={all} className="text-accent underline-offset-4 hover:underline">
+          <Link href={all} className="tap text-accent underline-offset-4 hover:underline">
             {findings.length > SHOWN ? `All ${findings.length} clusters` : "Open findings"} {">>>"}
           </Link>
         </p>

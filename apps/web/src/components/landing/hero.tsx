@@ -39,17 +39,19 @@ export function Hero() {
               the caption otherwise. */}
           <dl className="col-start-1 row-start-3 mt-24 grid gap-16 tablet:grid-cols-3 desktop:row-start-1 desktop:mt-0 desktop:mb-48 desktop:w-[30%] desktop:grid-cols-1 desktop:self-end desktop:justify-self-end">
             {CALLOUTS.map(([value, label, condition]) => (
-              <div key={label} className="flex items-center gap-12">
-                <span aria-hidden className="hidden h-px min-w-24 flex-1 bg-ink-muted desktop:block" />
-                {/* One width, so the three leader lines end on the same vertical. */}
-                <div className="desktop:w-240 desktop:shrink-0">
-                  <dd className="type-display-md tabular-nums">
-                    <CountUp value={value} />
-                  </dd>
-                  <dt className="mt-4 type-micro text-ink-muted">
-                    {label} {"///"} {condition}
-                  </dt>
-                </div>
+              // dt before dd, as a definition list needs; the grid puts the figure on top. The
+              // leader line is the group's ::before, so the list holds only its terms. One
+              // column width, so the three leader lines end on the same vertical.
+              <div
+                key={label}
+                className="flex flex-col desktop:grid desktop:grid-cols-[minmax(24px,1fr)_240px] desktop:items-center desktop:gap-x-12 desktop:before:col-start-1 desktop:before:row-span-2 desktop:before:row-start-1 desktop:before:h-px desktop:before:bg-ink-muted desktop:before:content-['']"
+              >
+                <dt className="mt-4 type-micro text-ink-muted desktop:col-start-2 desktop:row-start-2">
+                  {label} {"///"} {condition}
+                </dt>
+                <dd className="order-first type-display-md tabular-nums desktop:col-start-2 desktop:row-start-1">
+                  <CountUp value={value} />
+                </dd>
               </div>
             ))}
           </dl>

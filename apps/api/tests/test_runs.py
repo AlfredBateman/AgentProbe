@@ -420,6 +420,41 @@ async def test_a_crashed_run_resumes_without_redoing_saved_attempts(
     assert passes == {"greeting": 1, "refund-outside-window": 3}
 
 
+async def test_concurrent_saves_count_exactly_and_a_stopped_run_keeps_nothing_late(
+    sign_up: SignUp, app: FastAPI, db: AsyncSession, demo_url: str
+) -> None:
+    """`save_attempt` inserts first and locks the run only for its counter update: concurrent
+    saves still count every attempt once, and a save that lands after the run stopped is
+    rolled back whole (no result, trace or judgment left behind).
+    """
+    alice = await sign_up("alice@example.com")
+    ids = await make_project(alice, f"{demo_url}/support/v1/chat")
+    app.state.queue = NullQueue()
+    run = await start_run(alice, ids["suite_id"], runs_per_case=4)
+    run_id = uuid.UUID(run["id"])
+    deps = deps_of(app)
+    assert await runstore.claim(deps.sessions, run_id)
+    plan = await runstore.load_plan(deps.sessions, run_id, deps.secret_box)
+    assert plan is not None
+    adapter = plan.adapter()
+    results = [await execute_attempt(plan.case("greeting"), adapter, attempt=n) for n in range(4)]
+    late = await execute_attempt(plan.case("refund-outside-window"), adapter, attempt=0)
+    await runstore.close_adapter(adapter)
+
+    saved = await asyncio.gather(*(runstore.save_attempt(deps.sessions, plan, r) for r in results))
+    assert sorted(s[0] for s in saved if s is not None) == [1, 2, 3, 4]
+
+    await db.execute(update(Run).where(Run.id == run_id).values(status="cancelled"))
+    await db.commit()
+    assert await runstore.save_attempt(deps.sessions, plan, late) is None
+    assert await count(db, RunResult, RunResult.run_id == run_id) == 4
+    mine = select(RunResult.id).where(RunResult.run_id == run_id)
+    assert await count(db, Trace, Trace.run_result_id.in_(mine)) == 4
+    assert await count(db, Judgment, Judgment.run_result_id.in_(mine)) == 4
+    row = await db.get(Run, run_id, populate_existing=True)
+    assert row is not None and row.attempts_done == 4
+
+
 async def test_an_unrecoverable_run_is_marked_failed(
     sign_up: SignUp, app: FastAPI, db: AsyncSession, demo_url: str
 ) -> None:

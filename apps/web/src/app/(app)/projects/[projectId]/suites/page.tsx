@@ -46,7 +46,7 @@ export default function SuitesPage() {
       render: (s) => (
         <Link
           href={`/projects/${projectId}/suites/${s.id}`}
-          className="text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent"
+          className="tap text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent"
         >
           {s.name}
         </Link>

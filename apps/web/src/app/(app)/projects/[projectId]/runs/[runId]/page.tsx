@@ -173,10 +173,14 @@ export default function RunPage() {
         <StatsPanel run={run} rows={rows} verdict={verdict} projectId={projectId} />
       </div>
 
-      {report && (
+      {report ? (
         <div className="mt-24">
           <CaseTests report={report} compareHref={`/projects/${projectId}/runs/${run.id}/compare`} />
         </div>
+      ) : (
+        // Holds the per-case tests' place while the verdict loads, so the clusters and the
+        // cases table don't jump down when it arrives (a run without a baseline frees it).
+        verdict === null && run.status === "completed" && <Skeleton className="mt-24 h-320" />
       )}
 
       <div className="mt-24">

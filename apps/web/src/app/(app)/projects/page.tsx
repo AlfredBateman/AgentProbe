@@ -23,7 +23,7 @@ const COLUMNS: Column<Project>[] = [
     header: "Name",
     value: (p) => p.name,
     render: (p) => (
-      <Link href={`/projects/${p.id}`} className="text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent">
+      <Link href={`/projects/${p.id}`} className="tap text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent">
         {p.name}
       </Link>
     ),

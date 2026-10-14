@@ -29,7 +29,7 @@ export function PageHeader({
   return (
     <header ref={ref} className="flex flex-wrap items-end justify-between gap-x-16 gap-y-12 border-b border-hairline-strong pb-16">
       <div className="min-w-0">
-        <p className="type-micro text-ink-muted">{eyebrow}</p>
+        <p className="type-micro text-ink-muted [&_a]:tap">{eyebrow}</p>
         <h1 className={verbatim ? "mt-8 type-display-md normal-case break-words" : "mt-8 type-display-md"}>{title}</h1>
         {children && <div className="mt-8">{children}</div>}
       </div>

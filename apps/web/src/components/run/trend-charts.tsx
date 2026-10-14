@@ -2,12 +2,14 @@
 
 import type { ReactNode } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BASELINE, chartTheme, CURRENT, SERIES } from "@/components/ui/chart-theme";
+import { BASELINE, chartTheme, CURRENT, restingDots, SPARSE_RUNS } from "@/components/ui/chart-theme";
 import { ms, pct, usd } from "@/lib/format";
 import { isEmpty, type TrendPoint } from "@/lib/trends";
 
-// Rules (ADR 0028 §2, the dataviz method): one y-axis per chart, a single series in ink, the
-// baseline dashed ink-muted, the CI as a faint band of the series' own ink, lime never.
+// DESIGN.md's chart rules: mono axes, 1px strokes, flat fills, square markers, no fade. One
+// y-axis per chart, a single series in ink, the baseline dashed ink-muted, the CI a flat band
+// of the series' own ink, lime never (there is no candidate on the overview). Below three runs
+// every point is marked and the band is left out: two points make no interval trend.
 // The runs table below the charts is their table view: every plotted value is also there.
 
 const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -35,13 +37,13 @@ function Frame({ title, legend, empty, children }: { title: string; legend?: Rea
   );
 }
 
-/** A legend key: a 2px line (dashed for a baseline) or a band swatch, then its text in ink-muted. */
+/** A legend key: a 1px line (dashed for a baseline) or a band swatch, then its text in ink-muted. */
 function Key({ color, kind = "line", children }: { color: string; kind?: "line" | "dashed" | "band"; children: ReactNode }) {
   const swatch =
     kind === "band" ? (
       <span aria-hidden className="inline-block h-10 w-16 opacity-20" style={{ background: color }} />
     ) : (
-      <span aria-hidden className="inline-block w-16 border-t-2" style={{ borderColor: color, borderStyle: kind === "dashed" ? "dashed" : "solid" }} />
+      <span aria-hidden className="inline-block w-16 border-t" style={{ borderColor: color, borderStyle: kind === "dashed" ? "dashed" : "solid" }} />
     );
   return (
     <span className="inline-flex items-center gap-6">
@@ -72,6 +74,7 @@ const spanMs = (points: TrendPoint[]) => (points.length ? Date.parse(points.at(-
 const tooltipLabel =(at: unknown) => (typeof at === "string" ? fullDate.format(new Date(at)) : "");
 
 export function PassRateChart({ points, baseline }: Props & { baseline: { rate: number; branch: string } | null }) {
+  const band = points.length >= SPARSE_RUNS;
   return (
     <Frame
       title="Pass rate"
@@ -79,9 +82,11 @@ export function PassRateChart({ points, baseline }: Props & { baseline: { rate: 
       legend={
         <>
           <Key color={CURRENT}>Pass rate</Key>
-          <Key color={CURRENT} kind="band">
-            95% CI
-          </Key>
+          {band && (
+            <Key color={CURRENT} kind="band">
+              95% CI
+            </Key>
+          )}
           {baseline && (
             <Key color={BASELINE} kind="dashed">
               Baseline ({baseline.branch}) {pct(baseline.rate)}
@@ -102,27 +107,30 @@ export function PassRateChart({ points, baseline }: Props & { baseline: { rate: 
               Array.isArray(value) ? [`${pct(Number(value[0]))}–${pct(Number(value[1]))}`, name] : [pct(Number(value)), name]
             }
           />
-          <Area name="95% CI" dataKey="band" stroke="none" fill={CURRENT} fillOpacity={0.12} isAnimationActive={false} activeDot={false} />
-          {baseline && <ReferenceLine y={baseline.rate} stroke={BASELINE} strokeDasharray="4 4" strokeWidth={1.5} ifOverflow="extendDomain" />}
-          <Line name="Pass rate" dataKey="pass" stroke={CURRENT} connectNulls {...chartTheme.line} dot={points.length === 1 ? { r: 4 } : false} />
+          {band && <Area name="95% CI" dataKey="band" stroke="none" fill={CURRENT} fillOpacity={0.12} isAnimationActive={false} activeDot={false} />}
+          {baseline && <ReferenceLine y={baseline.rate} stroke={BASELINE} strokeDasharray="4 4" strokeWidth={1} ifOverflow="extendDomain" />}
+          <Line name="Pass rate" dataKey="pass" stroke={CURRENT} connectNulls {...chartTheme.line} dot={restingDots(points.length)} />
         </ComposedChart>
       </ResponsiveContainer>
     </Frame>
   );
 }
 
+/** All zero is "nothing spent" (mock judging), not a trend worth a flat line on a made-up axis. */
+export const hasCost = (points: readonly TrendPoint[]) => points.some((p) => !!p.cost || !!p.judge);
+
+/** Agent spend in ink, judging dashed ink-muted, both named in the legend. Callers show
+ * `NoCostNote` instead when `hasCost` is false. */
 export function CostChart({ points }: Props) {
   return (
     <Frame
       title="Cost per run"
-      // All zero is "nothing spent" (mock judging), not a trend worth a flat line on a made-up axis.
-      empty={
-        points.every((p) => !p.cost && !p.judge) && "No cost recorded: the agent reports no price, and mock judging is free"
-      }
       legend={
         <>
-          <Key color={SERIES[0]}>Agent</Key>
-          <Key color={SERIES[1]}>Judging</Key>
+          <Key color={CURRENT}>Agent</Key>
+          <Key color={BASELINE} kind="dashed">
+            Judging
+          </Key>
         </>
       }
     >
@@ -132,11 +140,21 @@ export function CostChart({ points }: Props) {
           {xAxis(points)}
           <YAxis tickFormatter={(v: number) => usd(v)} {...chartTheme.yAxis} width={56} />
           <Tooltip {...chartTheme.tooltip} labelFormatter={tooltipLabel} formatter={(value, name) => [usd(Number(value)), name]} />
-          <Line name="Agent" dataKey="cost" stroke={SERIES[0]} connectNulls {...chartTheme.line} dot={points.length === 1 ? { r: 4 } : false} />
-          <Line name="Judging" dataKey="judge" stroke={SERIES[1]} connectNulls {...chartTheme.line} dot={points.length === 1 ? { r: 4 } : false} />
+          <Line name="Agent" dataKey="cost" stroke={CURRENT} connectNulls {...chartTheme.line} dot={restingDots(points.length)} />
+          <Line name="Judging" dataKey="judge" stroke={BASELINE} strokeDasharray="4 4" connectNulls {...chartTheme.line} dot={restingDots(points.length)} />
         </LineChart>
       </ResponsiveContainer>
     </Frame>
+  );
+}
+
+/** The cost chart, collapsed: one line, not an empty 220px frame. */
+export function NoCostNote() {
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-12 gap-y-4 border border-hairline bg-canvas px-16 py-12">
+      <span className="type-label text-ink-muted">Cost per run</span>
+      <span className="type-body-sm text-ink-muted">No cost recorded: the agent reports no price, and mock judging is free.</span>
+    </p>
   );
 }
 
@@ -149,7 +167,7 @@ export function LatencyChart({ points }: Props) {
           {xAxis(points)}
           <YAxis tickFormatter={(v: number) => ms(v)} {...chartTheme.yAxis} width={56} />
           <Tooltip {...chartTheme.tooltip} labelFormatter={tooltipLabel} formatter={(value, name) => [ms(Number(value)), name]} />
-          <Line name="Mean latency" dataKey="latency" stroke={CURRENT} connectNulls {...chartTheme.line} dot={points.length === 1 ? { r: 4 } : false} />
+          <Line name="Mean latency" dataKey="latency" stroke={CURRENT} connectNulls {...chartTheme.line} dot={restingDots(points.length)} />
         </LineChart>
       </ResponsiveContainer>
     </Frame>

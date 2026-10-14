@@ -134,7 +134,7 @@ export function AppShell({ projects, projectId, email, pathname, onProjectChange
         >
           {menuOpen ? <CloseIcon /> : <MenuIcon />}
         </Button>
-        <Link href="/" className="shrink-0 type-headline text-ink no-underline">
+        <Link href="/" className="tap shrink-0 type-headline text-ink no-underline">
           AgentProbe
           <span aria-hidden className="text-accent">
             ®

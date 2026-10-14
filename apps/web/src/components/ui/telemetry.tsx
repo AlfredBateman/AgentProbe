@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cx } from "@/lib/cx";
+import { ScrollRegion } from "./scroll-region";
 
 // Charts in the telemetry style (DESIGN.md "Charts", ADR 0050): HTML and CSS laid out in
 // percentages, so every label is real mono type at any width. 1px strokes, flat fills, no
@@ -29,15 +30,18 @@ export function ChartFigure({
   children: ReactNode;
 }) {
   return (
-    <figure className={cx("min-w-0 border border-hairline bg-canvas", className)}>
+    // A column, so figures side by side in a grid row share a height and their table views line up.
+    <figure className={cx("flex min-w-0 flex-col border border-hairline bg-canvas", className)}>
       <figcaption className="flex flex-wrap items-baseline justify-between gap-x-12 gap-y-4 border-b border-hairline px-16 py-8">
         <span className="type-label text-ink">{title}</span>
         {note && <span className="type-micro text-ink-muted">{note}</span>}
       </figcaption>
-      <div className="draw-in p-16">{children}</div>
+      <div className="draw-in flex flex-1 flex-col justify-center p-16">{children}</div>
       <details className="border-t border-hairline">
-        <summary className="cursor-pointer px-16 py-8 type-micro text-ink-muted hover:text-ink">Table view</summary>
-        <div className="overflow-x-auto px-16 pb-16">{table}</div>
+        <summary className="flex min-h-40 cursor-pointer items-center px-16 type-micro text-ink-muted hover:text-ink pointer-coarse:min-h-44">Table view</summary>
+        <div className="px-16 pb-16">
+          <ScrollRegion label={`${title}, table view`}>{table}</ScrollRegion>
+        </div>
       </details>
     </figure>
   );

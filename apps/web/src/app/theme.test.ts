@@ -4,12 +4,12 @@ import { expect, test } from "vitest";
 import { contrast } from "@/lib/contrast";
 import { generate, OUTPUT, readTokens } from "../../scripts/gen-theme.mjs";
 
-const { colors, aliases, typography } = readTokens() as {
+const tokens = readTokens() as {
   colors: Record<string, string>;
-  aliases: { colors: Record<string, string> };
   typography: Record<string, { letterSpacing: string; wordSpacing?: string }>;
 };
-const hex = (name: string) => colors[aliases.colors[name] ?? name];
+const { colors, typography } = tokens;
+const hex = (name: string) => colors[name];
 const surfaces = ["canvas", "surface-1", "surface-2"];
 const onSurfaces = (names: string[]) => names.flatMap((n) => surfaces.map((s) => [n, s]));
 
@@ -18,7 +18,7 @@ test("theme.css is up to date with DESIGN.md (run `pnpm --filter web gen:theme`)
 });
 
 // WCAG AA body text on every surface (ADR 0042 records the measured ratios).
-test.each(onSurfaces(["ink", "ink-muted", "accent", "fail", "pass", "flaky", "neutral"]))("%s on %s is at least 4.5:1", (fg, bg) => {
+test.each(onSurfaces(["ink", "ink-muted", "accent", "fail"]))("%s on %s is at least 4.5:1", (fg, bg) => {
   expect(contrast(hex(fg), hex(bg))).toBeGreaterThanOrEqual(4.5);
 });
 
@@ -30,8 +30,22 @@ test.each([
 });
 
 // Non-text marks and control borders: WCAG 1.4.11 asks 3:1 against the surface they sit on.
-test.each(onSurfaces(["hairline-strong", "chart-1", "chart-2", "chart-3", "chart-4"]))("%s on %s is at least 3:1", (fg, bg) => {
+test.each(onSurfaces(["hairline-strong"]))("%s on %s is at least 3:1", (fg, bg) => {
   expect(contrast(hex(fg), hex(bg))).toBeGreaterThanOrEqual(3);
+});
+
+test("DESIGN.md has no alias names: every colour and type tier is one token", () => {
+  expect(tokens).not.toHaveProperty("aliases");
+  expect(readFileSync(OUTPUT, "utf8")).not.toMatch(/--color-(chart-\d|primary|pass|flaky|neutral|accent-blue|hairline-soft)/);
+});
+
+// Over text, the grain's lightest pixels (measured on its tile) take `fail` on `surface-2` from
+// 4.65:1 to 4.16:1, so the noise and the page-wide scanlines sit behind the content instead.
+test("the noise and page-wide scanline layers sit behind the content, never over text", () => {
+  expect((readTokens() as { zIndex: { noise: number } }).zIndex.noise).toBeLessThan(0);
+  const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
+  const layers = [/@utility noise \{[^}]*\}/, /html\[data-scanlines\]::after \{[^}]*\}/].map((re) => css.match(re)?.[0] ?? "");
+  for (const layer of layers) expect(layer).toContain("z-index: var(--z-noise)");
 });
 
 // Tracking applies to the space glyph too, and Archivo kerns against it, so a tier tracked

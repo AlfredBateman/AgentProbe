@@ -115,7 +115,9 @@ function LoginForm() {
       </form>
       <p className="mt-24 border-t border-hairline pt-16 type-body-sm text-ink-muted">
         No account?{" "}
-        <Link href={next === "/projects" ? "/register" : `/register?next=${encodeURIComponent(next)}`}>Register</Link>
+        <Link href={next === "/projects" ? "/register" : `/register?next=${encodeURIComponent(next)}`} className="tap underline underline-offset-4">
+          Register
+        </Link>
       </p>
     </>
   );

@@ -109,7 +109,7 @@ export function Timeline({ trace, compact, layout = "wide", differs, idPrefix = 
                     open={!compact}
                     className={cx("group min-w-0 border", different ? "border-ink-muted bg-surface-2" : "border-hairline bg-canvas")}
                   >
-                    <summary className="flex min-h-40 cursor-pointer list-none flex-wrap items-center gap-x-12 gap-y-4 px-12 py-8 -outline-offset-2 [&::-webkit-details-marker]:hidden">
+                    <summary className="flex min-h-40 cursor-pointer pointer-coarse:min-h-44 list-none flex-wrap items-center gap-x-12 gap-y-4 px-12 py-8 -outline-offset-2 [&::-webkit-details-marker]:hidden">
                       <span aria-hidden className="type-micro text-ink-muted tabular-nums">
                         {String(i + 1).padStart(2, "0")}
                       </span>
@@ -200,7 +200,7 @@ export function VerdictPanel({ trace, idPrefix = "step" }: { trace: Trace; idPre
                 {j.step === null ? (
                   <span className="text-ink-muted">Whole attempt</span>
                 ) : (
-                  <a href={`#${idPrefix}-${j.step}`} className="text-accent underline-offset-4 hover:underline">
+                  <a href={`#${idPrefix}-${j.step}`} className="tap text-accent underline-offset-4 hover:underline">
                     Step {j.step + 1}
                   </a>
                 )}

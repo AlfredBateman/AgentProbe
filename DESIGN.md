@@ -142,7 +142,7 @@ zIndex:
   overlay: 50
   dialog: 60
   toast: 70
-  noise: 90
+  noise: -1
 
 motion:
   duration:
@@ -155,32 +155,6 @@ motion:
     step: steps(6, end)
     linear: linear
     mech: cubic-bezier(0.2, 0, 0, 1)
-
-# Other names for the tokens above (ADR 0042). Status names say what a colour means. The
-# legacy names keep pages that have not been rebuilt yet resolving; each rebuild removes its
-# uses, and the last one deletes the legacy entries.
-aliases:
-  colors:
-    pass: ink
-    flaky: ink
-    neutral: ink-muted
-    # Legacy
-    primary: accent
-    on-primary: on-accent
-    accent-blue: accent
-    hairline-soft: hairline
-    chart-1: accent
-    chart-2: ink
-    chart-3: ink-muted
-    chart-4: hairline-strong
-  typography:
-    # Legacy
-    dash-title: display-md
-    dash-title-sm: display-md
-    dash-heading: headline
-    data-label: label
-    caption: label
-    subhead: body-lg
 
 components:
   button-primary:
@@ -394,7 +368,7 @@ Rules:
 - **Borders**: `{borders.hair}` 1px for structure, `{borders.rule}` 2px for emphasis (the focus ring, a selected item, a panel that must stand out).
 - **Density is bimodal.** Data regions are tight (8 to 12px cell padding). Around display type there is a lot of empty canvas.
 - **Container**: 1440px maximum, 16px side gutters below 810px, 32px above.
-- **Stacking**: `{zIndex.nav}` 40, `{zIndex.overlay}` 50, `{zIndex.dialog}` 60, `{zIndex.toast}` 70, `{zIndex.noise}` 90. No other values.
+- **Stacking**: `{zIndex.nav}` 40, `{zIndex.overlay}` 50, `{zIndex.dialog}` 60, `{zIndex.toast}` 70. No other values, except `{zIndex.noise}` −1: the grain sits behind the content, so it never lowers the contrast of text.
 
 ## Details
 
@@ -406,15 +380,15 @@ Used sparingly; each is graphic, not informational.
 - Crosshair `+` marks at some panel corners (`crosshair`).
 - Hairline leader lines from a callout to what it describes.
 - A small arrow in the top-right corner of a clickable panel.
-- One global noise layer (`noise`): fixed, low opacity, `pointer-events: none`.
-- An optional scanline overlay (`scanlines`) on a hero panel: static, subtle, `pointer-events: none`.
+- One global noise layer (`noise`): fixed, low opacity, `pointer-events: none`, **behind** the content. It textures the canvas between panels; over text, its lightest pixels would take `fail` on `surface-2` from 4.65:1 to 4.16:1.
+- An optional scanline overlay (`scanlines`) on a hero panel: static, subtle, `pointer-events: none`. Only over a figure: text inside the panel sits above the lines (`relative` with `{zIndex.raised}`).
 - Hard-stop line patterns (the flaky hatch, scanlines) are allowed. A colour fade is not.
 
 ## Components
 
 - **Buttons** are 40px tall rectangles (44px on coarse pointers). Primary is a lime fill; secondary is a `hairline-strong` outline; destructive is a red outline. Hover inverts or brightens the border; press moves the button down 1px. At most one primary button per view.
 - **Panels** have a header strip: title on the left in `{typography.headline}` or `{typography.label}`, metadata or actions on the right, a 1px line under it.
-- **Tables** have a `{colors.surface-1}` header in `{typography.micro}`, rows divided by `{colors.hairline}`, numbers right-aligned. Below 810px a table scrolls sideways inside its panel.
+- **Tables** have a `{colors.surface-1}` header in `{typography.micro}`, rows divided by `{colors.hairline}`, numbers right-aligned. A table wider than its panel scrolls sideways inside it (`ScrollRegion`): while it overflows it is a labelled, focusable region with a `Scroll sideways` strip above it whose arrows point to the hidden columns. A header is never cut off.
 - **Stat tiles** sit in a `grid-lines` row: a `{typography.label}` name, a `{typography.display-lg}` value, a `{typography.micro}` note.
 - **Inputs** are `canvas` with a `hairline-strong` border and mono text. An invalid input has a red border and a red message linked with `aria-describedby`.
 - **Dialogs and toasts** are `surface-2` with a 1px `hairline-strong` border. No shadow.
@@ -433,9 +407,10 @@ Charts follow the same rules as the rest of the system, plus these ([ADR 0050](d
 
 - **Lime marks the candidate.** In a chart, lime is the run under examination (a stroke, a marker, a bar, an attempt square). A baseline is `ink`. Red is failure only. This is the one place lime is used for "pass"; chips, badges and table cells keep the status encoding above.
 - **Telemetry style.** Mono axis labels, 1px strokes, flat fills, a fixed 0 to 100% scale for rates, square markers. No colour fade, no shadow.
-- **Direct labels, no legend.** Every row or marker names itself; a flaky bar is hatched, a failure is the cross mark, so no series is told by colour alone.
+- **Direct labels, no legend.** Every row or marker names itself; a flaky bar is hatched, a failure is the cross mark, so no series is told by colour alone. One exception: a page whose attempt marks use lime for the candidate (compare) has a one-line key above its charts saying what lime, white and red mean there.
 - **A table view.** Every figure carries its plotted values as a table (`ChartFigure` requires one).
 - **Motion.** One stepped draw-in (`steps(6, end)`, 400ms, a clip) and nothing else; reduced motion shows the finished chart.
+- **Few runs.** Below three runs a trend marks every point and leaves out its interval band. A series with nothing to plot (no cost recorded) is one line of text, not an empty frame.
 
 ## Motion
 
@@ -451,9 +426,9 @@ Motion is short and mechanical.
 ## Accessibility
 
 - Text contrast is at least 4.5:1; borders that identify a control are at least 3:1.
-- The focus ring is 2px lime, 2px away from the element, on every interactive element.
+- The focus ring is 2px lime, 2px away from the element, on every interactive element. It never transitions: a control that animates its colours lists them (`transition-[background-color,color]`), never `transition-colors`, which would fade the ring in.
 - No flicker or strobing, in any overlay or animation.
-- Touch targets are at least 40px, 44px on coarse pointers.
+- Touch targets are at least 40px, 44px on coarse pointers. A text link or a small control sized by its text takes the `tap` utility, which gives it 44px each way on a coarse pointer only. A link inside a sentence is underlined as well as lime.
 - Decorative marks (crosshairs, ASCII, noise) are hidden from assistive technology.
 
 ## Responsive Behavior
@@ -491,4 +466,4 @@ Display type scales by its own `clamp()`; it is never swapped for a smaller tier
 1. Change a token here first, then run `pnpm --filter web gen:theme`. `apps/web/src/app/theme.css` is generated and never edited by hand.
 2. `theme.test.ts` fails if the generated file is stale or a text pair drops below its contrast floor.
 3. The boards at `/dev/design` (dev server only) show every token and the reference compositions. Check a change there at 1440, 810 and 390px.
-4. When a page is rebuilt, replace its legacy class names (the `aliases` entries marked Legacy) with the tokens they point to.
+4. There are no alias names. A status or a chart series uses the colour token it means (`ink` for pass, `fail` for failure), so one name always means one value.

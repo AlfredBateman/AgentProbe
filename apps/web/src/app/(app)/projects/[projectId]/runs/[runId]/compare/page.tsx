@@ -265,6 +265,12 @@ function CompareView({
     rate: p.pass,
     role: p.id === candidateRunId ? "candidate" : p.id === baselineRunId ? "baseline" : undefined,
   }));
+  const transitions = [
+    { title: "Newly failing", cases: report.newly_failing, tone: "fail" as const },
+    { title: "Newly passing", cases: report.newly_passing },
+    { title: "Newly flaky", cases: report.newly_flaky },
+    { title: "No longer flaky", cases: report.no_longer_flaky },
+  ].filter((t) => t.cases.length > 0);
   const interval = (w: WhiskerRow) => (w.lower !== null && w.upper !== null ? `${pct(w.lower)}–${pct(w.upper)}` : "No interval");
 
   return (
@@ -290,7 +296,23 @@ function CompareView({
         </StatGrid>
       )}
 
-      <div className="mt-24 grid items-start gap-16 desktop:grid-cols-2">
+      <p className="mt-24 flex flex-wrap items-center gap-x-16 gap-y-4 type-micro text-ink-muted">
+        <span>Key, on this page:</span>
+        <span className="inline-flex items-center gap-6">
+          <span aria-hidden className="size-10 bg-accent" />
+          <span className="text-accent">Lime</span> is the candidate run
+        </span>
+        <span className="inline-flex items-center gap-6">
+          <span aria-hidden className="size-10 bg-ink" />
+          <span className="text-ink">White</span> the baseline
+        </span>
+        <span className="inline-flex items-center gap-6">
+          <span aria-hidden className="size-10 mark-fail text-fail" />
+          <span className="text-fail">Red</span> a failed attempt
+        </span>
+      </p>
+
+      <div className="mt-12 grid gap-16 desktop:grid-cols-2">
         <ChartFigure
           title="Run pass rate, 95% interval"
           note="Scale 0 to 100%"
@@ -324,12 +346,19 @@ function CompareView({
         </ChartFigure>
       </div>
 
-      <div className="mt-24 grid gap-16 tablet:grid-cols-2">
-        <Transition title="Newly failing" cases={report.newly_failing} tone="fail" {...diff} />
-        <Transition title="Newly passing" cases={report.newly_passing} {...diff} />
-        <Transition title="Newly flaky" cases={report.newly_flaky} {...diff} />
-        <Transition title="No longer flaky" cases={report.no_longer_flaky} {...diff} />
-      </div>
+      {transitions.length > 0 && (
+        <div className="mt-24 grid gap-16 tablet:grid-cols-2">
+          {transitions.map((t, i) => (
+            // An odd panel out takes the whole row rather than leaving an empty half beside it.
+            <Transition
+              key={t.title}
+              {...t}
+              {...diff}
+              className={i === transitions.length - 1 && transitions.length % 2 === 1 ? "tablet:col-span-2" : undefined}
+            />
+          ))}
+        </div>
+      )}
 
       {report.cases.length > 0 && (
         <Panel
@@ -377,18 +406,19 @@ function Transition({
   title,
   cases,
   tone,
+  className,
   ...diff
 }: {
   title: string;
   cases: string[];
   tone?: "fail";
+  className?: string;
   projectId: string;
   baselineRunId: string;
   candidateRunId: string;
 }) {
-  if (cases.length === 0) return null;
   return (
-    <Panel title={`${title} (${cases.length})`} titleStyle="label">
+    <Panel title={`${title} (${cases.length})`} titleStyle="label" className={className}>
       <ul className="flex flex-wrap gap-8">
         {cases.map((c) => (
           <li key={c}>

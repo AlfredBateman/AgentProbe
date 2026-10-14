@@ -4,7 +4,7 @@
 // next.config.ts): every primitive in every state a prop can reach. Hover and press are live;
 // the focus ring is shown forced beside the real one. Fake data only.
 import { type ReactNode, useState } from "react";
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { AsciiFrame, Crosshair } from "@/components/ui/ascii";
 import { Button, type ButtonVariant, buttonClasses } from "@/components/ui/button";
 import { BASELINE, chartTheme, CURRENT } from "@/components/ui/chart-theme";
@@ -13,7 +13,6 @@ import { type Column, DataTable } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Checkbox, FieldError, Input, Label, Select, Switch, Textarea } from "@/components/ui/field";
-import { GradientCard } from "@/components/ui/gradient-card";
 import { CopyIcon } from "@/components/ui/icons";
 import { Pagination } from "@/components/ui/pagination";
 import { Panel } from "@/components/ui/panel";
@@ -156,9 +155,6 @@ function Showcase() {
               A link styled as a button
             </a>
           </Row>
-          <Row label="legacy">
-            <Button variant="translucent">Translucent (secondary)</Button>
-          </Row>
         </div>
       </Section>
 
@@ -288,10 +284,6 @@ function Showcase() {
           <Panel>
             <p className="type-body text-ink-muted">No title, no header strip.</p>
           </Panel>
-          <GradientCard>
-            <p className="type-headline">Hero panel</p>
-            <p className="mt-8 type-body text-ink-muted">At most one per view.</p>
-          </GradientCard>
         </div>
         <StatGrid>
           <Stat label="Pass rate" value="86.7%" note="CI 80.1 to 92.0" />
@@ -433,7 +425,6 @@ function Showcase() {
                 <XAxis dataKey="run" {...chartTheme.xAxis} />
                 <YAxis domain={[0.8, 1]} tickFormatter={(v: number) => `${Math.round(v * 100)}%`} {...chartTheme.yAxis} />
                 <ChartTooltip {...chartTheme.tooltip} formatter={(v) => `${Math.round(Number(v) * 100)}%`} />
-                <Legend {...chartTheme.legend} />
                 <Line name="This branch" dataKey="current" stroke={CURRENT} {...chartTheme.line} />
                 <Line name="Baseline (main)" dataKey="baseline" stroke={BASELINE} strokeDasharray="4 4" {...chartTheme.line} />
               </LineChart>

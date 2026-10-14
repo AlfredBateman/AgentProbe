@@ -21,15 +21,9 @@ const textVars = (name, t) => [
 ];
 
 export function generate(tokens = readTokens()) {
-  const { colors, typography, aliases, fonts } = tokens;
+  const { colors, typography, fonts } = tokens;
   const theme = [];
   for (const [name, value] of Object.entries(colors)) theme.push(`  --color-${name}: ${value};`);
-  // Aliases (ADR 0042): status names say what a color means; legacy names keep pages that
-  // are not rebuilt yet resolving.
-  for (const [alias, target] of Object.entries(aliases.colors)) {
-    if (!(target in colors)) throw new Error(`aliases.colors.${alias}: DESIGN.md has no colors.${target}`);
-    theme.push(`  --color-${alias}: var(--color-${target});`);
-  }
 
   theme.push("");
   for (const [name, value] of Object.entries(tokens.rounded)) theme.push(`  --radius-${name}: ${value};`);
@@ -43,10 +37,6 @@ export function generate(tokens = readTokens()) {
 
   theme.push("");
   for (const [name, t] of Object.entries(typography)) theme.push(...textVars(name, t));
-  for (const [alias, target] of Object.entries(aliases.typography)) {
-    if (!(target in typography)) throw new Error(`aliases.typography.${alias}: DESIGN.md has no typography.${target}`);
-    theme.push(...textVars(alias, typography[target]));
-  }
 
   theme.push("");
   for (const [name, value] of Object.entries(tokens.motion.easing)) theme.push(`  --ease-${name}: ${value};`);

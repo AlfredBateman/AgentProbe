@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-from agentprobe_core.findings import ClusterFinding, cluster_failures
+from agentprobe_core.findings import ClusterFinding, FailingOutput, cluster_failures
 from agentprobe_core.llm import create_client
 from agentprobe_demo_agents import flaky
 from agentprobe_demo_agents.detection import run_one
@@ -67,7 +67,12 @@ async def main() -> int:
     with serve_in_background() as base_url:
         summary = await run_one(base_url, (SMOKE_SUITE, ROUTE), llm=llm)
     items = [
-        (f"{r.case_id}#{r.attempt}", r.response.output)
+        FailingOutput(
+            f"{r.case_id}#{r.attempt}",
+            r.response.output,
+            r.case_id,
+            tuple(j.judge for j in r.judgments if j.status == "fail"),
+        )
         for r in summary.results
         if r.status == "failed" and r.response is not None
     ]

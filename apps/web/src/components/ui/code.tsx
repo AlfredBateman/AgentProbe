@@ -99,7 +99,7 @@ export function PlainText({
           type="button"
           aria-expanded={full}
           onClick={() => setFull(!full)}
-          className="mt-4 cursor-pointer type-label text-accent hover:underline"
+          className="tap mt-4 cursor-pointer type-label text-accent hover:underline"
         >
           {full ? "Show less" : `Show full (${text.length.toLocaleString()} characters)`}
         </button>
