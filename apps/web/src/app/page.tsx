@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Hero } from "@/components/landing/hero";
 import { Reveal, Stagger } from "@/components/landing/motion";
 import { Proof } from "@/components/landing/proof";
-import { INSTALL, OWNER, REPO, TAG } from "@/components/landing/site";
+import { INSTALL, LICENSE, OWNER, REPO, TAG } from "@/components/landing/site";
 import { StatusChip } from "@/components/landing/status-chip";
 import { buttonClasses } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code";
@@ -22,7 +22,7 @@ const CARDS = [
 ];
 
 // A long title wraps inside its own width, so the corner arrow stays in the corner.
-const CARD = "flex min-h-160 flex-col hover:bg-surface-1 [&>header]:flex-nowrap [&>header]:items-start";
+const CARD = "hover:bg-surface-1 [&>header]:flex-nowrap [&>header]:items-start";
 const navLink = "inline-flex min-h-40 items-center text-ink-muted no-underline hover:text-ink";
 
 export default function Home() {
@@ -75,8 +75,12 @@ export default function Home() {
 
         <Stagger as="section" aria-label="How it works" className="grid gap-16 border-b border-hairline-strong px-16 py-32 tablet:grid-cols-3 tablet:px-32">
           {CARDS.map((card, i) => (
-            <Panel key={card.title} title={card.title} href={card.href} actions={<span className="type-micro text-ink-muted">{`0${i + 1}`}</span>} className={CARD}>
-              <p className="mt-auto type-label text-ink-muted">{card.body}</p>
+            <Panel key={card.title} title={card.title} href={card.href} className={CARD}>
+              {/* The numeral is the card's index, drawing only; the sentence beside it is the body. */}
+              <div className="flex items-end justify-between gap-16">
+                <p className="max-w-[20ch] type-body-sm text-ink-muted">{card.body}</p>
+                <span aria-hidden className="type-display-lg leading-none tabular-nums">{`0${i + 1}`}</span>
+              </div>
             </Panel>
           ))}
         </Stagger>
@@ -122,7 +126,7 @@ export default function Home() {
         <dl className="flex flex-col gap-12 p-16 type-label tablet:p-32">
           {[
             ["Copyright", `© ${new Date().getFullYear()} ${OWNER}`],
-            ["License", "NOT SET"],
+            ["License", LICENSE],
             ["Rev", TAG],
           ].map(([name, value]) => (
             <div key={name} className="flex items-baseline justify-between gap-12">

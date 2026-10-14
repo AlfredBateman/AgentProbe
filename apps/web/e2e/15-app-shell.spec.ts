@@ -7,6 +7,7 @@ import { SHELL_1440_EMAIL, SHELL_390_EMAIL, SHELL_404_EMAIL, SHELL_COLD_EMAIL, S
 // Each run also fails on an uncaught page error, a CSP violation, or horizontal overflow.
 const PASSWORD = "correct horse battery staple shell";
 const SCREENSHOT_DIR = path.resolve(__dirname, "../../../docs/screenshots/app");
+const LANDING_DIR = path.resolve(__dirname, "../../../docs/screenshots/landing");
 
 const VIEWPORTS = [
   { width: 1440, height: 900, email: SHELL_1440_EMAIL },
@@ -228,6 +229,36 @@ test("screenshots at 1440, 810 and 390px", async ({ page, baseURL }) => {
     }
     await page.setViewportSize(sizes[0]);
   }
+
+  // The landing page, signed out: the full page, the first viewport, the hero part-way through
+  // its scroll (where the fails turn red) and the proof card on its own.
+  for (const size of sizes) {
+    await page.setViewportSize(size);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    if (size.width >= 600) await expect(page.getByTestId("hero-3d").locator("canvas")).toBeVisible();
+    const height = await page.evaluate(() => document.documentElement.scrollHeight);
+    for (let y = 0; y <= height; y += 300) {
+      await page.mouse.wheel(0, 300); // as a reader would, so every reveal has played
+      await page.waitForTimeout(40);
+    }
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(page.locator('[class*="skeleton-step"]')).toHaveCount(0);
+    await page.waitForTimeout(700);
+    const at = (name: string) => path.join(LANDING_DIR, `${name}-${size.width}.png`);
+    await page.screenshot({ path: at("landing-hero") });
+    await page.screenshot({ path: at("landing"), fullPage: true });
+    await page.getByRole("article", { name: "Demo regression" }).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    await page.getByRole("article", { name: "Demo regression" }).screenshot({ path: at("landing-proof") });
+    if (size.width === 1440) {
+      const hero = await page.locator("#hero-title").evaluate((el) => el.closest("section")!.getBoundingClientRect().height);
+      await page.evaluate((y) => window.scrollTo(0, y), hero * 0.75);
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: path.join(LANDING_DIR, "landing-hero-scroll75-1440.png") });
+    }
+  }
+  await page.setViewportSize(sizes[0]);
 
   await page.goto("/login");
   await expect(page.getByLabel("Email")).toBeVisible();

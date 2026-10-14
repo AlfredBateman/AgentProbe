@@ -2,12 +2,15 @@ import { LabelBadge } from "@/components/run/labels";
 import { Stat } from "@/components/ui/stat";
 import facts from "./facts.json";
 import { CountUp, Reveal } from "./motion";
-import { ScrubValue } from "./proof-scrub";
 import { REPO } from "./site";
 
 const { detection, falseAlarms, regression } = facts;
 
-/** The bundled demo's regression, as the compare view reports it. Every figure is from facts.json. */
+/**
+ * The bundled demo's regression, as the compare view reports it. Every figure is from
+ * facts.json and every one is at rest: the card never shows a baseline figure in the candidate's
+ * place, which beside a Regression verdict would read as a case that did not change.
+ */
 export function Proof() {
   return (
     <section id="proof" aria-labelledby="proof-title" className="border-b border-hairline-strong px-16 py-48 tablet:px-32 tablet:py-96">
@@ -29,13 +32,13 @@ export function Proof() {
         <div className="flex flex-wrap items-center gap-x-24 gap-y-12 border-b border-hairline px-16 py-16">
           <code className="type-code">{regression.caseId}</code>
           <span className="type-data whitespace-nowrap">
-            {regression.baselinePasses} {"->"} <ScrubValue from={regression.baselinePasses} to={regression.candidatePasses} /> passed
+            {regression.baselinePasses} {"->"} {regression.candidatePasses} passed
           </span>
           <LabelBadge label={regression.label} />
         </div>
         <div className="grid-lines grid-cols-1 border-b border-hairline tablet:grid-cols-2 desktop:grid-cols-4">
           <Stat label="P-value" value={<span className="normal-case">{regression.p}</span>} tone="fail" note={`Threshold ${regression.threshold} /// Fisher exact`} />
-          <Stat label="Pass rate" value={<ScrubValue from={regression.passRateBefore} to={regression.passRateAfter} />} note={`Was ${regression.passRateBefore} /// CI unmeasured`} />
+          <Stat label="Pass rate" value={regression.passRateAfter} note={`Was ${regression.passRateBefore} /// CI unmeasured`} />
           <Stat label="False alarms" value={<CountUp value={falseAlarms.shipped} />} note={`95% CI ${falseAlarms.interval} /// naive ${falseAlarms.naive}`} />
           <Stat
             label="Planted flaws detected"

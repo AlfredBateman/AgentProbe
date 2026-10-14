@@ -51,11 +51,11 @@ The shell's chip never probes, because the shell's own calls answer it. The chip
 
 `proxy.ts` sends a visitor with no session cookie to `/login` for every non-public path, so a 404 is only seen when signed in or on a public prefix. That is existing behaviour and is left alone.
 
-### 6. Settings has a slot for alerts
-Settings is a wide API-keys column and a narrow column of read-only panels. The narrow column ends with an `Alerts` panel marked "Not available yet" that says what reports a regression today (the CLI run and the GitHub Action check). It is a placeholder, labelled as one; there is no alert setting behind it.
+### 6. Settings
+Settings is a wide API-keys column and a narrow column for the read-only Models panel. An `Alerts` placeholder panel ("Not available yet") was in the first version and was removed in review: there is no alert setting behind it, so there is nothing to show.
 
 ## Consequences
-- DESIGN.md's Navigation bullet is out of date for the app (it still describes the landing page's top bar correctly). It is not edited: ADR 0028 set the precedent that dashboard deviations live in an ADR.
+- DESIGN.md's Navigation section now describes both: the app's top strip and rail, and the landing and public pages' top bar (amended 2026-10-14, in review).
 - `useAppSession` throws outside the `(app)` layout, which is the point: a page that needs the session cannot be mounted without one.
 - A project created in another tab does not appear in the switcher until `/projects` is entered or the page is reloaded.
 - GSAP is now on every `(app)` route's first load. ADR 0044 measured 29.8 kB gzip for the wipe alone; the auth pages already load it through `useReveal`. It has not been re-measured here.

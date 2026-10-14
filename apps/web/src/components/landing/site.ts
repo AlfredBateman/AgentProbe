@@ -3,6 +3,8 @@ import pkg from "../../../package.json";
 // The release the page advertises is the app's own package version, never a typed one.
 export const VERSION: string = pkg.version;
 export const TAG = `v${VERSION}`;
+/** The SPDX id in package.json, which is where the LICENSE file at the repo root is named. */
+export const LICENSE: string = pkg.license;
 
 export const REPO = "https://github.com/AlfredBateman/AgentProbe";
 /** `owner/name`, as a workflow's `uses:` spells it. */

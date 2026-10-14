@@ -424,7 +424,8 @@ Used sparingly; each is graphic, not informational.
 - **Pagination** is a row of 40px squares; the current page is a lime outline with lime text.
 - **Skeletons** step through two greys in four hard steps. They never shimmer.
 - **Sparklines** are a 1.5px line in the current colour with a square marker on the last value.
-- **Navigation** is a 56px top bar. The active item is lime and bracketed. Below 810px the links collapse into a menu.
+- **Navigation**, in the app (everything signed in): a 56px top strip (wordmark, project switcher, `ENV` and `REV` marks, API status, account) over a 220px left rail of mono items, `[ PROJECTS ]`, `[ AGENTS ]`, `[ SUITES ]`, `[ RUNS ]`, `[ SETTINGS ]`. The active item is a lime edge bar with lime text. Below 810px the rail collapses into a menu and the switcher stays in the strip. Skip link first; arrow keys move along the rail. See [ADR 0047](docs/decisions/0047-app-shell-and-page-transition.md).
+- **Navigation**, on the landing and the public pages: a 56px top bar with the wordmark and links, collapsing into a menu below 810px.
 
 ## Motion
 

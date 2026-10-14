@@ -30,18 +30,14 @@ export default function SettingsPage() {
     <>
       <header ref={headerRef} className="border-b border-hairline-strong pb-16">
         <p className="type-micro text-ink-muted">
-          [ Project ] <span aria-hidden>{"///"}</span> Keys, models, alerts
+          [ Project ] <span aria-hidden>{"///"}</span> Keys and models
         </p>
         <h1 className="mt-8 type-display-md">Settings</h1>
       </header>
-      {/* Keys take the wide column. The narrow one holds read-only panels, so a new section
-          (alerts, when they exist) is one more panel in it. */}
+      {/* Keys take the wide column; the narrow one holds the read-only panels. */}
       <div className="mt-24 grid items-start gap-16 desktop:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <ApiKeysPanel projectId={projectId} />
-        <div className="flex flex-col gap-16">
-          <ModelConfigPanel />
-          <AlertsPanel />
-        </div>
+        <ModelConfigPanel />
       </div>
     </>
   );
@@ -251,18 +247,6 @@ function ModelConfigPanel() {
           </dl>
         </>
       )}
-    </Panel>
-  );
-}
-
-/** Where alerts will live. There is no setting to show yet, so it says so and names what does
- * report a regression today. */
-function AlertsPanel() {
-  return (
-    <Panel title="Alerts" actions={<span className="type-micro text-ink-muted">Not available yet</span>}>
-      <p className="type-body-sm text-ink-muted">
-        A regression fails the CLI run and the GitHub Action check. Alerts inside the app, and where they go, will be set here.
-      </p>
     </Panel>
   );
 }

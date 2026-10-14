@@ -3,6 +3,7 @@ name = "agentprobe-api"
 version = "0.0.0"
 description = "AgentProbe FastAPI backend and workers."
 requires-python = ">=3.12"
+license = "MIT"
 dependencies = [
     "agentprobe-core==0.1.0",
     "alembic==1.20.0",

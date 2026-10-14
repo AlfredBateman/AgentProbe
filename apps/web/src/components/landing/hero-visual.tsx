@@ -75,8 +75,11 @@ export function HeroVisual({ className }: { className: string }) {
         <rect width="320" height="240" fill="url(#hero-dots)" />
       </svg>
       <div ref={host} data-testid="hero-3d" className="absolute inset-0 empty:hidden" />
-      {/* On the bottom edge, where the headline never reaches at any width. */}
-      <p className="absolute bottom-0 left-8 translate-y-1/2 border border-hairline-strong bg-canvas px-4 py-2 type-micro text-ink-muted">Illustrative</p>
+      {/* On the bottom edge. Below 810px the headline's last line reaches it, so there the label
+          is the caption row under the figure (Fig. 01 /// Illustrative), which is always shown. */}
+      <p className="absolute bottom-0 left-8 hidden translate-y-1/2 border border-hairline-strong bg-canvas px-4 py-2 type-micro text-ink-muted tablet:block">
+        Illustrative
+      </p>
     </div>
   );
 }

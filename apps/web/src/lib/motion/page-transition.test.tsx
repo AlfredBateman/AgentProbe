@@ -28,8 +28,14 @@ const finish = () => act(() => tweens().forEach((t) => t.progress(1)));
 beforeEach(() => {
   nav.pathname = "/projects";
   setReducedMotion(false);
+  // The clock stays still: a 400 ms wipe on a loaded machine would otherwise finish, and leave
+  // the timeline, before the test looked. `finish()` moves it by hand.
+  gsap.globalTimeline.pause();
 });
-afterEach(() => gsap.globalTimeline.clear());
+afterEach(() => {
+  gsap.globalTimeline.clear();
+  gsap.globalTimeline.resume();
+});
 
 describe("PageTransition in a layout, which never remounts", () => {
   test("skips the page already on screen, then wipes each pathname change without remounting", () => {

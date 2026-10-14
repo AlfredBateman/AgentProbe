@@ -69,3 +69,15 @@ test("a rejected or missing clipboard says so", async () => {
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Copy" })));
   expect(screen.getByRole("button", { name: "Copy failed" })).toBeTruthy();
 });
+
+test("a long line wraps in the block and the copy button still holds all of it", async () => {
+  const long = `pip install "agentprobe-core @ git+https://github.com/example/repo@v0.1.0#subdirectory=packages/core" ${"x".repeat(300)}`;
+  const writeText = vi.fn(() => Promise.resolve());
+  stubClipboard(writeText);
+  const { container } = render(<CodeBlock code={long} />);
+  const pre = container.querySelector("pre")!;
+  expect(pre.className).toContain("whitespace-pre-wrap");
+  expect(pre.className).toContain("break-words");
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Copy" })));
+  expect(writeText).toHaveBeenCalledWith(long);
+});

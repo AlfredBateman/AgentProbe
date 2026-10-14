@@ -82,7 +82,9 @@ export function mountScene({ canvas, context, host, track }: Options) {
 
   const tile = new PlaneGeometry(TILE, TILE);
   const mark = failMark(TILE);
-  const passMaterial = new MeshBasicMaterial({ color: token("accent") });
+  // Pass is grey, fail is red, and nothing in the figure is lime: the lime belongs to the
+  // headline over it, whose outlined word has to read against the dots.
+  const passMaterial = new MeshBasicMaterial({ color: token("hairline-strong") });
   const failMaterial = new MeshBasicMaterial({ color: token("fail") });
   const count = COLS * ROWS;
   const pass = new InstancedMesh(tile, passMaterial, count);

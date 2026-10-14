@@ -101,8 +101,10 @@ export function CodeBlock({ code, label, as: Tag = "code", className }: { code: 
         {label ?? ""}
         <CopyButton text={code} />
       </figcaption>
-      {/* Focusable, so a keyboard user can scroll a long line. */}
-      <pre tabIndex={0} className="overflow-x-auto p-16">
+      {/* Long lines wrap (an install line is two git URLs) instead of running off the panel;
+          a single unbreakable token still scrolls. Focusable, so a keyboard user can scroll it.
+          Only the display wraps: the copy button holds the whole, unbroken text. */}
+      <pre tabIndex={0} className="overflow-x-auto p-16 break-words whitespace-pre-wrap">
         <Tag className="type-code text-ink">{code}</Tag>
       </pre>
     </figure>

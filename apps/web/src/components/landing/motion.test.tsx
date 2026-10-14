@@ -2,7 +2,6 @@ import { render } from "@testing-library/react";
 import { expect, test } from "vitest";
 import facts from "./facts.json";
 import { CountUp, formatFigure, parseFigure } from "./motion";
-import { ScrubValue } from "./proof-scrub";
 
 const { detection, falseAlarms, regression, runsPerCase } = facts;
 
@@ -25,13 +24,13 @@ test("every animated figure formats back to exactly its own text", () => {
   expect(parseFigure("n/a")).toBeUndefined();
 });
 
-test("without motion, counts and scrubs render their final figure", () => {
+test("without motion, a count renders its final figure", () => {
   // The default matchMedia stub matches nothing, so motion is off.
   const { container } = render(
     <p>
-      <CountUp value="0.9%" /> <ScrubValue from="10/10" to="0/10" />
+      <CountUp value="0.9%" />
     </p>,
   );
-  expect(container.textContent).toBe("0.9% 0/10");
+  expect(container.textContent).toBe("0.9%");
   expect(container.querySelector("[data-motion]")).toBeNull();
 });

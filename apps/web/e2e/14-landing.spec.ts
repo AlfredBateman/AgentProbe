@@ -37,7 +37,7 @@ async function scrollThrough(page: Page) {
   }
 }
 
-test("desktop: the 3D grid renders, the proof card scrubs, nothing errors or shifts", async ({ page }) => {
+test("desktop: the 3D grid renders, the proof card reads the regression at rest, nothing errors or shifts", async ({ page }) => {
   const errors = watchErrors(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
@@ -52,9 +52,11 @@ test("desktop: the 3D grid renders, the proof card scrubs, nothing errors or shi
   expect(size.w / size.cw).toBeLessThanOrEqual(2);
   await expect(page.getByTestId("hero-3d").locator("..").getByText("Illustrative", { exact: true })).toBeVisible();
 
-  // Below the fold the card waits on its baseline; scrolled through, it reads the candidate.
+  // The card is the same at every scroll position: the candidate's figures beside a Regression
+  // verdict, never the baseline's in their place.
   const passRate = page.getByRole("article", { name: "Demo regression" }).locator("dl").nth(1).locator("dd").first();
-  await expect(passRate).toHaveText("98.9%");
+  await expect(passRate).toHaveText("86.7%");
+  await expect(page.getByText(/^10\/10 -> 0\/10 passed$/)).toBeAttached();
   await scrollThrough(page);
   await expect(passRate).toHaveText("86.7%");
   await expect(page.getByText(/^10\/10 -> 0\/10 passed$/)).toBeVisible();
@@ -93,4 +95,36 @@ test("a 390px phone gets the static figure and no three", async ({ page }) => {
   await expect(page.getByTestId("hero-3d").locator("canvas")).toHaveCount(0);
   expect(await threeLoaded(page)).toBe(false);
   expect(errors, errors.join("\n")).toEqual([]);
+});
+
+for (const [width, height] of [
+  [1440, 900],
+  [810, 1000],
+  [390, 844],
+] as const) {
+  test(`the install block wraps at ${width}px and copies the whole command`, async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.setViewportSize({ width, height });
+    await page.goto("/");
+    const block = page.locator("#install figure");
+    await block.scrollIntoViewIfNeeded();
+    const pre = block.locator("pre");
+    // Nothing is cut off: the text wraps inside the block, so it has no sideways overflow.
+    const fits = await pre.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+    expect(fits, "the install command overflows its block").toBe(true);
+    const shown = (await pre.locator("code").textContent()) ?? "";
+    await block.getByRole("button", { name: "Copy" }).click();
+    // A Windows clipboard hands lines back CRLF; the text is otherwise the whole block, unbroken.
+    const copied = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
+    expect(copied).toBe(shown);
+    expect(shown).toContain("pip install");
+    expect(shown.split(String.fromCharCode(10))[0].length).toBeGreaterThan(100); // the long line this test is about
+  });
+}
+
+test("the footer shows the license package.json names", async ({ page }) => {
+  await page.goto("/");
+  const footer = page.getByRole("contentinfo");
+  await expect(footer.getByText("MIT", { exact: true })).toBeVisible();
+  await expect(footer).not.toContainText("NOT SET");
 });
