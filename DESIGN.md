@@ -427,6 +427,16 @@ Used sparingly; each is graphic, not informational.
 - **Navigation**, in the app (everything signed in): a 56px top strip (wordmark, project switcher, `ENV` and `REV` marks, API status, account) over a 220px left rail of mono items, `[ PROJECTS ]`, `[ AGENTS ]`, `[ SUITES ]`, `[ RUNS ]`, `[ SETTINGS ]`. The active item is a lime edge bar with lime text. Below 810px the rail collapses into a menu and the switcher stays in the strip. Skip link first; arrow keys move along the rail. See [ADR 0047](docs/decisions/0047-app-shell-and-page-transition.md).
 - **Navigation**, on the landing and the public pages: a 56px top bar with the wordmark and links, collapsing into a menu below 810px.
 
+## Charts
+
+Charts follow the same rules as the rest of the system, plus these ([ADR 0050](docs/decisions/0050-compare-findings-shared-and-export.md)):
+
+- **Lime marks the candidate.** In a chart, lime is the run under examination (a stroke, a marker, a bar, an attempt square). A baseline is `ink`. Red is failure only. This is the one place lime is used for "pass"; chips, badges and table cells keep the status encoding above.
+- **Telemetry style.** Mono axis labels, 1px strokes, flat fills, a fixed 0 to 100% scale for rates, square markers. No colour fade, no shadow.
+- **Direct labels, no legend.** Every row or marker names itself; a flaky bar is hatched, a failure is the cross mark, so no series is told by colour alone.
+- **A table view.** Every figure carries its plotted values as a table (`ChartFigure` requires one).
+- **Motion.** One stepped draw-in (`steps(6, end)`, 400ms, a clip) and nothing else; reduced motion shows the finished chart.
+
 ## Motion
 
 Motion is short and mechanical.

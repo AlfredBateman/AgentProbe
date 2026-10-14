@@ -278,6 +278,27 @@ html[data-scanlines]::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='3'%3E%3Crect width='1' height='1' fill='%23000' fill-opacity='.18'/%3E%3C/svg%3E");
 }
 
+/* Charts (components/ui/telemetry): drawn in once, left to right, in six hard steps. Only the
+   clip moves, and it is gone when the animation ends. Under reduced motion (the OS setting or
+   the /dev/components switch) the finished chart is simply there. */
+@keyframes draw-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@utility draw-in {
+  @media (prefers-reduced-motion: no-preference) {
+    :root:not([data-reduce-motion]) & {
+      animation: draw-in 400ms steps(6, end) backwards;
+    }
+  }
+}
+
 /* Skeleton: four hard steps between two greys, slow enough to be nowhere near a flicker. */
 @keyframes skeleton-step {
   from {

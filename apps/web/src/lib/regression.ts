@@ -69,6 +69,59 @@ export type RegressionReportDump = {
 
 const signedPct = (x: number) => `${x >= 0 ? "+" : ""}${pct(x)}`;
 
+/** A pass-rate difference in percentage points: the verdict's effect size. */
+export const points = (x: number) => `${x > 0 ? "+" : x < 0 ? "−" : "±"}${Math.abs(x * 100).toFixed(1)} pts`;
+
+export type VerdictLine = {
+  verdict: RegressionReportDump["verdict"];
+  /** The verdict's word, as the labels spell it. */
+  word: string;
+  /** What decided it, from the report's own values: the case, its p and the threshold it met. */
+  detail: string;
+};
+
+const WORD = { regression: "Regression", improvement: "Improvement", no_change: "No change" } as const;
+
+/**
+ * The verdict as one sentence's worth of numbers (`Regression: refund-flow, p=0.0040, corrected
+ * threshold=0.0100`). Every figure is the report's. The per-case family has corrected thresholds,
+ * not adjusted p-values (ADR 0014), so the sentence says "corrected threshold" and never "corrected p".
+ */
+export function verdictLine(r: RegressionReportDump): VerdictLine {
+  const word = WORD[r.verdict];
+  const n = r.suite?.cases ?? r.cases.length;
+  const cases = `${n} shared ${n === 1 ? "case" : "cases"}`;
+
+  if (r.verdict === "no_change") {
+    if (r.cases.length === 0) return { verdict: r.verdict, word, detail: "no shared cases to compare" };
+    const lowest = r.cases.reduce((a, b) => (b.p_worse < a.p_worse ? b : a));
+    return { verdict: r.verdict, word, detail: `${cases}, none significant; lowest p=${pValue(lowest.p_worse)} (${lowest.case_id})` };
+  }
+
+  const better = r.verdict === "improvement";
+  const flagged = r.cases
+    .filter((c) => (better ? c.improved : c.regressed))
+    .toSorted((a, b) => (better ? a.p_better - b.p_better : a.p_worse - b.p_worse));
+  const top = flagged[0];
+  if (top) {
+    const p = better ? top.p_better : top.p_worse;
+    const threshold = better ? top.p_better_threshold : top.p_worse_threshold;
+    const parts = [top.case_id, `p=${pValue(p)}`];
+    if (threshold !== null) parts.push(`corrected threshold=${pValue(threshold)}`);
+    if (flagged.length > 1) parts.push(`+${flagged.length - 1} more ${flagged.length === 2 ? "case" : "cases"}`);
+    return { verdict: r.verdict, word, detail: parts.join(", ") };
+  }
+
+  // No single case fired: the suite-level paired test did.
+  const s = r.suite;
+  const p = s ? (better ? s.p_better : s.p_worse) : null;
+  return {
+    verdict: r.verdict,
+    word,
+    detail: s && p !== null ? `suite pass rate ${points(s.pass_rate_delta)}, p=${pValue(p)} vs α_suite=${r.alpha_suite}` : cases,
+  };
+}
+
 /** The verdict's own statistics in plain language: which channel fired, its significance, effect size and N. */
 export function verdictSummary(r: RegressionReportDump): string {
   const n = r.suite?.cases ?? r.cases.length;

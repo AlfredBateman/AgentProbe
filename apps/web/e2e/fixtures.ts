@@ -16,6 +16,7 @@ export const OVERVIEW_EMAIL = "overview@example.com";
 export const AGENTS_SUITES_EMAIL = "agents-suites@example.com";
 export const TELEMETRY_EMAIL = "telemetry@example.com"; // 16: overview, agents and suites on real data
 export const RUN_BOARD_EMAIL = "run-board@example.com"; // 17: runs list, live run board, trace viewer
+export const COMPARE_EMAIL = "compare@example.com"; // 18: compare, findings, shared snapshot, HTML export
 export const SHELL_1440_EMAIL = "shell-1440@example.com"; // 15: the app shell, register to API key
 export const SHELL_390_EMAIL = "shell-390@example.com";
 export const SHELL_COLD_EMAIL = "shell-cold@example.com"; // 15: a cold API behind the shell

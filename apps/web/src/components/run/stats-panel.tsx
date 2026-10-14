@@ -6,18 +6,17 @@ import { Badge } from "@/components/ui/status";
 import type { components } from "@/lib/api/schema";
 import { cx } from "@/lib/cx";
 import { pct, pValue } from "@/lib/format";
-import { type CaseComparisonDump, type RegressionReportDump, verdictSummary } from "@/lib/regression";
+import { type CaseComparisonDump, points, type RegressionReportDump, verdictSummary } from "@/lib/regression";
 import type { CaseRow } from "@/lib/run-cases";
 import { VerdictBadge } from "./labels";
+
+export { points };
 
 type Run = components["schemas"]["RunDetailOut"];
 /** null: not fetched yet; "none": no baseline on the run's branch (the API's 404). */
 export type Verdict = components["schemas"]["RunVerdictOut"] | "none" | null;
 
 const MAX_CASES = 5;
-
-/** A pass-rate difference in percentage points: the verdict's effect size. */
-export const points = (x: number) => `${x > 0 ? "+" : x < 0 ? "−" : "±"}${Math.abs(x * 100).toFixed(1)} pts`;
 
 const fraction = (passes: number, attempts: number) => `${passes}/${attempts}`;
 

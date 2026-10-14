@@ -49,7 +49,7 @@ test("a share link works in a logged-out browser context; after revoking, it sho
     const anon = await browser.newContext();
     const anonPage = await anon.newPage();
     await anonPage.goto(`/shared/${token}`);
-    await expect(anonPage.getByText("Shared run · read-only")).toBeVisible();
+    await expect(anonPage.getByText("Read-only snapshot")).toBeVisible();
     await expect(anonPage.getByRole("heading", { name: "smoke" })).toBeVisible();
     await anon.close();
   });

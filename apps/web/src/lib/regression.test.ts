@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { type RegressionReportDump, verdictSummary } from "./regression";
+import { type RegressionReportDump, verdictLine, verdictSummary } from "./regression";
 
 const summary = (passes: number, attempts: number, label: "stable-pass" | "stable-fail" | "flaky") => ({
   passes,
@@ -93,6 +93,85 @@ test("a suite-level regression names its p-value, delta and N, not a case", () =
   expect(text).toContain("suite pass rate moved -20.0% across 30 shared cases");
   expect(text).toContain("p = 0.0010 vs α_suite = 0.025");
   expect(text).toContain("Monte Carlo");
+});
+
+const flaggedCase = (id: string, over: Partial<RegressionReportDump["cases"][number]> = {}): RegressionReportDump["cases"][number] => ({
+  case_id: id,
+  baseline: summary(5, 5, "stable-pass"),
+  candidate: summary(0, 5, "stable-fail"),
+  pass_rate_delta: -1,
+  p_worse: 0.004,
+  p_worse_min: 0.004,
+  p_worse_threshold: 0.0125,
+  p_better: 1,
+  p_better_min: 1,
+  p_better_threshold: null,
+  regressed: true,
+  improved: false,
+  score_delta: null,
+  latency_delta_ms: null,
+  cost_per_attempt_delta_usd: null,
+  ...over,
+});
+
+const suiteOf = (over: Partial<NonNullable<RegressionReportDump["suite"]>> = {}): NonNullable<RegressionReportDump["suite"]> => ({
+  cases: 8,
+  baseline_pass_rate: 0.9,
+  candidate_pass_rate: 0.7,
+  pass_rate_delta: -0.2,
+  p_worse: 0.0123,
+  p_better: 1,
+  exact: true,
+  regressed: false,
+  improved: false,
+  score: null,
+  latency_ms: null,
+  cost_usd: null,
+  ...over,
+});
+
+test("verdictLine names the most significant flagged case with its p and its corrected threshold", () => {
+  const line = verdictLine(
+    report({
+      verdict: "regression",
+      regressed: ["refund-flow", "tone"],
+      cases: [flaggedCase("tone", { p_worse: 0.02, p_worse_threshold: 0.025 }), flaggedCase("refund-flow")],
+    }),
+  );
+  expect(line).toEqual({
+    verdict: "regression",
+    word: "Regression",
+    detail: "refund-flow, p=0.0040, corrected threshold=0.0125, +1 more case",
+  });
+});
+
+test("verdictLine never calls a threshold a corrected p-value, and reads a tiny p as scientific", () => {
+  const line = verdictLine(report({ verdict: "regression", cases: [flaggedCase("c", { p_worse: 5.4e-6 })] }));
+  expect(line.detail).toBe("c, p=5.4e-6, corrected threshold=0.0125");
+  expect(line.detail).not.toMatch(/corrected p\b/);
+});
+
+test("an improvement reads the better-direction p and threshold", () => {
+  const line = verdictLine(
+    report({
+      verdict: "improvement",
+      cases: [flaggedCase("c", { regressed: false, improved: true, p_better: 0.01, p_better_threshold: 0.02, p_worse: 1 })],
+    }),
+  );
+  expect(line).toMatchObject({ word: "Improvement", detail: "c, p=0.0100, corrected threshold=0.0200" });
+});
+
+test("a suite-level regression with no flagged case states the paired test", () => {
+  const line = verdictLine(report({ verdict: "regression", suite: suiteOf({ regressed: true }), cases: [flaggedCase("c", { regressed: false })] }));
+  expect(line.detail).toBe("suite pass rate −20.0 pts, p=0.0123 vs α_suite=0.025");
+});
+
+test("no change states how many cases were compared and the lowest p, not a threshold", () => {
+  const line = verdictLine(
+    report({ suite: suiteOf(), cases: [flaggedCase("a", { regressed: false, p_worse: 0.3 }), flaggedCase("b", { regressed: false, p_worse: 0.08 })] }),
+  );
+  expect(line).toEqual({ verdict: "no_change", word: "No change", detail: "8 shared cases, none significant; lowest p=0.0800 (b)" });
+  expect(verdictLine(report({})).detail).toBe("no shared cases to compare");
 });
 
 test("pValue never shows a tiny p as 0.0000", async () => {

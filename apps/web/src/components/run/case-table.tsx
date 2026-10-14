@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { type Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -10,7 +9,8 @@ import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { ms, score, usd } from "@/lib/format";
 import { type CaseRow, filterRows, type Filters, NO_FILTERS } from "@/lib/run-cases";
-import { AttemptBadge, JudgmentBadge, LABELS, LabelBadge } from "./labels";
+import { AttemptList } from "./attempts";
+import { LABELS, LabelBadge } from "./labels";
 
 type Result = components["schemas"]["ResultOut"];
 
@@ -32,7 +32,7 @@ export function CaseTable({ rows, runId, projectId, runsPerCase, version }: Prop
   const set = (key: keyof Filters) => (e: { target: { value: string } }) => setFilters({ ...filters, [key]: e.target.value });
 
   const columns: Column<CaseRow>[] = [
-    { key: "case", header: "Case", value: (r) => r.case, render: (r) => <span className="font-mono text-code">{r.case}</span> },
+    { key: "case", header: "Case", value: (r) => r.case, render: (r) => <span className="type-code">{r.case}</span> },
     {
       key: "label",
       header: "Stability",
@@ -102,7 +102,7 @@ export function CaseTable({ rows, runId, projectId, runsPerCase, version }: Prop
           </Select>
         </div>
       </div>
-      <p aria-live="polite" className="mb-8 text-data-label text-ink-muted">
+      <p aria-live="polite" className="mb-8 type-micro text-ink-muted">
         {shown.length === rows.length ? `${rows.length} ${rows.length === 1 ? "case" : "cases"}` : `${shown.length} of ${rows.length} cases`}
       </p>
       <DataTable
@@ -134,39 +134,22 @@ function CaseAttempts({ runId, projectId, caseId, version }: { runId: string; pr
   }, [runId, caseId, version]);
 
   if (results === "loading") return <Skeleton className="h-60" />;
-  if (results === "error") return <p className="text-body-sm text-ink-muted">Couldn&rsquo;t load the attempts.</p>;
+  if (results === "error") return <p className="type-body-sm text-ink-muted">Couldn&rsquo;t load the attempts.</p>;
   return (
-    <ol className="flex flex-col gap-12 whitespace-normal" aria-label={`Attempts of ${caseId}`}>
-      {results.map((r) => (
-        <li key={r.id} className="bg-canvas p-12">
-          <div className="flex flex-wrap items-center gap-x-12 gap-y-6 text-data tabular-nums">
-            <span className="font-medium text-ink">Attempt {r.attempt + 1}</span>
-            <AttemptBadge status={r.status} />
-            <span className="text-ink-muted">Score {score(r.score)}</span>
-            <span className="text-ink-muted">{ms(r.latency_ms)}</span>
-            <span className="text-ink-muted">{usd(r.cost)}</span>
-            {r.error_kind && <span className="text-ink-muted">{r.error_kind} error</span>}
-            <Link
-              href={`/projects/${projectId}/runs/${runId}/results/${r.id}`}
-              className="ml-auto text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
-            >
-              View trace
-            </Link>
-          </div>
-          {r.judgments.length > 0 && (
-            <ul className="mt-8 flex flex-col gap-6">
-              {r.judgments.map((j, i) => (
-                <li key={i} className="flex flex-wrap items-baseline gap-x-8 gap-y-4 text-body-sm">
-                  <JudgmentBadge status={j.status} />
-                  <span className="font-mono text-code text-ink">{j.judge}</span>
-                  {/* Judge reasons quote agent output: plain text only. */}
-                  <span className="min-w-0 break-words text-ink-muted">{j.reason}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </li>
-      ))}
-    </ol>
+    <AttemptList
+      label={`Attempts of ${caseId}`}
+      items={results.map((r) => ({
+        key: r.id,
+        attempt: r.attempt,
+        status: r.status,
+        score: r.score,
+        latencyMs: r.latency_ms,
+        cost: r.cost,
+        errorKind: r.error_kind,
+        output: r.output,
+        judgments: r.judgments,
+        traceHref: `/projects/${projectId}/runs/${runId}/results/${r.id}`,
+      }))}
+    />
   );
 }
