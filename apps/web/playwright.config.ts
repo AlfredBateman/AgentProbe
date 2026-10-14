@@ -12,6 +12,7 @@ import {
   SHELL_COLD_EMAIL,
   SHELL_SHOTS_EMAIL,
   SSRF_EMAIL,
+  TELEMETRY_EMAIL,
   VISUAL_EMAIL,
 } from "./e2e/fixtures";
 
@@ -48,6 +49,7 @@ const signupAllowedEmails = [
   SHELL_404_EMAIL,
   SHELL_COLD_EMAIL,
   SHELL_SHOTS_EMAIL,
+  TELEMETRY_EMAIL,
 ].join(",");
 
 // Fake, committed, test-only values (never used for anything real): Fernet needs a valid key

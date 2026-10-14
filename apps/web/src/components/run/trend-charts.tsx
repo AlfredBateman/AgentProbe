@@ -7,7 +7,7 @@ import { ms, pct, usd } from "@/lib/format";
 import { isEmpty, type TrendPoint } from "@/lib/trends";
 
 // Rules (ADR 0028 §2, the dataviz method): one y-axis per chart, a single series in ink, the
-// baseline dashed ink-muted, the CI as a faint band of the series' own ink, accent-blue never.
+// baseline dashed ink-muted, the CI as a faint band of the series' own ink, lime never.
 // The runs table below the charts is their table view: every plotted value is also there.
 
 const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -19,13 +19,13 @@ type Props = { points: TrendPoint[] };
 
 function Frame({ title, legend, empty, children }: { title: string; legend?: ReactNode; empty?: string | false; children: ReactNode }) {
   return (
-    <figure className="min-w-0 bg-surface-1 p-20">
+    <figure className="min-w-0 border border-hairline bg-canvas p-16">
       <figcaption className="mb-12 flex flex-wrap items-baseline justify-between gap-x-15 gap-y-4">
-        <span className="font-display text-dash-heading text-ink">{title}</span>
-        {legend && !empty && <span className="flex flex-wrap gap-x-12 gap-y-4 text-data-label text-ink-muted">{legend}</span>}
+        <span className="type-headline text-ink">{title}</span>
+        {legend && !empty && <span className="flex flex-wrap gap-x-12 gap-y-4 type-label text-ink-muted">{legend}</span>}
       </figcaption>
       {empty ? (
-        <p className="flex items-center justify-center text-body-sm text-ink-muted" style={{ height: HEIGHT }}>
+        <p className="flex items-center justify-center type-body-sm text-ink-muted" style={{ height: HEIGHT }}>
           {empty}
         </p>
       ) : (

@@ -32,7 +32,7 @@ export function RunsTable({ runs, projectId, baselines, caption, empty }: Props)
         <span className="flex flex-col">
           <Link
             href={`/projects/${projectId}/runs/${r.id}`}
-            className="self-start font-mono text-code text-accent-blue outline-none hover:underline focus-visible:shadow-focus"
+            className="self-start text-ink underline decoration-hairline-strong underline-offset-4 hover:decoration-accent"
           >
             {r.suite_name}
           </Link>

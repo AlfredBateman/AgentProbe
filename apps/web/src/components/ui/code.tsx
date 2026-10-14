@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { cx } from "@/lib/cx";
 import { Button } from "./button";
 import { CheckIcon, CopyIcon } from "./icons";
@@ -93,10 +93,30 @@ export const jsonText = (value: unknown) => (typeof value === "string" ? value :
 /**
  * Traces, YAML and payloads. The text is rendered as a text child only: agent output and attack
  * payloads are untrusted and must never become HTML.
+ *
+ * `body` replaces the read-only text with something that edits it (the suite editor), inside the
+ * same frame; `code` is still what the copy button holds. `footer` sits under the body, divided
+ * by a line (validation messages). `invalid` turns the frame's edge red.
  */
-export function CodeBlock({ code, label, as: Tag = "code", className }: { code: string; label?: string; as?: TextKind; className?: string }) {
+export function CodeBlock({
+  code,
+  label,
+  as: Tag = "code",
+  className,
+  body,
+  footer,
+  invalid,
+}: {
+  code: string;
+  label?: ReactNode;
+  as?: TextKind;
+  className?: string;
+  body?: ReactNode;
+  footer?: ReactNode;
+  invalid?: boolean;
+}) {
   return (
-    <figure className={cx("min-w-0 overflow-hidden border border-hairline-strong bg-canvas", className)}>
+    <figure className={cx("min-w-0 overflow-hidden border bg-canvas", invalid ? "border-fail" : "border-hairline-strong", className)}>
       <figcaption className="flex items-center justify-between gap-8 border-b border-hairline bg-surface-1 py-4 pr-4 pl-16 type-micro text-ink-muted">
         {label ?? ""}
         <CopyButton text={code} />
@@ -104,9 +124,12 @@ export function CodeBlock({ code, label, as: Tag = "code", className }: { code: 
       {/* Long lines wrap (an install line is two git URLs) instead of running off the panel;
           a single unbreakable token still scrolls. Focusable, so a keyboard user can scroll it.
           Only the display wraps: the copy button holds the whole, unbroken text. */}
-      <pre tabIndex={0} className="overflow-x-auto p-16 break-words whitespace-pre-wrap">
-        <Tag className="type-code text-ink">{code}</Tag>
-      </pre>
+      {body ?? (
+        <pre tabIndex={0} className="overflow-x-auto p-16 break-words whitespace-pre-wrap">
+          <Tag className="type-code text-ink">{code}</Tag>
+        </pre>
+      )}
+      {footer && <div className="border-t border-hairline">{footer}</div>}
     </figure>
   );
 }

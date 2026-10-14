@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { RunButton } from "@/components/run/run-button";
 import { RunSuiteDialog } from "@/components/run/run-suite-dialog";
+import { PageHeader } from "@/components/shell/page-header";
 import { CaseBrowser, type Version, VersionHistory } from "@/components/suite/suite-panels";
+import { type Issue, YamlEditor } from "@/components/suite/yaml-editor";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
-import { FieldError, Label, Textarea } from "@/components/ui/field";
+import { FieldError } from "@/components/ui/field";
+import { Panel } from "@/components/ui/panel";
 import { StatusDot } from "@/components/ui/status";
 import { Tabs, tabId } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
@@ -18,8 +21,7 @@ import type { components } from "@/lib/api/schema";
 import { date } from "@/lib/format";
 
 type Suite = components["schemas"]["SuiteDetailOut"];
-type Issue = components["schemas"]["SuiteIssue"];
-type Panel = "editor" | "cases" | "versions";
+type TabValue = "editor" | "cases" | "versions";
 type Validation = { valid: true; cases: number } | { valid: false; issues: Issue[] } | "checking" | null;
 
 const VALIDATE_AFTER_MS = 400;
@@ -30,7 +32,7 @@ export default function SuitePage() {
   const { projectId, suiteId } = useParams<{ projectId: string; suiteId: string }>();
   const [suite, setSuite] = useState<Suite | "loading" | "error">("loading");
   const [versions, setVersions] = useState<Version[]>([]);
-  const [panel, setPanel] = useState<Panel>("editor");
+  const [panel, setPanel] = useState<TabValue>("editor");
   const [running, setRunning] = useState(false);
 
   const load = useCallback(() => {
@@ -52,27 +54,29 @@ export default function SuitePage() {
 
   return (
     <>
-      <header className="flex flex-col gap-15 tablet:flex-row tablet:items-start tablet:justify-between">
-        <div className="min-w-0">
-          <p className="text-data-label text-ink-muted">
-            <Link href={`/projects/${projectId}/suites`} className="outline-none hover:text-ink focus-visible:shadow-focus">
+      <PageHeader
+        eyebrow={
+          <>
+            [{" "}
+            <Link href={`/projects/${projectId}/suites`} className="hover:text-ink">
               Suites
             </Link>{" "}
-            / <span className="font-mono">{suite.name}</span>
-          </p>
-          <h1 className="mt-4 font-display text-dash-title-sm break-words tablet:text-dash-title">{suite.name}</h1>
-          <p className="mt-8 text-data text-ink-muted">
-            Version {suite.version} · {suite.case_count} {suite.case_count === 1 ? "case" : "cases"} · created {date(suite.created_at)}
-          </p>
-        </div>
-        <Button data-testid="run-this-suite" onClick={() => setRunning(true)} className="self-start">
-          Run
-        </Button>
-      </header>
+            ] <span aria-hidden>{"///"}</span> {versions.length} {versions.length === 1 ? "version" : "versions"}
+          </>
+        }
+        title={suite.name}
+        verbatim
+        // Secondary: the editor's Save is the one primary action in this view.
+        actions={<RunButton variant="secondary" data-testid="run-this-suite" onClick={() => setRunning(true)} />}
+      >
+        <p className="type-data text-ink-muted">
+          Version {suite.version} · {suite.case_count} {suite.case_count === 1 ? "case" : "cases"} · created {date(suite.created_at)}
+        </p>
+      </PageHeader>
 
       <Tabs
         aria-label="Suite"
-        className="mt-20"
+        className="mt-24"
         value={panel}
         onValueChange={setPanel}
         items={[
@@ -81,11 +85,11 @@ export default function SuitePage() {
           { value: "versions", label: `Versions (${versions.length})` },
         ]}
       />
-      <Card className="mt-12" role="tabpanel" aria-labelledby={tabId(panel)}>
+      <Panel className="mt-16" role="tabpanel" aria-labelledby={tabId(panel)}>
         {panel === "editor" && <SuiteEditor key={suite.version} suite={suite} onSaved={load} />}
         {panel === "cases" && <CaseBrowser key={suite.version} suiteId={suite.id} versions={versions} current={suite.version} />}
         {panel === "versions" && <VersionHistory suiteId={suite.id} versions={versions} current={suite.version} />}
-      </Card>
+      </Panel>
       {running && (
         <RunSuiteDialog
           projectId={projectId}
@@ -105,7 +109,6 @@ function SuiteEditor({ suite, onSaved }: { suite: Suite; onSaved: () => void }) 
   const [checked, setValidation] = useState<Validation>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
   const dirty = yaml !== suite.yaml;
   // The saved text was valid when saved; only an edit needs (re)checking.
   const validation: Validation = dirty ? checked : { valid: true, cases: suite.case_count };
@@ -124,16 +127,6 @@ function SuiteEditor({ suite, onSaved }: { suite: Suite; onSaved: () => void }) 
       clearTimeout(timer);
     };
   }, [yaml, dirty]);
-
-  function jumpTo(line: number) {
-    const area = ref.current;
-    if (!area) return;
-    const lines = yaml.split("\n");
-    const start = lines.slice(0, line - 1).reduce((n, l) => n + l.length + 1, 0);
-    area.focus();
-    area.setSelectionRange(start, start + (lines[line - 1]?.length ?? 0));
-    area.scrollTop = (line - 1) * (parseFloat(getComputedStyle(area).lineHeight) || 20) - area.clientHeight / 3;
-  }
 
   async function save() {
     setBusy(true);
@@ -154,13 +147,13 @@ function SuiteEditor({ suite, onSaved }: { suite: Suite; onSaved: () => void }) 
   return (
     <div className="flex flex-col gap-12">
       <div className="flex flex-wrap items-center justify-between gap-12">
-        <Label htmlFor="suite-editor">YAML</Label>
-        <p aria-live="polite" data-testid="suite-validation" className="flex items-center gap-6 text-data-label">
+        <p className="type-label text-ink-muted">Suite definition</p>
+        <p aria-live="polite" data-testid="suite-validation" className="flex items-center gap-8 type-label">
           {validation === "checking" && <span className="text-ink-muted">Checking…</span>}
           {typeof validation === "object" && validation?.valid && (
             <>
               <StatusDot status="pass" decorative />
-              <span className="text-pass">
+              <span className="text-ink">
                 Valid · {validation.cases} {validation.cases === 1 ? "case" : "cases"}
               </span>
             </>
@@ -175,42 +168,14 @@ function SuiteEditor({ suite, onSaved }: { suite: Suite; onSaved: () => void }) 
           )}
         </p>
       </div>
-      <Textarea
-        id="suite-editor"
-        ref={ref}
-        data-testid="suite-editor"
-        className="min-h-400 font-mono text-code"
-        spellCheck={false}
-        value={yaml}
-        onChange={(e) => setYaml(e.target.value)}
-        aria-invalid={invalid}
-        aria-describedby={invalid ? "suite-issues" : undefined}
-      />
-      {invalid && (
-        <ul id="suite-issues" data-testid="suite-issues" className="flex flex-col gap-4 bg-surface-2 p-12 text-body-sm text-fail">
-          {validation.issues.map((issue, i) => (
-            <li key={i}>
-              {issue.line != null ? (
-                <button
-                  type="button"
-                  onClick={() => jumpTo(issue.line!)}
-                  className="cursor-pointer text-left underline-offset-2 outline-none hover:underline focus-visible:shadow-focus"
-                >
-                  Line {issue.line}: {issue.message}
-                </button>
-              ) : (
-                <>
-                  {issue.path ? `${issue.path}: ` : ""}
-                  {issue.message}
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <YamlEditor value={yaml} onChange={setYaml} issues={invalid ? validation.issues : []} invalid={invalid} />
       <FieldError id="suite-save-error">{error}</FieldError>
       <div className="flex flex-wrap items-center justify-end gap-8">
-        {dirty && <span className="mr-auto text-data-label text-ink-muted">Unsaved changes. Saving makes version {suite.version + 1}; runs keep the version they used.</span>}
+        {dirty && (
+          <span className="mr-auto type-body-sm text-ink-muted">
+            Unsaved changes. Saving makes version {suite.version + 1}; runs keep the version they used.
+          </span>
+        )}
         <Button variant="secondary" onClick={() => setYaml(suite.yaml)} disabled={!dirty || busy}>
           Discard
         </Button>

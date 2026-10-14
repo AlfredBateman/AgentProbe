@@ -81,3 +81,14 @@ test("a long line wraps in the block and the copy button still holds all of it",
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Copy" })));
   expect(writeText).toHaveBeenCalledWith(long);
 });
+
+test("a body replaces the read-only text inside the same frame, and the footer sits under it", () => {
+  const { container } = render(
+    <CodeBlock code="suite: a" label="suite.yaml" body={<textarea aria-label="edit" defaultValue="suite: a" />} footer={<p>2 problems</p>} invalid />,
+  );
+  expect(container.querySelector("pre")).toBeNull();
+  expect(screen.getByRole("textbox", { name: "edit" })).toBeTruthy();
+  expect(container.querySelector("figure")!.className).toContain("border-fail");
+  expect(container.querySelector("figure")!.lastElementChild!.textContent).toBe("2 problems");
+  expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+});
