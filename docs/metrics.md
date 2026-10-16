@@ -113,22 +113,22 @@ The server saves every attempt to Postgres as it finishes, so a run through the 
 
 ## CI: tests, coverage and pipeline duration
 
-All of this is read from GitHub Actions on `main`; nothing here is estimated. Run 37116665866 is commit `27a6779`, the latest green CI run when this was written (2026-10-04).
+All of this is read from GitHub Actions on `main`; nothing here is estimated. Run 38614787526 is commit `f078151`, the latest green CI run on `main` when this was updated (2026-10-15).
 
 | | Value | Source |
 |---|---|---|
-| Python tests | 1,145 passed, plus 12 Redis-queue tests in their own step | `python` job: `pytest -m "not live and not redis"`, then `pytest -m redis` |
-| Web unit tests | 184 passed (32 files, Vitest) | `web` job |
-| End-to-end tests | 14 Playwright specs passed, on the production build | `e2e` job |
-| Coverage, `packages/core` | **97%** (2,419 statements; the gate is 80%) | `python` job: `coverage report --include="*/agentprobe_core/*" --fail-under=80` |
-| Coverage, `apps/api` | **97%** (2,446 statements; the gate is 80%) | same, `*/agentprobe_api/*`. The coverage includes the Redis tests and the integration tests on Postgres. |
-| CI duration (lint, type-check, tests, Docker build and compose smoke) | **median 8 min 6 s**, range 5 min 58 s to 9 min 53 s | last 10 green CI runs on `main`, 2026-10-01 to 2026-10-03 (`run_duration_ms` from the Actions timing API) |
+| Python tests | 1,161 passed, plus 12 Redis-queue tests in their own step | `python` job: `pytest -m "not live and not redis"`, then `pytest -m redis` |
+| Web unit tests | 353 passed (62 files, Vitest) | `web` job |
+| End-to-end tests | 46 Playwright tests passed, on the production build | `e2e` job |
+| Coverage, `packages/core` | **97%** (2,467 statements; the gate is 80%) | `python` job: `coverage report --include="*/agentprobe_core/*" --fail-under=80` |
+| Coverage, `apps/api` | **97%** (2,504 statements; the gate is 80%) | same, `*/agentprobe_api/*`. The coverage includes the Redis tests and the integration tests on Postgres. |
+| CI duration (lint, type-check, tests, Docker build and compose smoke) | **median 8 min 19 s**, range 6 min 0 s to 9 min 44 s | last 10 green CI runs on `main`, 2026-10-03 to 2026-10-14 (`run_duration_ms` from the Actions timing API) |
 | Deploy duration (migrate, two Render deploys, Vercel, live smoke test) | **median 2 min 44 s**, range 2 min 30 s to 3 min 14 s | last 9 green Deploy runs on `main` |
 | Commit to live (CI start to Deploy end) | **median 11 min 6 s**, range 8 min 41 s to 12 min 51 s | the 9 commits that were both green in CI and deployed |
 
-The CI critical path is the `python` job, 9 min 25 s in run 37116665866, of which `pytest` is 8 min (the integration tests run on a Postgres service container and the statistics calibration tests run under coverage tracing). The other jobs run in parallel and finish sooner: `e2e` 1 min 57 s, `docker` 1 min 27 s (build 44 s, `compose up --wait` 20 s), `web` 48 s, `audit` 29 s, `packaging` 15 s, `workflow-lint` 7 s.
+The CI critical path is the `python` job, 7 min 18 s in run 38614787526, of which the main `pytest` step is 5 min 36 s (the integration tests run on a Postgres service container and the statistics calibration tests run under coverage tracing). The other jobs run in parallel and finish sooner: `e2e` 3 min 49 s, `web` 1 min 43 s, `docker` 1 min 31 s, `audit` 22 s, `workflow-lint` 15 s, `packaging` 14 s.
 
-CI has been getting slower as the suite grew: the green runs on 2026-10-01 took 6 to 8 minutes and the latest ones 8 to 10. Splitting the `python` job is the planned fix.
+The deploy rows above were measured on 2026-10-01 to 2026-10-03 and not repeated.
 
 ### Reproduce
 ```bash
