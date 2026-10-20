@@ -56,3 +56,7 @@ Thumbs.db
 
 # Local design references
 design-refs/
+
+# Local generated output: launch video, knowledge graph
+/brag-output/
+/graphify-out/
