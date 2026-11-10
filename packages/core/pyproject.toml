@@ -19,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Live LLM calls (Gemini via LiteLLM). Opt-in: large dependency tree, imported lazily.
-live = ["litellm==1.102.1"]
+live = ["litellm==1.102.2"]
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13"]
